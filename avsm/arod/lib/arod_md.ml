@@ -239,6 +239,9 @@ let render_sidenote ~entries ~sidenotes c = function
       (match github_handle contact with
        | Some g -> Some (social_icon ("https://github.com/" ^ g) "GitHub" Arod_icons.github_o)
        | None -> None);
+      (match linkedin contact with
+       | Some (svc : Sortal_schema.Contact.service) -> Some (social_brand svc.url "LinkedIn" Arod_icons.linkedin_brand)
+       | None -> None);
       (match mastodon contact with
        | Some svc when svc.url <> "" ->
          Some (social_brand svc.url "Mastodon" Arod_icons.mastodon_brand)
@@ -254,6 +257,9 @@ let render_sidenote ~entries ~sidenotes c = function
        | None -> None);
       (match current_url contact with
        | Some u -> Some (social_icon u "Website" Arod_icons.world_o)
+       | None -> None);
+      (match current_email contact with
+       | Some addr -> Some (social_icon ("mailto:" ^ addr) "Email" Arod_icons.mail_o)
        | None -> None);
     ] in
     if socials <> [] then begin

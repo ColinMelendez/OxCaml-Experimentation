@@ -82,36 +82,27 @@ let full_page ~ctx n =
   let date_str = Common.ptime_date_full (y, m, d) in
   let datetime_str = Printf.sprintf "%04d-%02d-%02d" y m d in
   let all_tags = Arod.Ctx.tags_of_ent ctx (`Note n) in
-  let doi_el = match Note.doi n with
-    | Some doi_str ->
-      [El.txt " \xC2\xB7 ";
-       El.txt "DOI: ";
-       El.a ~at:[At.href ("https://doi.org/" ^ doi_str)] [El.txt doi_str]]
-    | None -> []
-  in
-  (* Meta row — hidden on desktop where sidebar shows this info *)
-  let meta_row =
-    El.p ~at:[At.class' "text-sm text-secondary mb-2 lg:hidden"]
-      ([El.time ~at:[At.v "datetime" datetime_str; At.class' "dt-published"] [El.txt date_str]] @ doi_el)
-  in
-  (* H1 title (no self-link) *)
+  (* H1 title *)
   let display_title = Note.title n in
   let title_el =
-    Common.page_title ~cls:"page-title text-xl font-semibold tracking-tight mb-1 p-name"
+    Common.page_title ~cls:"page-title text-xl font-semibold tracking-tight mb-2 p-name"
       display_title
   in
-  (* Tags below title, like papers *)
-  let tags_el = Common.detail_tags (List.map Bushel.Tags.to_raw_string all_tags) in
+  (* Tags + date + optional DOI cite link *)
+  let tags_el = Common.detail_tags ~date:(y, m, d) ?doi:(Note.doi n)
+    (List.map Bushel.Tags.to_raw_string all_tags) in
   (* Synopsis — hidden on desktop where sidebar shows it *)
   let synopsis_el = match Note.synopsis n with
     | Some syn ->
-      [El.p ~at:[At.class' "text-base leading-snug text-secondary lg:hidden p-summary"] [El.txt syn]]
+      [El.p ~at:[At.class' "detail-synopsis lg:hidden p-summary"] [El.txt syn]]
     | None -> []
   in
+  (* Hidden microformat datetime *)
+  let dt_el = El.time ~at:[At.v "datetime" datetime_str; At.class' "dt-published hidden"] [El.txt date_str] in
   (* Header *)
   let header_el =
     El.header ~at:[At.id "intro"; At.class' "mb-6"]
-      ([meta_row; title_el; tags_el] @ synopsis_el)
+      ([title_el; tags_el; dt_el] @ synopsis_el)
   in
   (* Body with parent reference *)
   let body = Note.body n in

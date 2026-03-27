@@ -150,16 +150,42 @@ let hidden_author_hcard ~ctx =
     ([El.a ~at:[At.class' "p-name u-url"; At.href cfg.site.base_url]
         [El.txt author_name]] @ photo_el)
 
-let detail_tags tags =
-  match tags with
-  | [] -> El.void
+let detail_tags ?date ?doi tags =
+  let tag_els = List.map (fun raw ->
+    El.a ~at:[At.class' "paper-detail-tag p-category"; At.v "data-tag" raw;
+              At.href ("#tag=" ^ raw)]
+      [El.txt ("#" ^ raw)]
+  ) tags in
+  let meta_items =
+    let doi_el = match doi with
+      | Some doi_str ->
+        [El.a ~at:[At.href ("https://doi.org/" ^ doi_str); At.v "title" doi_str]
+          [El.txt "[cite]"]]
+      | None -> []
+    in
+    let date_el = match date with
+      | Some (y, m, d) ->
+        let datetime = Printf.sprintf "%04d-%02d-%02d" y m d in
+        let label = Printf.sprintf "%d %s %d" d (month_name m) y in
+        [El.time ~at:[At.v "datetime" datetime]
+          [El.txt label]]
+      | None -> []
+    in
+    let items = doi_el @ date_el in
+    let sep = El.span ~at:[At.class' "detail-meta-sep"] [El.txt "\xC2\xB7"] in
+    match items with
+    | [] -> []
+    | first :: rest ->
+      first :: List.concat_map (fun el -> [sep; el]) rest
+  in
+  let meta_el = match meta_items with
+    | [] -> []
+    | items -> [El.span ~at:[At.class' "detail-meta"] items]
+  in
+  match tag_els, meta_el with
+  | [], [] -> El.void
   | _ ->
-    El.div ~at:[At.class' "paper-detail-tags"] (
-      List.map (fun raw ->
-        El.a ~at:[At.class' "paper-detail-tag p-category"; At.v "data-tag" raw;
-                  At.href ("#tag=" ^ raw)]
-          [El.txt ("#" ^ raw)]
-      ) tags)
+    El.div ~at:[At.class' "paper-detail-tags"] (tag_els @ meta_el)
 
 let page_title ?(cls="page-title text-xl font-semibold mb-3 p-name") title =
   El.h1 ~at:[At.class' cls] [El.txt title]

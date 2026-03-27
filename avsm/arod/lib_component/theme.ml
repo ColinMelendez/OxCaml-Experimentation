@@ -75,7 +75,9 @@ let tailwind_config = {|
                 h2: { fontSize: '1.125rem', marginTop: '1.25rem', marginBottom: '0.5rem' },
                 h3: { fontSize: '1rem', marginTop: '1rem', marginBottom: '0.375rem' },
                 h4: { fontSize: '0.88rem', marginTop: '0.75rem', marginBottom: '0.25rem' },
-                code: { fontSize: '0.78rem' },
+                code: { fontSize: '0.78rem', fontWeight: '400' },
+                'code::before': { content: 'none' },
+                'code::after': { content: 'none' },
                 pre: { fontSize: '0.72rem', lineHeight: '1.5', backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '4px', padding: '0.5rem 0.75rem', marginTop: '0.5em', marginBottom: '0.5em' },
                 img: { marginTop: '0', marginBottom: '0' },
                 hr: { borderColor: 'var(--color-border)' },
@@ -774,6 +776,36 @@ let custom_css = {|
   .paper-detail-tag:hover {
     color: var(--color-accent) !important;
     border-color: var(--color-accent);
+  }
+  .detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.72rem;
+    color: var(--color-muted);
+    line-height: 1.5;
+  }
+  .detail-meta a {
+    color: var(--color-muted) !important;
+    text-decoration: none !important;
+  }
+  .detail-meta a:hover {
+    color: var(--color-accent) !important;
+  }
+  .detail-meta-sep {
+    color: var(--color-border);
+  }
+  .detail-synopsis {
+    font-size: 0.82rem;
+    font-style: italic;
+    line-height: 1.4;
+    color: var(--color-secondary);
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--color-surface-alt);
+    border-radius: 4px;
   }
   /* social-icon styles are now Tailwind utilities */
   .paper-abstract-section::after {
