@@ -13,8 +13,7 @@ open Htmlit
 module Img = Srcsetter
 
 let responsive ~ctx:_ ?alt ?(title="") img_ent =
-  let origin_url = Printf.sprintf "/images/%s.webp"
-    (Filename.chop_extension (Img.origin img_ent)) in
+  let origin_url = Printf.sprintf "/images/%s" (Img.name img_ent) in
   let srcsets = String.concat ","
     (List.map (fun (f,(w,_h)) -> Printf.sprintf "/images/%s %dw" f w)
       (Img.MS.bindings img_ent.Img.variants)) in

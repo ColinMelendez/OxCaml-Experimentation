@@ -97,7 +97,9 @@ let relativize_path dir path =
     Uses ImageMagick's [identify] command to read image metadata. *)
 let dims { proc_mgr; _ } path =
   let path = Path.native_exn path in
-  let args = [ "identify"; "-ping"; "-format"; "%w %h"; path ] in
+  (* [0] selects only the first frame — needed for animated GIFs which
+     otherwise return dimensions for every frame *)
+  let args = [ "identify"; "-ping"; "-format"; "%w %h"; path ^ "[0]" ] in
   let output = Process.parse_out proc_mgr Buf_read.take_all args in
   Scanf.sscanf output "%d %d" (fun w h -> (w, h))
 
@@ -190,10 +192,17 @@ let needs_conversion ~preserve dst =
 
     Returns [(src_file, dst_file, width_opt, needs_work)] where [needs_work]
     indicates whether the conversion should be performed. *)
+let is_gif src =
+  String.lowercase_ascii (Filename.extension (Path.native_exn src)) = ".gif"
+
 let translate { src_dir; dst_dir; preserve; _ } ?w src =
   let src_file = relativize_path src_dir src in
+  let ext =
+    if String.lowercase_ascii (Filename.extension src_file) = ".gif" then ".gif"
+    else ".webp"
+  in
   let width_suffix = Option.fold ~none:"" ~some:(fun w -> "." ^ string_of_int w) w in
-  let dst_file = String.lowercase_ascii (Printf.sprintf "%s%s.webp" (Filename.chop_extension src_file) width_suffix) in
+  let dst_file = String.lowercase_ascii (Printf.sprintf "%s%s%s" (Filename.chop_extension src_file) width_suffix ext) in
   let dst = Path.(dst_dir / dst_file) in
   (src_file, dst_file, w, needs_conversion ~preserve dst)
 
@@ -239,46 +248,95 @@ let truncate_string str max_len =
     Shows a nested progress bar for files requiring many conversions.
 
     @return An {!Srcsetter.t} entry with metadata about the generated images. *)
+(** [copy_to_dst cfg src dst] copies a file from src_dir to dst_dir unchanged. *)
+let copy_to_dst { src_dir; dst_dir; dummy; preserve; _ } src dst =
+  if not dummy then begin
+    let dir =
+      if Filename.dirname dst = "." then dst_dir
+      else Path.(dst_dir / Filename.dirname dst)
+    in
+    Path.mkdirs ~exists_ok:true ~perm:0o755 dir;
+    let src_path = Path.(src_dir / src) in
+    let dst_path = Path.(dst_dir / dst) in
+    if needs_conversion ~preserve dst_path then begin
+      let content = Path.load src_path in
+      Path.save ~append:false ~create:(`Or_truncate 0o644) dst_path content
+    end
+  end
+
+(** [convert_animated cfg (src, dst, size)] converts an animated image (GIF)
+    to animated WebP, preserving all frames. Uses [-resize] instead of
+    [-thumbnail] which would strip frames. *)
+let convert_animated ({ src_dir; dst_dir; dummy; _ } as cfg) (src, dst, size) =
+  if not dummy then begin
+    let dir =
+      if Filename.dirname dst = "." then dst_dir
+      else Path.(dst_dir / Filename.dirname dst)
+    in
+    Path.mkdirs ~exists_ok:true ~perm:0o755 dir;
+    let src_path = Path.(native_exn (src_dir / src)) in
+    let dst_path = Path.(native_exn (dst_dir / dst)) in
+    let sz = Printf.sprintf "%dx" size in
+    run cfg
+      [
+        "magick"; src_path;
+        "-resize"; sz;
+        "-quality"; "90";
+        dst_path;
+      ]
+  end
+
 let process_file cfg (display, main_rep) src =
   let w, h = dims cfg src in
-  let needed_w = needed_sizes ~img_widths:cfg.img_widths ~w in
-  let base_src, base_dst, _, _ as base = translate cfg src in
-  let needed = List.map (fun w -> translate cfg ~w src) needed_w in
-  let variants =
-    needed
-    |> List.map (fun (_, dst, _, _) -> (dst, (0, 0)))
-    |> Srcsetter.MS.of_list
-  in
-  let slug = Filename.basename base_dst |> Filename.chop_extension in
-  let ent = Srcsetter.v base_dst slug base_src variants (w, h) in
-  let todo =
-    List.filter_map
-      (fun (src, dst, sz, needs_work) ->
-        if needs_work then Some (src, dst, Option.value sz ~default:w) else None)
-      (base :: needed)
-  in
-  let num_todo = List.length todo in
-  if num_todo > 3 then begin
-    let line = one_bar num_todo in
-    let reporter = Progress.Display.add_line display line in
-    let completed = ref [] in
-    let report_progress sz =
-      if sz > 0 then completed := sz :: !completed;
-      let sizes_str = String.concat "," (List.map string_of_int !completed) in
-      let basename = Path.native_exn src |> Filename.basename |> Filename.chop_extension in
-      let label = Printf.sprintf "%25s -> %s" (truncate_string basename 25) sizes_str in
-      Progress.Reporter.report reporter (1, label)
-    in
-    report_progress 0;
-    List.iter (fun (_, _, sz as job) -> report_progress sz; convert cfg job) todo;
+  if is_gif src then begin
+    (* GIF: copy as-is (animated WebP has Safari rendering bugs), no variants *)
+    let base_src, base_dst, _, needs_work = translate cfg src in
+    let slug = Filename.basename base_dst |> Filename.chop_extension in
+    let ent = Srcsetter.v base_dst slug base_src Srcsetter.MS.empty (w, h) in
+    if needs_work then copy_to_dst cfg base_src base_dst;
     main_rep 1;
-    Progress.Display.remove_line display reporter
+    ent
   end
   else begin
-    List.iter (convert cfg) todo;
-    main_rep 1
-  end;
-  ent
+    let needed_w = needed_sizes ~img_widths:cfg.img_widths ~w in
+    let base_src, base_dst, _, _ as base = translate cfg src in
+    let needed = List.map (fun w -> translate cfg ~w src) needed_w in
+    let variants =
+      needed
+      |> List.map (fun (_, dst, _, _) -> (dst, (0, 0)))
+      |> Srcsetter.MS.of_list
+    in
+    let slug = Filename.basename base_dst |> Filename.chop_extension in
+    let ent = Srcsetter.v base_dst slug base_src variants (w, h) in
+    let todo =
+      List.filter_map
+        (fun (src, dst, sz, needs_work) ->
+          if needs_work then Some (src, dst, Option.value sz ~default:w) else None)
+        (base :: needed)
+    in
+    let num_todo = List.length todo in
+    if num_todo > 3 then begin
+      let line = one_bar num_todo in
+      let reporter = Progress.Display.add_line display line in
+      let completed = ref [] in
+      let report_progress sz =
+        if sz > 0 then completed := sz :: !completed;
+        let sizes_str = String.concat "," (List.map string_of_int !completed) in
+        let basename = Path.native_exn src |> Filename.basename |> Filename.chop_extension in
+        let label = Printf.sprintf "%25s -> %s" (truncate_string basename 25) sizes_str in
+        Progress.Reporter.report reporter (1, label)
+      in
+      report_progress 0;
+      List.iter (fun (_, _, sz as job) -> report_progress sz; convert cfg job) todo;
+      main_rep 1;
+      Progress.Display.remove_line display reporter
+    end
+    else begin
+      List.iter (convert cfg) todo;
+      main_rep 1
+    end;
+    ent
+  end
 
 (** {1 Pipeline Execution} *)
 
@@ -336,29 +394,43 @@ let stage3 ({ src_dir; dst_dir; max_fibers; _ } as cfg) ents =
   iter_seq_p ~max_fibers
     (fun ent ->
       let src_path = Path.(src_dir / Srcsetter.origin ent) in
-      let orig_w, _ = dims cfg src_path in
-      (* Verify and regenerate base image if needed *)
-      let base_path = Path.(dst_dir / Srcsetter.name ent) in
-      if not (is_valid_image cfg base_path) then begin
-        incr regenerated;
-        convert cfg (Srcsetter.origin ent, Srcsetter.name ent, orig_w)
-      end;
-      let w, h = dims cfg base_path in
-      (* Verify and regenerate variants if needed *)
-      let variants =
-        Srcsetter.MS.bindings ent.variants
-        |> List.map (fun (k, _) ->
-            let variant_path = Path.(dst_dir / k) in
-            if not (is_valid_image cfg variant_path) then begin
-              incr regenerated;
-              let target_w = Option.value (width_from_variant_name k) ~default:orig_w in
-              convert cfg (Srcsetter.origin ent, k, target_w)
-            end;
-            (k, dims cfg variant_path))
-        |> Srcsetter.MS.of_list
-      in
-      rep 1;
-      oents := { ent with Srcsetter.dims = (w, h); variants } :: !oents)
+      let is_gif_ent = String.lowercase_ascii (Filename.extension (Srcsetter.origin ent)) = ".gif" in
+      if is_gif_ent then begin
+        (* GIF: verify copy exists, re-copy if missing *)
+        let base_path = Path.(dst_dir / Srcsetter.name ent) in
+        if not (Path.is_file base_path) || file_size base_path = 0 then begin
+          incr regenerated;
+          copy_to_dst cfg (Srcsetter.origin ent) (Srcsetter.name ent)
+        end;
+        let w, h = dims cfg base_path in
+        rep 1;
+        oents := { ent with Srcsetter.dims = (w, h); variants = Srcsetter.MS.empty } :: !oents
+      end
+      else begin
+        let orig_w, _ = dims cfg src_path in
+        (* Verify and regenerate base image if needed *)
+        let base_path = Path.(dst_dir / Srcsetter.name ent) in
+        if not (is_valid_image cfg base_path) then begin
+          incr regenerated;
+          convert cfg (Srcsetter.origin ent, Srcsetter.name ent, orig_w)
+        end;
+        let w, h = dims cfg base_path in
+        (* Verify and regenerate variants if needed *)
+        let variants =
+          Srcsetter.MS.bindings ent.variants
+          |> List.map (fun (k, _) ->
+              let variant_path = Path.(dst_dir / k) in
+              if not (is_valid_image cfg variant_path) then begin
+                incr regenerated;
+                let target_w = Option.value (width_from_variant_name k) ~default:orig_w in
+                convert cfg (Srcsetter.origin ent, k, target_w)
+              end;
+              (k, dims cfg variant_path))
+          |> Srcsetter.MS.of_list
+        in
+        rep 1;
+        oents := { ent with Srcsetter.dims = (w, h); variants } :: !oents
+      end)
     ents_seq;
   Progress.Display.finalise display;
   if !regenerated > 0 then

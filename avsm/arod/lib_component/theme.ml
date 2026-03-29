@@ -1330,31 +1330,36 @@ let custom_css = {|
   }
   .lightbox-expand {
     position: absolute;
-    bottom: 2px;
-    right: 2px;
-    width: 1.25rem;
-    height: 1.25rem;
-    background: rgba(0,0,0,0.4);
+    bottom: 4px;
+    left: 4px;
+    width: 1.5rem;
+    height: 1.5rem;
+    background: rgba(0,0,0,0.45);
     color: white;
-    border-radius: 50%;
+    border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;
-    font-weight: bold;
-    line-height: 1;
     cursor: zoom-in;
     opacity: 0;
-    transition: opacity 0.15s;
+    pointer-events: none;
+    transition: opacity 0.2s;
     text-decoration: none !important;
     z-index: 5;
+    padding: 3px;
   }
-  figure:hover .lightbox-expand {
+  .lightbox-expand svg {
+    width: 100%;
+    height: 100%;
+  }
+  figure:hover .lightbox-expand,
+  .relative:hover > .lightbox-expand {
     opacity: 0.7;
+    pointer-events: auto;
   }
   .lightbox-expand:hover {
     opacity: 1 !important;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.75);
   }
   #lightbox-overlay {
     position: fixed;

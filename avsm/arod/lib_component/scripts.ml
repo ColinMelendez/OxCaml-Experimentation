@@ -877,12 +877,17 @@ let lightbox_js = {|
     img.src = '';
   }
 
-  // Attach to all lightbox triggers and expand buttons
+  // Attach to all lightbox triggers and expand buttons.
+  // If a lightbox-trigger is inside an <a href>, let the link navigate instead.
   document.addEventListener('click', (e) => {
-    const trigger = e.target.closest('.lightbox-trigger');
-    if (trigger) { e.preventDefault(); open(trigger); return; }
     const expand = e.target.closest('.lightbox-expand');
     if (expand) { e.preventDefault(); e.stopPropagation(); open(expand); return; }
+    const trigger = e.target.closest('.lightbox-trigger');
+    if (trigger) {
+      const parentLink = trigger.closest('a[href]');
+      if (parentLink && !parentLink.classList.contains('lightbox-trigger')) return;
+      e.preventDefault(); open(trigger); return;
+    }
     if (e.target === overlay || e.target === closeBtn) { close(); }
   });
 

@@ -43,9 +43,14 @@ let string_drop_prefix ~prefix str =
 
 (** {1 Image Rendering} *)
 
+(* SVG expand icon for lightbox button — arrows-pointing-out *)
+let expand_icon = {|<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M13.28 7.78l3.22-3.22v2.69a.75.75 0 001.5 0v-4.5a.75.75 0 00-.75-.75h-4.5a.75.75 0 000 1.5h2.69l-3.22 3.22a.75.75 0 001.06 1.06zM2 17.25v-4.5a.75.75 0 011.5 0v2.69l3.22-3.22a.75.75 0 011.06 1.06L4.56 16.5h2.69a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75z"/></svg>|}
+
+let expand_btn attrs =
+  Printf.sprintf {|<span class="lightbox-expand"%s>%s</span>|} attrs expand_icon
+
 let render_image_html ?(cl="content-image") ?link_url ~alt ~title img_ent =
-  let origin_url = Printf.sprintf "/images/%s.webp"
-    (Filename.chop_extension (Img.origin img_ent)) in
+  let origin_url = Printf.sprintf "/images/%s" (Img.name img_ent) in
 
   let srcsets = String.concat ","
     (List.map (fun (f,(w,_h)) -> Printf.sprintf "/images/%s %dw" f w)
@@ -74,9 +79,8 @@ let render_image_html ?(cl="content-image") ?link_url ~alt ~title img_ent =
          {|<img class="%s rounded-full w-28 h-28 object-cover" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="112px">|}
          cl origin_url alt title srcsets
        in
-       Printf.sprintf
-         {|<figure class="float-img %s relative"><a href="%s">%s</a><span class="lightbox-expand"%s>+</span></figure>|}
-         float_class (html_escape_attr url) img_html lightbox_attrs
+       Printf.sprintf {|<figure class="float-img %s"><div class="relative"><a href="%s">%s</a>%s</div></figure>|}
+         float_class (html_escape_attr url) img_html (expand_btn lightbox_attrs)
      | None ->
        let img_html = Printf.sprintf
          {|<img class="%s rounded-full w-28 h-28 object-cover lightbox-trigger cursor-pointer" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="112px"%s>|}
@@ -94,8 +98,8 @@ let render_image_html ?(cl="content-image") ?link_url ~alt ~title img_ent =
          {|<img class="%s rounded-lg%s" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="(max-width: 768px) 100vw, 768px">|}
          cl img_extra origin_url title title srcsets
        in
-       Printf.sprintf {|<figure class="%s relative"><a href="%s">%s</a><span class="lightbox-expand"%s>+</span><figcaption class="text-sm text-secondary mt-2 text-center">%s</figcaption></figure>|}
-         fig_class (html_escape_attr url) img_html lightbox_attrs title
+       Printf.sprintf {|<figure class="%s"><div class="relative inline-block w-full"><a href="%s">%s</a>%s</div><figcaption class="text-sm text-secondary mt-2 text-center">%s</figcaption></figure>|}
+         fig_class (html_escape_attr url) img_html (expand_btn lightbox_attrs) title
      | None ->
        let img_html = Printf.sprintf
          {|<img class="%s rounded-lg%s lightbox-trigger" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="(max-width: 768px) 100vw, 768px"%s>|}
@@ -110,8 +114,8 @@ let render_image_html ?(cl="content-image") ?link_url ~alt ~title img_ent =
          {|<img class="%s" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="(max-width: 768px) 100vw, 768px">|}
          cl origin_url alt title srcsets
        in
-       Printf.sprintf {|<span class="relative inline-block"><a href="%s">%s</a><span class="lightbox-expand"%s>+</span></span>|}
-         (html_escape_attr url) img_html lightbox_attrs
+       Printf.sprintf {|<span class="relative inline-block"><a href="%s">%s</a>%s</span>|}
+         (html_escape_attr url) img_html (expand_btn lightbox_attrs)
      | None ->
        Printf.sprintf
          {|<img class="%s lightbox-trigger" src="%s" alt="%s" title="%s" loading="lazy" srcset="%s" sizes="(max-width: 768px) 100vw, 768px"%s>|}
@@ -128,8 +132,9 @@ let render_image_html_simple ?link_url ~cl ~alt ~title ~src () =
          {|<img class="%s rounded-full w-28 h-28 object-cover" src="%s" alt="%s" title="%s" loading="lazy" sizes="112px">|}
          cl src alt title
        in
-       Printf.sprintf {|<figure class="float-img %s relative"><a href="%s">%s</a><span class="lightbox-expand" data-lightbox="%s" data-caption="%s">+</span></figure>|}
-         float_class (html_escape_attr url) img_html (html_escape_attr src) (html_escape_attr title)
+       let lb_attrs = Printf.sprintf {| data-lightbox="%s" data-caption="%s"|} (html_escape_attr src) (html_escape_attr title) in
+       Printf.sprintf {|<figure class="float-img %s"><div class="relative"><a href="%s">%s</a>%s</div></figure>|}
+         float_class (html_escape_attr url) img_html (expand_btn lb_attrs)
      | None ->
        let img_html = Printf.sprintf
          {|<img class="%s rounded-full w-28 h-28 object-cover lightbox-trigger cursor-pointer" src="%s" alt="%s" title="%s" loading="lazy" sizes="112px" data-lightbox="%s" data-caption="%s">|}
@@ -146,8 +151,9 @@ let render_image_html_simple ?link_url ~cl ~alt ~title ~src () =
     in
     (match link_url with
      | Some url ->
-       Printf.sprintf {|<figure class="%s relative"><a href="%s">%s</a><span class="lightbox-expand" data-lightbox="%s" data-caption="%s">+</span><figcaption class="text-sm text-secondary mt-2 text-center">%s</figcaption></figure>|}
-         fig_class (html_escape_attr url) img_html (html_escape_attr src) (html_escape_attr title) title
+       let lb_attrs = Printf.sprintf {| data-lightbox="%s" data-caption="%s"|} (html_escape_attr src) (html_escape_attr title) in
+       Printf.sprintf {|<figure class="%s"><div class="relative inline-block w-full"><a href="%s">%s</a>%s</div><figcaption class="text-sm text-secondary mt-2 text-center">%s</figcaption></figure>|}
+         fig_class (html_escape_attr url) img_html (expand_btn lb_attrs) title
      | None ->
        Printf.sprintf {|<figure class="%s">%s<figcaption class="text-sm text-secondary mt-2 text-center">%s</figcaption></figure>|}
          fig_class img_html title)
@@ -158,8 +164,9 @@ let render_image_html_simple ?link_url ~cl ~alt ~title ~src () =
          {|<img class="%s" src="%s" alt="%s" title="%s" loading="lazy" sizes="(max-width: 768px) 100vw, 768px">|}
          cl src alt title
        in
-       Printf.sprintf {|<span class="relative inline-block"><a href="%s">%s</a><span class="lightbox-expand" data-lightbox="%s" data-caption="%s">+</span></span>|}
-         (html_escape_attr url) img_html (html_escape_attr src) (html_escape_attr title)
+       let lb_attrs = Printf.sprintf {| data-lightbox="%s" data-caption="%s"|} (html_escape_attr src) (html_escape_attr title) in
+       Printf.sprintf {|<span class="relative inline-block"><a href="%s">%s</a>%s</span>|}
+         (html_escape_attr url) img_html (expand_btn lb_attrs)
      | None ->
        Printf.sprintf
          {|<img class="%s" src="%s" alt="%s" title="%s" loading="lazy" sizes="(max-width: 768px) 100vw, 768px">|}
@@ -754,7 +761,7 @@ let to_atom_html ~(ctx : Arod_ctx.t) content =
              | None ->
                (match Bushel.Entry.lookup_image entries slug with
                 | Some img ->
-                  let dest = Printf.sprintf "/images/%s.webp" (Filename.chop_extension (Img.origin img)) in
+                  let dest = Printf.sprintf "/images/%s" (Img.name img) in
                   let title = Link_definition.title ld in
                   let alt_text = Inline.Link.text lb |> Inline.to_plain_text ~break_on_soft:false
                                 |> fun r -> String.concat "\n" (List.map (String.concat "") r) in
