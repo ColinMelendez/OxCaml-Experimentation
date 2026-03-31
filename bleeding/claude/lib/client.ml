@@ -287,6 +287,17 @@ let handle_messages t =
                 m "Received control request (request_id: %s)"
                   ctrl_req.request_id);
             handle_control_request t ctrl_req;
+            loop rest
+        | Incoming.Rate_limit_event ev ->
+            Log.info (fun m ->
+                m "Rate limit: %s (session %s)"
+                  (match ev.rate_limit_info.status with
+                   | `Allowed -> "allowed"
+                   | `Allowed_warning -> "warning"
+                   | `Rejected -> "rejected")
+                  ev.session_id);
+            loop rest
+        | Incoming.Stream_event _ev ->
             loop rest)
   and emit_responses responses rest =
     match responses with

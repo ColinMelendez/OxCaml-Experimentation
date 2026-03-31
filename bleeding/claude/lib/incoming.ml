@@ -14,18 +14,20 @@ module Log = (val Logs.src_log src : Logs.LOG)
     control_response_jsont for control messages, and Message.jsont for
     conversation messages. The top-level discriminator is the "type" field. *)
 
+type rate_limit_status = Proto.Incoming.rate_limit_status
+type rate_limit_type = Proto.Incoming.rate_limit_type
+type rate_limit_info = Proto.Incoming.rate_limit_info
+type rate_limit_event = Proto.Incoming.rate_limit_event
+type stream_event = Proto.Incoming.stream_event
+
 type t =
   | Message of Message.t
   | Control_response of Sdk_control.control_response
   | Control_request of Sdk_control.control_request
+  | Rate_limit_event of rate_limit_event
+  | Stream_event of stream_event
 
 let jsont : t Jsont.t =
-  (* Message types use "user", "assistant", "system", "result" as type values.
-     Control uses "control_request" and "control_response".
-
-     We use case_mem for all types. Note: we use the inner message codecs
-     (User.incoming_jsont, etc.) rather than Message.jsont to avoid nesting
-     case_mem on the same "type" field. *)
   let case_control_request =
     Jsont.Object.Case.map "control_request" Sdk_control.control_request_jsont
       ~dec:(fun v -> Control_request v)
@@ -50,9 +52,19 @@ let jsont : t Jsont.t =
     Jsont.Object.Case.map "result" Message.Result.jsont ~dec:(fun v ->
         Message (Message.Result v))
   in
+  let case_rate_limit_event =
+    Jsont.Object.Case.map "rate_limit_event" Proto.Incoming.rate_limit_event_jsont
+      ~dec:(fun v -> Rate_limit_event v)
+  in
+  let case_stream_event =
+    Jsont.Object.Case.map "stream_event" Proto.Incoming.stream_event_jsont
+      ~dec:(fun v -> Stream_event v)
+  in
   let enc_case = function
     | Control_request v -> Jsont.Object.Case.value case_control_request v
     | Control_response v -> Jsont.Object.Case.value case_control_response v
+    | Rate_limit_event v -> Jsont.Object.Case.value case_rate_limit_event v
+    | Stream_event v -> Jsont.Object.Case.value case_stream_event v
     | Message msg -> (
         match msg with
         | Message.User u -> Jsont.Object.Case.value case_user u
@@ -69,6 +81,8 @@ let jsont : t Jsont.t =
         make case_assistant;
         make case_system;
         make case_result;
+        make case_rate_limit_event;
+        make case_stream_event;
       ]
   in
   Jsont.Object.map ~kind:"Incoming" Fun.id
