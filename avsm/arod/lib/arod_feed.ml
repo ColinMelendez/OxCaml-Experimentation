@@ -29,7 +29,7 @@ let generator = {
 
 let link cfg e =
   let href = form_uri cfg @@ E.site_url e in
-  let rel = X.Self in
+  let rel = X.Alternate in
   let type_media = None in
   let title = E.title e in
   let length = None in
