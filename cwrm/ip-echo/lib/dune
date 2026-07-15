@@ -1,0 +1,4 @@
+(library
+ (name ip_echo)
+ (public_name ip-echo)
+ (libraries httpz httpz.server))
