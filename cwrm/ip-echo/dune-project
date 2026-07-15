@@ -1,0 +1,23 @@
+(lang dune 3.17)
+(name ip-echo)
+
+(generate_opam_files true)
+
+(license ISC)
+(authors "Colin")
+(maintainers "Colin")
+
+(package
+ (name ip-echo)
+ (synopsis "Echo client IP address and connection information")
+ (description
+  "A small Eio/httpz HTTP server that reports the client's IP address
+   and request metadata, similar to ifconfig.me.")
+ (depends
+  (ocaml (>= 5.2))
+  (httpz (>= 0.1))
+  (eio (>= 1.2))
+  eio_main
+  eio_posix
+  cmdliner
+  unix))
