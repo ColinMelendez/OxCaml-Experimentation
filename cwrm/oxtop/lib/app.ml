@@ -121,12 +121,21 @@ let make_component ~poll ~initial_snapshot ~(exit : unit -> unit Effect.t) ~dime
     let%arr model and dimensions in
     Render.view ~snapshot:model.snapshot ~ui:model.ui ~dimensions
   in
+  let is_ctrl_c (event : Event.t) =
+    (* Match bonsai_term's own Ctrl+C detection: Notty often reports uppercase 'C',
+       and sometimes a Uchar rather than ASCII. *)
+    match event with
+    | Key_press { key = ASCII ('C' | 'c'); mods = [ Ctrl ] } -> true
+    | Key_press { key = Uchar uchar; mods = [ Ctrl ] } ->
+      Uchar.equal (Uchar.of_char 'C') uchar || Uchar.equal (Uchar.of_char 'c') uchar
+    | _ -> false
+  in
   let handler =
     let%arr inject in
     fun (event : Event.t) ->
       match event with
-      | Key_press { key = ASCII ('q' | 'Q'); mods = [] }
-      | Key_press { key = ASCII 'c'; mods = [ Ctrl ] } -> exit ()
+      | Key_press { key = ASCII ('q' | 'Q'); mods = [] } -> exit ()
+      | event when is_ctrl_c event -> exit ()
       | event ->
         (match event_to_action event with
          | None -> Effect.Ignore
