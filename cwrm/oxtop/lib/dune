@@ -1,0 +1,15 @@
+(library
+ (name oxtop)
+ (public_name oxtop)
+ (libraries
+  bonsai
+  bonsai_term
+  bonsai_term_components.border_box
+  bonsai_term_components.color_scheme
+  core
+  core_unix
+  core_unix.sys_unix
+  async
+  async_unix)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))

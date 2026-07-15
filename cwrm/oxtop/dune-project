@@ -1,0 +1,30 @@
+(lang dune 3.17)
+(name oxtop)
+
+(generate_opam_files true)
+
+(license ISC)
+(authors "Colin")
+(maintainers "Colin")
+
+(package
+ (name oxtop)
+ (synopsis "A light btop-style system monitor TUI built with Bonsai_term")
+ (description
+  "oxtop is a lightweight process and resource monitor for the terminal,
+   inspired by btop. It is built with Jane Street's Bonsai_term library
+   and exercises expect-test screenshot testing for the UI.")
+ (depends
+  (ocaml (>= 5.2))
+  bonsai
+  bonsai_term
+  bonsai_term_components
+  core
+  core_unix
+  async
+  async_unix
+  ppx_jane
+  (bonsai_term_test :with-test)
+  (bonsai_test :with-test)
+  (ppx_expect :with-test)
+  (expect_test_helpers_core :with-test)))
