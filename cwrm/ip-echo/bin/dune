@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (public_name ip-echo)
+ (libraries ip_echo httpz httpz.server httpz.eio cmdliner eio eio_main eio_posix eio.unix unix))
