@@ -3,3 +3,4 @@
 module Types = Types
 module Sysinfo = Sysinfo
 module Render = Render
+module App = App

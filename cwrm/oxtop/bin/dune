@@ -1,0 +1,6 @@
+(executable
+ (name main)
+ (public_name oxtop)
+ (libraries oxtop bonsai_term core core_unix.command_unix async async_unix)
+ (preprocess
+  (pps ppx_jane)))
