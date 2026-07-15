@@ -17,7 +17,7 @@ end
 type _ without_position =
   | Constant : 'a Lazy.t -> 'a without_position
   | Incr : 'a Incr.t -> 'a without_position
-  | Named : Name_source.t * 'a Type_equal.Id.t -> 'a without_position
+  | Named : Name_source.t * 'a Var_id.t -> 'a without_position
   | Both : 'a t * 'b t -> ('a * 'b) without_position
   | Cutoff :
       { t : 'a t
@@ -92,7 +92,7 @@ include Applicative.S with type 'a t := 'a t
 include Applicative.Let_syntax with type 'a t := 'a t
 include Mapn with type 'a t := 'a t
 
-val named : here:[%call_pos] -> Name_source.t -> 'a Type_equal.Id.t -> 'a t
+val named : here:[%call_pos] -> Name_source.t -> 'a Var_id.t -> 'a t
 
 val cutoff
   :  here:[%call_pos]

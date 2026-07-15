@@ -1,0 +1,6 @@
+(library
+ (name bonsai_term_ansi_text_renderer)
+ (public_name bonsai_term_components.ansi_text_renderer)
+ (libraries patdiff.ansi_text bonsai_term bonsai_term_color_scheme core vec)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))

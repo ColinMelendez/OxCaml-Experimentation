@@ -21,14 +21,8 @@ let f
   ~here
   =
   let module Model_comparator = (val model_comparator) in
-  let module Io_comparator = (val io_comparator) in
   let wrap_assoc_on ~io_key ~model_key inject =
-    Action.assoc_on
-      ~io_key
-      ~model_key
-      ~io_id:io_key_id
-      ~io_compare:(Comparator.compare Io_comparator.comparator)
-    >>> inject
+    Action.assoc_on ~io_key ~model_key ~io_id:io_key_id ~io_comparator >>> inject
   in
   let model_key_comparator = Model_comparator.comparator in
   let%bind.Trampoline (Computation.T
@@ -46,16 +40,13 @@ let f
   let run ~environment ~fix_envs ~path ~model ~inject =
     let resolved = Environment.Recursive.resolve_may_contain fix_envs may_contain in
     let map_input = Value.eval environment map in
-    let create_keyed =
-      unstage
-        (Path.Elem.keyed ~compare:(Comparator.compare Io_comparator.comparator) io_key_id)
-    in
+    let create_keyed = unstage (Path.Elem.keyed ~comparator:io_comparator io_key_id) in
     let results_map, input_map, lifecycle_map =
       Gather_assoc.unzip3_mapi'
         map_input
         ~contains_lifecycle:resolved.lifecycle
         ~contains_input:resolved.input
-        ~comparator:(module Io_comparator)
+        ~comparator:io_comparator
         ~f:(fun ~key:io_key ~data:value ->
           let%pattern_bind results_map, input_map, lifecycle_map =
             let path =
@@ -127,8 +118,8 @@ let f
     in
     let input =
       match resolved.input with
-      | No -> Input.static_none
-      | Yes_or_maybe -> Input.dynamic (input_map >>| Option.some)
+      | No -> Input.static_dummy_for_assoc io_comparator
+      | Yes_or_maybe -> Input.dynamic input_map
     in
     Trampoline.return (Snapshot.create ~here ~result:results_map ~input ~lifecycle, ())
   in
@@ -137,10 +128,11 @@ let f
     ~schedule_event
     input
     model
-    (Action.Assoc_on { io_key; model_key; action; io_id = _; io_compare = _ })
+    (Action.Assoc_on { io_key; model_key; action; io_id = _; io_comparator = _ })
     =
     let input =
-      input |> Option.join |> Option.bind ~f:(fun input -> Map.find input io_key)
+      Computation_status.bind input ~f:(fun input ->
+        Map.find input io_key |> Computation_status.of_option)
     in
     let specific_model =
       match Map.find model model_key with
@@ -180,7 +172,11 @@ let f
              model_info
        ; input = Meta.Input.map io_key_id io_cmp_id input_info
        ; action =
-           Action.Type_id.assoc_on ~io_key:io_key_id ~model_key:model_key_id ~action
+           Action.Type_id.assoc_on
+             ~io_key:io_key_id
+             ~model_key:model_key_id
+             ~sexp_of_model_key:(Comparator.sexp_of_t Model_comparator.comparator)
+             ~action
        ; apply_action
        ; reset
        ; run

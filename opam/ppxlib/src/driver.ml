@@ -1540,7 +1540,7 @@ let rewrite_binary_ast_file input_fn output_fn =
 
 let parse_input passed_in_args ~valid_args ~incorrect_input_msg =
   try
-    Arg.parse_argv passed_in_args (Arg.align valid_args)
+    Arg.parse_argv ~current:(ref 0) passed_in_args (Arg.align valid_args)
       (fun _ -> raise (Arg.Bad "anonymous arguments not accepted"))
       incorrect_input_msg
   with
@@ -1550,6 +1550,12 @@ let parse_input passed_in_args ~valid_args ~incorrect_input_msg =
   | Arg.Help msg ->
       Printf.eprintf "%s" msg;
       Stdlib.exit 0
+
+let parse_additional_flags ~prog ~flags =
+  parse_input
+    (Array.of_list (prog :: flags))
+    ~valid_args:!args
+    ~incorrect_input_msg:"unrecognized PPX flags"
 
 let run_as_ppx_rewriter_main ~standalone_args ~usage input =
   let valid_args = get_args ~standalone_args () in

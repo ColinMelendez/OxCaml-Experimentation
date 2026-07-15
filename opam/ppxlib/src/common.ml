@@ -228,8 +228,9 @@ let parameter_may_be_non_value params =
   List.exists params ~f:(fun (ty, _) ->
       match ty.ptyp_desc with
       | Ptyp_var (_, Some jkind) -> begin
-         match jkind.pjkind_desc with
-         | Pjk_default | Pjk_abbreviation "value" -> false
+         match jkind.pjka_desc with
+         | Pjk_default
+         | Pjk_abbreviation ({ txt = Lident "value"; _ }, []) -> false
          | _ -> true
         end
       | _ -> false)

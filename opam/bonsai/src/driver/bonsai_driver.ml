@@ -16,7 +16,7 @@ type ('m, 'action, 'action_input, 'r, 'timer) unpacked =
   ; action_input : 'action_input Incr.Observer.t
   ; apply_action :
       schedule_event:(unit Ui_effect.t -> unit)
-      -> 'action_input option
+      -> 'action_input Bonsai.Computation_status.t
       -> 'm
       -> 'action Action.t
       -> 'm
@@ -316,7 +316,7 @@ let flush
         ~schedule_event:
           (Ui_effect.Expert.handle ~on_exn:(fun exn ->
              Exn.reraise exn "Unhandled exception raised in effect"))
-        (Some action_input)
+        (Bonsai.Computation_status.Active action_input)
         model
         action
     in

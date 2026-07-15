@@ -1,59 +1,7 @@
 open! Core
 open! Async_kernel
 open! Import
-open Deferred.Or_error.Let_syntax
 include State_rpc_intf
-
-module type S_plus = sig
-  include S
-
-  module Underlying_rpc : sig
-    val dispatch
-      :  Rpc.Connection.t
-      -> query
-      -> (state * update Pipe.Reader.t) Deferred.Or_error.t
-
-    val dispatch'
-      :  Rpc.Connection.t
-      -> query
-      -> (state * update Pipe.Reader.t) Or_error.t Deferred.Or_error.t
-
-    val dispatch_with_rpc_result
-      :  Rpc.Connection.t
-      -> query
-      -> ( (state * update Pipe.Reader.t) Or_error.t
-           , Async_rpc_kernel.Rpc_error.t )
-           Deferred.Result.t
-
-    val dispatch_with_rpc_result_and_metadata
-      :  Rpc.Connection.t
-      -> query
-      -> metadata:Rpc_metadata.V2.t
-      -> ( (state * update Pipe.Reader.t) Or_error.t
-           , Async_rpc_kernel.Rpc_error.t )
-           Deferred.Result.t
-
-    val implement
-      :  ?on_exception:Rpc.On_exception.t
-      -> ?leave_open_on_exception:bool
-      -> ('c -> query -> (state * update Pipe.Reader.t) Deferred.Or_error.t)
-      -> 'c Rpc.Implementation.t
-
-    val implement_with_auth
-      :  ?on_exception:Rpc.On_exception.t
-      -> ?leave_open_on_exception:bool
-      -> ('c
-          -> query
-          -> (state * update Pipe.Reader.t) Async_rpc_kernel.Or_not_authorized.t
-               Deferred.t)
-      -> 'c Rpc.Implementation.t
-
-    val description : Rpc.Description.t
-  end
-end
-
-type ('q, 's, 'u) t =
-  (module S_plus with type query = 'q and type state = 's and type update = 'u)
 
 module Part_or_done = struct
   type 'a t =
@@ -69,7 +17,7 @@ module Response = struct
   [@@deriving bin_io]
 end
 
-module Direct_writer = struct
+module Direct_parts_writer = struct
   module T = Rpc.Pipe_rpc.Direct_stream_writer
 
   type ('state_part, 'update_part) t =
@@ -84,8 +32,8 @@ module Direct_writer = struct
   let[@cold] raise_state_write_after_finalising () =
     raise_s
       [%message
-        "Cannot write state parts to State_rpc.Direct_writer after finalising initial \
-         state"]
+        "Cannot write state parts to State_rpc.Direct_parts_writer after finalising \
+         initial state"]
   ;;
 
   let[@inline] raise_if_finalised t =
@@ -109,8 +57,8 @@ module Direct_writer = struct
   let[@cold] raise_update_write_before_finalising () =
     raise_s
       [%message
-        "Cannot write update parts to State_rps.Direct_writer before finalising initial \
-         state"]
+        "Cannot write update parts to State_rpc.Direct_parts_writer before finalising \
+         initial state"]
   ;;
 
   let[@inline] raise_if_not_finalised t =
@@ -180,8 +128,8 @@ module Direct_writer = struct
       then
         raise_s
           [%message
-            "Can't add writer to State_rpc.Direct_writer.Group until it has finalised \
-             its initial state"];
+            "Can't add writer to State_rpc.Direct_parts_writer.Group until it has \
+             finalised its initial state"];
       T_group.add_exn t writer.writer
     ;;
 
@@ -208,6 +156,58 @@ module Direct_writer = struct
     ;;
   end
 end
+
+module type S_plus = sig
+  include S
+
+  module Underlying_rpc : sig
+    val dispatch
+      :  Rpc.Connection.t
+      -> query
+      -> (state * update Pipe.Reader.t * Rpc.State_rpc.Metadata.t) Deferred.Or_error.t
+
+    val dispatch'
+      :  Rpc.Connection.t
+      -> query
+      -> (state * update Pipe.Reader.t * Rpc.State_rpc.Metadata.t) Or_error.t
+           Deferred.Or_error.t
+
+    val dispatch_with_rpc_result
+      :  Rpc.Connection.t
+      -> query
+      -> ( (state * update Pipe.Reader.t * Rpc.State_rpc.Metadata.t) Or_error.t
+           , Async_rpc_kernel.Rpc_error.t )
+           Deferred.Result.t
+
+    val dispatch_with_rpc_result_and_metadata
+      :  Rpc.Connection.t
+      -> query
+      -> metadata:Rpc_metadata.V2.t
+      -> ( (state * update Pipe.Reader.t * Rpc.State_rpc.Metadata.t) Or_error.t
+           , Async_rpc_kernel.Rpc_error.t )
+           Deferred.Result.t
+
+    val implement
+      :  ?on_exception:Rpc.On_exception.t
+      -> ?leave_open_on_exception:bool
+      -> ('c -> query -> (state * update Pipe.Reader.t) Deferred.Or_error.t)
+      -> 'c Rpc.Implementation.t
+
+    val implement_with_auth
+      :  ?on_exception:Rpc.On_exception.t
+      -> ?leave_open_on_exception:bool
+      -> ('c
+          -> query
+          -> (state * update Pipe.Reader.t) Async_rpc_kernel.Or_not_authorized.t
+               Deferred.t)
+      -> 'c Rpc.Implementation.t
+
+    val description : Rpc.Description.t
+  end
+end
+
+type ('q, 's, 'u) t =
+  (module S_plus with type query = 'q and type state = 's and type update = 'u)
 
 module Make (X : S) = struct
   module Underlying_rpc = struct
@@ -246,21 +246,24 @@ module Make (X : S) = struct
     let read_msg
       (type a p)
       (module X : S with type t = a and type part = p)
-      r
+      pipe_reader
       ~match_
       ~noun
+      ~metadata
       =
       let rec loop acc =
-        match%bind Pipe.read r |> Deferred.ok with
+        match%bind Pipe.read pipe_reader >>| Fn.id with
         | `Eof ->
-          Deferred.Or_error.errorf
-            "Streamable.State_rpc: EOF before receiving complete %s"
-            noun
+          let close_reason = Deferred.peek (Rpc.Pipe_rpc.close_reason metadata) in
+          Deferred.Or_error.error_s
+            [%message
+              [%string "Streamable.State_rpc: EOF before receiving complete %{noun}"]
+                (close_reason : Rpc.Pipe_close_reason.t option)]
         | `Ok msg ->
           (match match_ msg with
-           | Error e -> Deferred.return (Error e)
+           | Error e -> return (Error e)
            | Ok (Part_or_done.Part part) -> loop (X.Intermediate.apply_part acc part)
-           | Ok Done -> return (X.finalize acc))
+           | Ok Done -> Deferred.Or_error.return (X.finalize acc))
       in
       loop (X.Intermediate.create ())
     ;;
@@ -299,9 +302,8 @@ module Make (X : S) = struct
         ~leave_open_on_exception:(Option.value leave_open_on_exception ~default:true)
         rpc
         (fun c q ->
-           let open Deferred.Or_error.Let_syntax in
-           let%bind state_pipe, update_pipes = f c q in
-           implement_with_pipes state_pipe update_pipes |> return)
+           let%bind.Deferred.Or_error state_pipe, update_pipes = f c q in
+           implement_with_pipes state_pipe update_pipes |> Deferred.Or_error.return)
     ;;
 
     let implement_with_auth' ?on_exception ?leave_open_on_exception f =
@@ -318,9 +320,8 @@ module Make (X : S) = struct
 
     let implement ?on_exception ?leave_open_on_exception f =
       implement' ?on_exception ?leave_open_on_exception (fun c q ->
-        let open Deferred.Or_error.Let_syntax in
-        let%bind state, updates = f c q in
-        return
+        let%bind.Deferred.Or_error state, updates = f c q in
+        Deferred.Or_error.return
           ( State.to_parts state |> Pipe.of_sequence
           , Pipe.map updates ~f:(fun update -> Update.to_parts update |> Pipe.of_sequence)
           ))
@@ -333,14 +334,14 @@ module Make (X : S) = struct
         , Pipe.map updates ~f:(fun update -> Update.to_parts update |> Pipe.of_sequence) ))
     ;;
 
-    let read_state r =
-      read_msg (module State) r ~noun:"state" ~match_:(function
+    let read_state pipe_reader ~metadata =
+      read_msg (module State) pipe_reader ~noun:"state" ~metadata ~match_:(function
         | Response.State x -> Ok x
         | Update _ -> Or_error.errorf "Streamable.State_rpc: incomplete state message")
     ;;
 
-    let read_update r =
-      read_msg (module Update) r ~noun:"update" ~match_:(function
+    let read_update pipe_reader ~metadata =
+      read_msg (module Update) pipe_reader ~noun:"update" ~metadata ~match_:(function
         | Response.Update x -> Ok x
         | State _ -> Or_error.errorf "Streamable.State_rpc: incomplete update message")
     ;;
@@ -349,8 +350,8 @@ module Make (X : S) = struct
       let%bind.Deferred.Result server_response = dispatch rpc conn query in
       match server_response with
       | Error _ as error -> Deferred.Result.return error
-      | Ok (r, _) ->
-        (match%bind.Deferred read_state r with
+      | Ok (pipe_reader, metadata) ->
+        (match%bind read_state pipe_reader ~metadata with
          | Error _ as error -> Deferred.Result.return error
          | Ok initial_state ->
            let updates =
@@ -359,7 +360,7 @@ module Make (X : S) = struct
                let rec loop () =
                  match%bind
                    Deferred.choose
-                     [ Deferred.choice (read_update r) Result.ok
+                     [ Deferred.choice (read_update pipe_reader ~metadata) Result.ok
                      ; Deferred.choice (Pipe.closed w) (fun () -> None)
                      ]
                  with
@@ -369,10 +370,10 @@ module Make (X : S) = struct
                  | None -> return ()
                in
                let%bind () = loop () in
-               Pipe.close_read r;
+               Pipe.close_read pipe_reader;
                return ())
            in
-           Deferred.Result.return (Ok (initial_state, updates)))
+           Deferred.Result.return (Ok (initial_state, updates, metadata)))
     ;;
 
     let dispatch' conn query = dispatch_gen Rpc.Pipe_rpc.dispatch conn query
@@ -409,7 +410,7 @@ module Make (X : S) = struct
       ?on_exception
       ~leave_open_on_exception:true
       Underlying_rpc.rpc
-      (fun c q writer -> f c q (Direct_writer.wrap writer))
+      (fun c q writer -> f c q (Direct_parts_writer.wrap writer))
   ;;
 end
 

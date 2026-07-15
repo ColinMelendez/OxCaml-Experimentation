@@ -5,17 +5,20 @@
 
 (** [t] is the type of termination tokens. Tokens become terminated by calls to
     [Source.terminate]. *)
-type t : value mod contended portable
+type t : value mod contended non_float portable
 
 (** [is_terminated t] is [true] if [t] has been terminated and [false] otherwise. Once
     [is_terminated t] is [true] it will never again become [false]. *)
 val is_terminated : t @ local -> bool
 
+(** [check t] raises [Terminated] if [t] has been terminated and does nothing otherwise. *)
+val check : t @ local -> unit
+
 (** [same t1 t2] determines whether the tokens [t1] and [t2] are the one and the same. *)
 val same : t @ local -> t @ local -> bool
 
-(** [never] is a termination token that is never terminated *)
-val never : t
+(** [unkillable] is a termination token that is never terminated. *)
+val unkillable : t
 
 (** [always] is a termination token that is already terminated. *)
 val always : t
@@ -23,7 +26,7 @@ val always : t
 module Source : sig
   (** [t] is the type of termination sources that can be used to cause an associated
       termination token to become terminated. *)
-  type t : value mod contended portable
+  type t : value mod contended non_float portable
 
   (** [terminate t] makes the token associated with [t] terminated, and signals any
       triggers attached to it. *)
@@ -38,27 +41,32 @@ val is_terminatable : t @ local -> bool
     token is not terminatable. *)
 val source : t @ local -> Source.t or_null
 
-(** [with_ f] creates a fresh termination token with an associated source and passes both
-    to [f]. The token is terminated when [Source.terminate] has been called on the source.
+(** [with_ f] creates a fresh termination token with an associated source and passes the
+    token to [f]. The token is terminated when [Source.terminate] has been called on the
+    source.
 
     Panics if [t] still has unsignaled attached triggers when [f] finishes. *)
-val with_ : ('a : value_or_null). (t @ local -> 'a) @ local once -> 'a
+val with_
+  : ('a : value_or_null).
+  (t @ local -> 'a @ once unique) @ local once -> 'a @ once unique
 
 (** [with_linked t f] creates a fresh termination token with an associated source and
-    passes both to [f]. The token is terminated when either [t] is terminated or
+    passes the token to [f]. The token is terminated when either [t] is terminated or
     [Source.terminate] has been called on the source.
 
     Panics if [t] still has unsignaled attached triggers when [f] finishes. *)
-val with_linked : ('a : value_or_null). t @ local -> (t @ local -> 'a) @ local once -> 'a
+val with_linked
+  : ('a : value_or_null).
+  t @ local -> (t @ local -> 'a @ once unique) @ local once -> 'a @ once unique
 
 (** [with_linked_multi ts f] creates a fresh termination token with an associated source
-    and passes them both to [f]. The token is canceled when any of [ts] are terminated or
+    and passes the token to [f]. The token is canceled when any of [ts] are terminated or
     when [Source.terminate] has been called on the source.
 
     Panics if [t] still has unsignaled attached triggers when [f] finishes. *)
 val with_linked_multi
   : ('a : value_or_null).
-  t list @ local -> (t @ local -> 'a) @ local once -> 'a
+  t list @ local -> (t @ local -> 'a @ once unique) @ local once -> 'a @ once unique
 
 module Link : sig
   (** The result of {!add_trigger}. *)
@@ -82,12 +90,6 @@ end
     [Terminated] tells nothing about the state of [s]. *)
 val add_trigger : t @ local -> Trigger.Source.t -> Link.t
 
-(** [cancellation t] is the underlying cancellation token of the terminator [t].
-
-    This allows turning termination into cancellation for the purpose of carefully
-    handling resources in critical sections where implicit termination is not desired. *)
-val cancellation : t @ local -> Cancellation.t @ local
-
 module Expert : sig
   (** [globalize t] is [t @ global].
 
@@ -103,4 +105,23 @@ module Expert : sig
       should arrange for the token to be termminated after it is no longer needed to
       ensure that any attached resources will be cleaned up. *)
   val create : unit -> t
+
+  (** [cancellation t] is the underlying cancellation token of the terminator [t].
+
+      This allows turning termination into cancellation for the purpose of carefully
+      handling resources in critical sections where implicit termination is not desired
+      and is masked e.g. using an {!unkillable} terminator. When you mask termination,
+      e.g. during aquisition of a resource, you may well still wish to cancel that
+      operation at well-defined points using a cancellation token.
+
+      Any other use than this is probably a mistake. *)
+  val cancellation : t @ local -> Cancellation0.t @ local
+
+  (** [check_clean_and_close t] checks that [t] has no unsignalled triggers attached to it
+      and then terminates [t].
+
+      If you are manually managing a termination token, then it is good practice to ensure
+      that no triggers remain attached to the token after the token is no longer in use.
+      Doing so can reveal resource leaks and issues with scoping. *)
+  val check_clean_and_close : t @ local -> unit
 end

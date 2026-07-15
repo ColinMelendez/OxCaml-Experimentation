@@ -1,0 +1,5 @@
+(library
+ (name trampoline_test)
+ (libraries core trampoline)
+ (preprocess
+  (pps ppx_jane ppx_expect)))

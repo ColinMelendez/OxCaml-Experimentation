@@ -8,12 +8,16 @@ module Trusted : sig @@ portable
   type ('a : value_or_null) t : mutable_data with 'a
 
   val empty : ('a : value_or_null). 'a t
-  val get_empty : ('a : value_or_null). unit -> 'a t
+  val get_empty : ('a : value_or_null). unit -> 'a t [@@zero_alloc]
   val unsafe_create_uninitialized : ('a : value_or_null). len:int -> 'a t
   val create_obj_array : ('a : value_or_null). len:int -> 'a t
+  val create_nullable_obj_array : ('a : value_or_null). len:int -> 'a t
   val create : ('a : value_or_null). len:int -> 'a -> 'a t
   val singleton : ('a : value_or_null). 'a -> 'a t
-  val get : ('a : value_or_null). local_ 'a t -> int -> 'a [@@zero_alloc]
+
+  val%template get : ('a : value_or_null). local_ 'a t @ c -> int -> 'a @ c
+  [@@zero_alloc] [@@mode c = (uncontended, shared)]
+
   val set : ('a : value_or_null). local_ 'a t -> int -> 'a -> unit
   val swap : ('a : value_or_null). local_ 'a t -> int -> int -> unit
   val unsafe_get : ('a : value_or_null). local_ 'a t -> int -> 'a [@@zero_alloc]
@@ -59,19 +63,29 @@ end = struct
      [Obj_array.t]. Uses [%obj_magic] instead of [%opaque] since nullability is not
      relevant in the cmm. *)
   external repr : ('a : value_or_null). 'a -> Stdlib.Obj.t @@ portable = "%obj_magic"
-  external obj : ('a : value_or_null). Stdlib.Obj.t -> 'a @@ portable = "%obj_magic"
+
+  external%template obj
+    : ('a : value_or_null).
+    Stdlib.Obj.t @ c -> 'a @ c
+    @@ portable
+    = "%obj_magic"
+  [@@mode c = (uncontended, shared)]
 
   let empty = { arr = Obj_array.empty }
   let[@inline] get_empty () = { arr = Obj_array.get_empty () }
   let unsafe_create_uninitialized ~len = { arr = Obj_array.create_zero ~len }
   let create_obj_array ~len = { arr = Obj_array.create_zero ~len }
+  let create_nullable_obj_array ~len = { arr = Obj_array.create_zero ~len }
   let create ~len x = { arr = Obj_array.create ~len (repr x) }
   let singleton x = { arr = Obj_array.singleton (repr x) }
   let swap t i j : unit = Obj_array.swap t.arr i j
 
   (* *)
 
-  let[@zero_alloc] get t i = obj (Obj_array.get t.arr i)
+  let%template[@zero_alloc] get t i = (obj [@mode c]) ((Obj_array.get [@mode c]) t.arr i)
+  [@@mode c = (uncontended, shared)]
+  ;;
+
   let set t i x : unit = Obj_array.set t.arr i (repr x)
 
   (* We annotate the return types on this and other functions to help document the fact
@@ -165,6 +179,19 @@ let fold t ~init ~f =
     r := f !r (unsafe_get t i)
   done;
   !r
+;;
+
+let fold_until t ~init ~(f : (_ -> _ -> _) @ local) ~finish =
+  let len = length t in
+  let rec loop i acc =
+    if i >= len
+    then finish acc
+    else (
+      match f acc (unsafe_get t i) with
+      | Container.Continue_or_stop.Continue acc -> loop (i + 1) acc
+      | Stop x -> x)
+  in
+  loop 0 init [@nontail]
 ;;
 
 let to_list t = Stdlib.List.init ~len:(length t) ~f:(fun i -> get t i)
@@ -386,14 +413,11 @@ let t_sexp_grammar (type elt : value_or_null) (grammar : elt Sexplib0.Sexp_gramm
   Sexplib0.Sexp_grammar.coerce (list_sexp_grammar grammar)
 ;;
 
-(* Copied from the implementation of [sexp_of_array]. We can't reuse the array conversion
-   functions directly because [or_null array]s are forbidden. *)
-let sexp_of_t sexp_of__a t =
-  let lst_ref = ref [] in
-  for i = length t - 1 downto 0 do
-    lst_ref := sexp_of__a (unsafe_get t i) :: !lst_ref
-  done;
-  Sexp.List !lst_ref
+let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of__a t =
+  Sexp.List
+    ((List.init [@alloc a]) (length t) ~f:(fun i ->
+       sexp_of__a (unsafe_get t i) [@exclave_if_stack a]))
+  [@exclave_if_stack a]
 ;;
 
 let t_of_sexp a__of_sexp sexp =
@@ -412,8 +436,8 @@ let t_of_sexp a__of_sexp sexp =
   | Atom _ -> of_sexp_error "Uniform_array.t_of_sexp: list needed" sexp
 ;;
 
-include%template Blit.Make1 [@modality portable] (struct
-    type nonrec 'a t = 'a t
+include%template Blit.Make1 [@modality portable] [@kind.explicit value_or_null] (struct
+    type nonrec ('a : value_or_null) t = 'a t
 
     let length = length
 
@@ -433,7 +457,7 @@ let max_elt t ~compare = Container.max_elt ~fold t ~compare
 
 (* This is the same as the ppx_compare [compare_array] but uses our [unsafe_get] and
    [length]. *)
-let compare__local compare_elt a b =
+let%template[@mode local] compare compare_elt a b =
   if phys_equal a b
   then 0
   else (
@@ -455,10 +479,10 @@ let compare__local compare_elt a b =
       loop 0 [@nontail]))
 ;;
 
-let compare compare_elt a b = compare__local compare_elt a b
+let%template compare compare_elt a b = (compare [@mode local]) compare_elt a b
 
 module%template Sort = Array.Private.Sorter [@modality portable] (struct
-    type nonrec 'a t = 'a t
+    type nonrec ('a : value_or_null) t = 'a t
 
     let length = length
     let get t i = unsafe_get t i

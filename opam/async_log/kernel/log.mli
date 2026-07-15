@@ -11,7 +11,7 @@ open! Core
 open! Async_kernel
 open! Import
 
-type t [@@deriving sexp_of]
+type t : value mod contended portable [@@deriving sexp_of]
 
 (** Sets the log level via a flag, if provided.
 
@@ -125,8 +125,12 @@ val close : t -> unit Deferred.t
 (** Returns true if [close] has been called. *)
 val is_closed : t -> bool
 
-(** Returns a [Deferred.t] that is fulfilled when the last message delivered to [t] before
-    the call to [flushed] is out the door. *)
+(** Returns a [Deferred.t] that is fulfilled once the last message delivered to [t] before
+    the call to [flushed] has been written and flushed by [t]'s outputs.
+
+    Logs written via portable functions, such as [Log.Portable.info], may not have been
+    delivered to [t] yet when [flushed] is called. [flushed] only waits for messages that
+    have already been delivered to [t]. *)
 val flushed : t -> unit Deferred.t
 
 (** Creates a new log. See [set_level], [set_on_error], [set_output], [set_time_source],
@@ -191,6 +195,13 @@ val info
   -> ('a, unit, string, unit) format4
   -> 'a
 
+val warn
+  :  ?time:Time_float.t
+  -> ?tags:(string * string) list
+  -> t
+  -> ('a, unit, string, unit) format4
+  -> 'a
+
 val error
   :  ?time:Time_float.t
   -> ?tags:(string * string) list
@@ -212,6 +223,7 @@ val printf
 
 val raw_s : ?time:Time_float.t -> ?tags:(string * string) list -> t -> Sexp.t -> unit
 val info_s : ?time:Time_float.t -> ?tags:(string * string) list -> t -> Sexp.t -> unit
+val warn_s : ?time:Time_float.t -> ?tags:(string * string) list -> t -> Sexp.t -> unit
 val error_s : ?time:Time_float.t -> ?tags:(string * string) list -> t -> Sexp.t -> unit
 val debug_s : ?time:Time_float.t -> ?tags:(string * string) list -> t -> Sexp.t -> unit
 
@@ -242,6 +254,16 @@ val structured_message
   -> Message_source.t
   -> unit
 
+val enqueue_structured_message
+  :  ?level:Level.t
+  -> ?time:Time_float.t
+  -> ?tags:(string * string) list
+  -> t
+  -> Message_data.t
+  -> Message_source.t
+  -> unit
+  @@ portable
+
 (** Log a pre-created message. *)
 val message : t -> Message.t -> unit
 
@@ -253,7 +275,7 @@ val message_event : t -> Message_event.t -> unit
     [on_subsequent_errors] is passed to the internal monitor as [rest] argument. As usual,
     the logging happens only if [level] exceeds the minimum level of [t]. *)
 val surround_s
-  :  on_subsequent_errors:[ `Call of exn -> unit | `Log | `Raise ]
+  :  ?on_subsequent_errors:[ `Call of exn -> unit | `Log | `Raise ]
   -> ?level:Level.t
   -> ?time:Time_float.t
   -> ?tags:(string * string) list
@@ -263,7 +285,7 @@ val surround_s
   -> 'a Deferred.t
 
 val surroundf
-  :  on_subsequent_errors:[ `Call of exn -> unit | `Log | `Raise ]
+  :  ?on_subsequent_errors:[ `Call of exn -> unit | `Log | `Raise ]
   -> ?level:Level.t
   -> ?time:Time_float.t
   -> ?tags:(string * string) list
@@ -276,7 +298,7 @@ val surroundf
 
     This will return [false] if there are no outputs for the log, unless there is a
     [transform] set. *)
-val would_log : t -> Level.t option -> bool
+val would_log : t -> Level.t option -> bool @@ portable
 
 module For_testing : sig
   (** [create_output ~map_output] creates a [Log.Output.t] which will print only

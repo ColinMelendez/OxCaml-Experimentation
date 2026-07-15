@@ -10,7 +10,7 @@ end
 
 type t =
   { input : core_type Whether_to_vary.t
-  ; output : unit Whether_to_vary.t
+  ; output : unit Whether_to_vary.t * bool
   }
 
 (* Most of the logic for building up the jkind annotations and the template attribute is
@@ -30,13 +30,15 @@ module Item_decorations = struct
     let annotation =
       let kind_annot : Ppxlib_jane.Shim.jkind_annotation =
         let kind : Ppxlib_jane.Shim.jkind_annotation =
-          { pjkind_loc = loc; pjkind_desc = Pjk_abbreviation kind_name }
+          { pjka_loc = loc
+          ; pjka_desc = Pjk_abbreviation ({ txt = Lident kind_name; loc }, [])
+          }
         in
         if not mod_separable
         then kind
         else
-          { pjkind_loc = loc
-          ; pjkind_desc = Pjk_mod (kind, [ { loc; txt = Mode "separable" } ])
+          { pjka_loc = loc
+          ; pjka_desc = Pjk_mod (kind, [ { loc; txt = Mode "separable" } ])
           }
       in
       Loc.make ~loc type_name, Some kind_annot
@@ -48,7 +50,7 @@ module Item_decorations = struct
   ;;
 
   let create
-    { input = whether_to_vary_input; output = whether_to_vary_output }
+    { input = whether_to_vary_input; output = whether_to_vary_output, output_separable }
     loc
     ~make_type_variable
     =
@@ -89,7 +91,7 @@ module Item_decorations = struct
                 loc
                 ~type_name:output_type_name
                 ~kind_name:"ko"
-                ~mod_separable:false
+                ~mod_separable:output_separable
                 kinds
             ]
       in
@@ -104,8 +106,7 @@ module Item_decorations = struct
   ;;
 end
 
-let base_layouts loc = [%expr base, value mod external64]
-let base_or_null_layouts loc = [%expr base_or_null, value mod external64]
+let base_layouts loc = [%expr base_or_null, value_or_null mod external64]
 
 let structure_item t loc ~function_name ~function_implementation =
   (* In the implementation, we introduce LATs, and so the inputs/outputs are syntactically

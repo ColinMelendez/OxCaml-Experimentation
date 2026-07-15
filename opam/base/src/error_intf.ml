@@ -2,8 +2,6 @@ open! Import
 module Sexp = Sexp0
 module Info = Info0
 
-[@@@warning "-incompatible-with-upstream"]
-
 module type Error = sig @@ portable
   (** A lazy string, implemented with [Info], but intended specifically for error
       messages. *)
@@ -25,8 +23,11 @@ module type Error = sig @@ portable
       raises, the exception maintains a reference to the [t] passed in. *)
   val reraise_uncaught : t -> f:(unit -> 'a) @ local once -> 'a
 
-  val to_info : t -> Info.t
-  val of_info : Info.t -> t
+  [%%template:
+  [@@@mode.default p = (portable, nonportable)]
+
+  val to_info : t @ p -> Info.t @ p
+  val of_info : Info.t @ p -> t @ p]
 end
 
 module type Error_with_extras = sig @@ portable

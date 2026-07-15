@@ -10,8 +10,6 @@ module Raw = Load_store.Raw_Float64x4
 module String = Load_store.String_Float64x4
 module Bytes = Load_store.Bytes_Float64x4
 module Bigstring = Load_store.Bigstring_Float64x4
-module Float_array = Load_store.Float_array
-module Float_iarray = Load_store.Float_iarray
 module Floatarray = Load_store.Floatarray
 module Float_u_array = Load_store.Float_u_array
 
@@ -20,7 +18,7 @@ external const1
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_float64x4_const1"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external const
   :  float#
@@ -30,7 +28,7 @@ external const
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_float64x4_const4"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external shuffle_lanes
   :  (Ocaml_simd.Shuffle2x2.t[@untagged])
@@ -39,7 +37,7 @@ external shuffle_lanes
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec128x2_shuffle_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external blend
   :  (Ocaml_simd.Blend4.t[@untagged])
@@ -48,7 +46,7 @@ external blend
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec256_blend_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external permute
   :  (Ocaml_simd.Permute4.t[@untagged])
@@ -56,7 +54,7 @@ external permute
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx2_vec256_permute_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external permute_lanes
   :  (Ocaml_simd.Permute2x2.t[@untagged])
@@ -64,7 +62,7 @@ external permute_lanes
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec128x2_permute_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external permute_lanes_by
   :  t
@@ -72,7 +70,7 @@ external permute_lanes_by
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec128x2_permutev_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external insert_lane
   :  idx:int64#
@@ -81,7 +79,7 @@ external insert_lane
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec256_insert_128"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 external extract_lane
   :  idx:int64#
@@ -89,12 +87,12 @@ external extract_lane
   -> float64x2#
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx_vec256_extract_128"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
-let[@inline] zero () = const1 #0.0
-let[@inline] one () = const1 #1.0
-let[@inline] sign64_mask () = Int64x4_internal.const1 #0x8000000000000000L
-let[@inline] absf64_mask () = Int64x4_internal.const1 #0x7fffffffffffffffL
+let zero = const1 #0.0
+let one = const1 #1.0
+let sign64_mask = Int64x4_internal.const1 #0x8000000000000000L
+let absf64_mask = Int64x4_internal.const1 #0x7fffffffffffffffL
 let[@inline] set1 x = I.broadcast_64 (I.F64x2.low_of x)
 
 let[@inline] set a b c d =
@@ -167,15 +165,8 @@ let[@inline] add x y = I.add x y
 let[@inline] sub x y = I.sub x y
 let[@inline] mul x y = I.mul x y
 let[@inline] div x y = I.div x y
-
-let[@inline] neg x =
-  Int64x4_internal.(xor (sign64_mask ()) (of_float64x4 x)) |> I.of_int64x4
-;;
-
-let[@inline] abs x =
-  Int64x4_internal.(and_ (absf64_mask ()) (of_float64x4 x)) |> I.of_int64x4
-;;
-
+let[@inline] neg x = Int64x4_internal.(xor sign64_mask (of_float64x4 x)) |> I.of_int64x4
+let[@inline] abs x = Int64x4_internal.(and_ absf64_mask (of_float64x4 x)) |> I.of_int64x4
 let[@inline] sqrt x = I.sqrt x
 let[@inline] add_sub x y = I.addsub x y
 let[@inline] horizontal_add_lanes x y = I.hadd x y
@@ -191,6 +182,7 @@ let[@inline] ( - ) x y = I.sub x y
 let[@inline] ( / ) x y = I.div x y
 let[@inline] ( * ) x y = I.mul x y
 let[@inline] iround_current x = Float64x4_internal.cvt_i32 x
+let[@inline] iround_trunc x = Float64x4_internal.cvtt_i32 x
 let[@inline] round_nearest x = I.round [%float_round Nearest] x
 let[@inline] round_current x = I.round [%float_round Current] x
 let[@inline] round_down x = I.round [%float_round Negative_infinity] x

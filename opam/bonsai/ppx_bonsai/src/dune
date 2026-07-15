@@ -4,4 +4,4 @@
  (libraries ppx_bonsai_expander ppx_let.expander ppxlib)
  (preprocess
   (pps ppxlib.metaquot))
- (kind ppx_deriver))
+ (kind ppx_rewriter))

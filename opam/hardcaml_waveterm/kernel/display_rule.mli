@@ -4,6 +4,14 @@
 open Base
 
 type t =
+  | Input of
+      { wave_format : Hardcaml.Wave_format.t option
+      ; alignment : Text_alignment.t
+      }
+  | Output of
+      { wave_format : Hardcaml.Wave_format.t option
+      ; alignment : Text_alignment.t
+      }
   | Default
   | Regexp of
       { re : Re.re
@@ -18,6 +26,7 @@ type t =
   | Custom of (Port.t -> Hardcaml.Wave_format.t option)
   | Custom_with_alignment of
       (Port.t -> (Hardcaml.Wave_format.t * Text_alignment.t) option)
+  | Divider of string
 [@@deriving sexp_of]
 
 (** Regular expression syntax *)
@@ -63,4 +72,21 @@ val custom : f:(Port.t -> Hardcaml.Wave_format.t option) -> t
 (** Similar tp [f], but allows the user to specify the alignment of the wave. *)
 val custom_with_alignment
   :  f:(Port.t -> (Hardcaml.Wave_format.t * Text_alignment.t) option)
+  -> t
+
+(** Draw a divider line within the waveform. *)
+val divider : string -> t
+
+(** Matches top level inputs *)
+val input
+  :  ?alignment:Text_alignment.t
+  -> ?wave_format:Hardcaml.Wave_format.t
+  -> unit
+  -> t
+
+(** Matches top level outputs *)
+val output
+  :  ?alignment:Text_alignment.t
+  -> ?wave_format:Hardcaml.Wave_format.t
+  -> unit
   -> t

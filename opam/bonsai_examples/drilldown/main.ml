@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-open! Bonsai_web_ui_drilldown
+open! Bonsai_web_contrib_drilldown
 
 module Style =
   [%css
@@ -41,7 +41,7 @@ let example : Tree.String.t =
 ;;
 
 let tree_layout : Vdom.Node.t =
-  let open Bonsai_web_ui_tree_layout in
+  let open Bonsai_web_contrib_tree_layout in
   let rec loop (tree : Tree.String.t) =
     let name = Vdom.Node.text tree.name in
     match tree.children with
@@ -97,4 +97,4 @@ let app : local_ Bonsai.graph -> Vdom.Node.t Bonsai.t =
        ])
 ;;
 
-let () = Bonsai_web.Start.start app ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start app

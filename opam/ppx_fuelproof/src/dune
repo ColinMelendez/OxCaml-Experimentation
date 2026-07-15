@@ -5,4 +5,5 @@
  (libraries base ppxlib ppxlib_jane)
  (ppx_runtime_libraries ppx_fuelproof.runtime)
  (preprocess
-  (pps ppx_sexp_conv ppx_let ppx_compare ppxlib.metaquot)))
+  (pps ppx_sexp_conv ppx_let ppx_compare ppxlib.metaquot
+    -compare-require-explicit-locality)))

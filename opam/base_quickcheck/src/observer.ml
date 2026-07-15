@@ -103,6 +103,7 @@ let list elt_t =
 ;;
 
 let array t = (unmap [@mode p]) ((list [@mode p]) t) ~f:Array.to_list
+let iarray t = (unmap [@mode p]) ((list [@mode p]) t) ~f:Iarray.to_list
 let ref t = (unmap [@mode p]) t ~f:Ref.( ! )
 let lazy_t t = (unmap [@mode p]) t ~f:Lazy.force]
 
@@ -126,7 +127,10 @@ let%template map_tree key_obs data_obs =
 [@@mode p = (nonportable, portable)]
 ;;
 
-let set_tree elt_obs = unmap (list elt_obs) ~f:Set.Using_comparator.Tree.to_list
+let%template set_tree elt_obs =
+  (unmap [@mode p]) ((list [@mode p]) elt_obs) ~f:Set.Using_comparator.Tree.to_list
+[@@mode p = (nonportable, portable)]
+;;
 
 let%template map_t key_obs data_obs =
   (unmap [@mode p])
@@ -135,4 +139,7 @@ let%template map_t key_obs data_obs =
 [@@mode p = (nonportable, portable)]
 ;;
 
-let set_t elt_obs = unmap (set_tree elt_obs) ~f:Set.Using_comparator.to_tree
+let%template set_t elt_obs =
+  (unmap [@mode p]) ((set_tree [@mode p]) elt_obs) ~f:Set.Using_comparator.to_tree
+[@@mode p = (nonportable, portable)]
+;;

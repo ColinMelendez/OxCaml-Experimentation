@@ -6,7 +6,7 @@ module Stable = struct
       [ `Sexp of Sexp.V1.t
       | `String of string
       ]
-    [@@deriving bin_io, sexp]
+    [@@deriving bin_io, sexp, stable_witness]
 
     let%expect_test "bin_digest Sexp_or_string.V1" =
       print_endline [%bin_digest: t];

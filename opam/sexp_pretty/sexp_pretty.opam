@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/sexp_pretty/issues"
 dev-repo: "git+https://github.com/janestreet/sexp_pretty.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/sexp_pretty/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -16,9 +17,12 @@ depends: [
   "ppx_base"
   "sexplib"
   "dune"     {>= "3.17.0"}
-  "re"       {= "1.14.0+ox"}
+  "re"       {>= "1.8.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "S-expression pretty-printer"
 description: "
 A library for pretty-printing s-expressions, using better indentation rules than

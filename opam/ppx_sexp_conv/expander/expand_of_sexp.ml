@@ -28,9 +28,10 @@ module Sig_generate_of_sexp = struct
       td
       ~f:type_of_of_sexp
       ~phantom_attr:Attrs.phantom
+      ~phantom_td_attr:Attrs.phantom_td
   ;;
 
-  let sig_of_td ~poly ~portable td =
+  let sig_of_td ~poly ~portable ~disable_w32 td =
     let of_sexp_type =
       mk_type td
       |> Ppx_helpers.Polytype.to_core_type
@@ -38,15 +39,14 @@ module Sig_generate_of_sexp = struct
     in
     let loc = td.ptype_loc in
     let of_sexp_item =
-      psig_value
+      Ppxlib_jane.Ast_builder.Default.value_description
         ~loc
-        (Ppxlib_jane.Ast_builder.Default.value_description
-           ~loc
-           ~name:(Located.map of_sexp_function_for_type td.ptype_name)
-           ~type_:of_sexp_type
-           ~modalities:
-             (if portable then Ppxlib_jane.Shim.Modalities.portable ~loc else [])
-           ~prim:[])
+        ~name:(Located.map of_sexp_function_for_type td.ptype_name)
+        ~type_:of_sexp_type
+        ~modalities:(if portable then Ppxlib_jane.Shim.Modalities.portable ~loc else [])
+        ~prim:[]
+      |> (if disable_w32 then Helpers.disable_w32 ~loc else Fn.id)
+      |> psig_value ~loc
     in
     match poly, is_polymorphic_variant td ~sig_:true with
     | true, `Surely_not ->
@@ -57,21 +57,24 @@ module Sig_generate_of_sexp = struct
     | false, (`Surely_not | `Maybe) -> [ of_sexp_item ]
     | (true | false), `Definitely | true, `Maybe ->
       [ of_sexp_item
-      ; psig_value
+      ; Ppxlib_jane.Ast_builder.Default.value_description
           ~loc
-          (Ppxlib_jane.Ast_builder.Default.value_description
-             ~loc
-             ~name:(Located.map (of_sexp_function_for_type ~internal:true) td.ptype_name)
-             ~type_:of_sexp_type
-             ~modalities:
-               (if portable then Ppxlib_jane.Shim.Modalities.portable ~loc else [])
-             ~prim:[])
+          ~name:(Located.map (of_sexp_function_for_type ~internal:true) td.ptype_name)
+          ~type_:of_sexp_type
+          ~modalities:(if portable then Ppxlib_jane.Shim.Modalities.portable ~loc else [])
+          ~prim:[]
+        |> (if disable_w32 then Helpers.disable_w32 ~loc else Fn.id)
+        |> psig_value ~loc
       ]
   ;;
 
   let mk_sig ~poly ~loc ~path:_ ~unboxed (_rf, tds) ~portable =
-    let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
-    List.concat_map tds ~f:(sig_of_td ~poly ~portable)
+    let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
+    List.concat_map tds ~f:(fun td ->
+      let disable_w32 =
+        unboxed && not (Ppx_helpers.is_implicit_unboxed td.ptype_name.txt)
+      in
+      sig_of_td ~poly ~portable ~disable_w32 td)
   ;;
 end
 
@@ -270,7 +273,13 @@ module Str_generate_of_sexp = struct
            [%expr Sexplib0.Sexp_conv.array_of_sexp [%e arg1]]
        | _ ->
          let args =
-           List.filter args ~f:include_param_in_combinator
+           List.filter
+             args
+             ~f:
+               (include_param_in_combinator
+                (* We only provide [[@@phantom]] attributes for type declarations, not
+                   core types *)
+                  ~phantom_params:String.Set.empty)
            |> List.map ~f:(fun arg ->
              Conversion.to_expression
                ~loc
@@ -764,7 +773,7 @@ module Str_generate_of_sexp = struct
         List.map params ~f:(fun { loc; txt } -> Fresh_name.create ~loc ("_" ^ txt))
       in
       let pat = Fresh_name.pattern fresh_sexp in
-      let body =
+      let outer_body =
         let label = Located.map_lident (Fresh_name.to_string_loc type_and_field_name) in
         let typevars =
           List.fold_left2
@@ -773,7 +782,7 @@ module Str_generate_of_sexp = struct
             ~init:typevars
             ~f:(fun typevars param fresh -> String.Map.add param.txt fresh typevars)
         in
-        let expr =
+        let field_expr =
           pexp_let
             ~loc
             Immutable
@@ -790,9 +799,15 @@ module Str_generate_of_sexp = struct
                ~loc
                (Fresh_name.expression fresh_sexp))
         in
-        pexp_record ~loc [ label, expr ] None
+        (* Bind the field expression in an outer [let] before constructing the record, so
+           that the body is a syntactic value and we don't run into a problem with the
+           value restriction when trying to give it a polymorphic type. *)
+        let field_var = gen_symbol () in
+        [%expr
+          let [%p pvar ~loc field_var] = [%e field_expr] in
+          [%e pexp_record ~loc [ label, evar ~loc field_var ] None]]
       in
-      eabstract ~loc [ pat ] (close_over_non_value ~loc body)
+      eabstract ~loc [ pat ] (close_over_non_value ~loc outer_body)
   ;;
 
   let fields_arg_for_record_of_sexp poly_fields ~loc ~error_source ~typevars =
@@ -1271,8 +1286,10 @@ module Str_generate_of_sexp = struct
 
   let td_of_sexp ~typevars ~loc:_ ~poly ~path ~rec_flag ~values_being_defined ~portable td
     =
+    let phantom_params = phantom_params_of_td td in
     let tps =
-      List.filter td.ptype_params ~f:(fun (p, _) -> include_param_in_combinator p)
+      List.filter td.ptype_params ~f:(fun (p, _) ->
+        include_param_in_combinator ~phantom_params p)
       |> List.map ~f:Ppxlib_jane.get_type_param_name_and_jkind
     in
     let { ptype_name = { txt = type_name; loc = _ }; ptype_loc = loc; _ } = td in
@@ -1418,7 +1435,7 @@ module Str_generate_of_sexp = struct
   (* Generate code from type definitions *)
   let tds_of_sexp ~loc ~poly ~path ~portable ~unboxed (rec_flag, tds) =
     let tds = List.map ~f:name_type_params_in_td tds in
-    let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+    let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
     let typevars td =
       List.fold_left td.ptype_params ~init:String.Map.empty ~f:(fun map param ->
         let name = get_type_param_name param in

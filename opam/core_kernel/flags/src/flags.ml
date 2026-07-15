@@ -87,32 +87,38 @@ module Make (M : Make_arg) = struct
       error "Flag.Make got flags with no bits set" bad [%sexp_of: (Int63.t * string) list]
   ;;
 
-  type sexp_format = string list [@@deriving sexp]
+  type sexp_format = string list [@@deriving sexp ~stackify]
 
   type sexp_format_with_unrecognized_bits = string list * [ `unrecognized_bits of string ]
-  [@@deriving sexp]
+  [@@deriving sexp ~stackify]
 
-  let to_flag_list =
+  let%template[@alloc a @ m = (heap_global, stack_local)] to_flag_list =
     (* We reverse [known] so that the fold below accumulates from right to left, giving a
        final list with elements in the same order as [known]. *)
     let known = List.rev known in
     fun t ->
-      List.fold known ~init:(t, []) ~f:(fun (t, flag_names) (flag, flag_name) ->
-        if Int63.equal (Int63.bit_and t flag) flag
-        then t - flag, flag_name :: flag_names
-        else t, flag_names)
+      (List.fold [@mode m m])
+        known
+        ~init:(t, [])
+        ~f:(fun (t, flag_names) (flag, flag_name) ->
+          (if Int63.equal (Int63.bit_and t flag) flag
+           then t - flag, flag_name :: flag_names
+           else t, flag_names)
+          [@exclave_if_stack a])
+      [@exclave_if_stack a]
   ;;
 
-  let sexp_of_t t =
-    let to_unsigned_hex_string x =
-      Int64.(max_value land Int63.to_int64 x) |> Int64.Hex.to_string
-    in
-    let leftover, flag_names = to_flag_list t in
-    if Int63.equal leftover empty
-    then [%sexp_of: sexp_format] flag_names
-    else
-      [%sexp_of: sexp_format_with_unrecognized_bits]
-        (flag_names, `unrecognized_bits (to_unsigned_hex_string leftover))
+  let%template[@alloc a = (heap, stack)] sexp_of_t t =
+    (let to_unsigned_hex_string x =
+       Int64.(max_value land Int63.to_int64 x) |> Int64.Hex.to_string
+     in
+     let leftover, flag_names = (to_flag_list [@alloc a]) t in
+     if Int63.equal leftover empty
+     then ([%sexp_of: sexp_format] [@alloc a]) flag_names
+     else
+       ([%sexp_of: sexp_format_with_unrecognized_bits] [@alloc a])
+         (flag_names, `unrecognized_bits (to_unsigned_hex_string leftover)))
+    [@exclave_if_stack a]
   ;;
 
   let known_by_name =
@@ -157,21 +163,33 @@ module Make (M : Make_arg) = struct
   (* we only use [compare [@mode local]] below *)
   let compare = `unused
   let `unused = compare
+  let%template[@mode m = local] compare_zero_alloc = (compare [@mode m])
 
   include%template Comparable.Make [@mode local portable] (struct
       type nonrec t = t [@@deriving sexp, compare ~localize, hash]
     end)
 
-  (* [Comparable.Make] turns [equal] into a function call to [compare] rather than the
-     much simpler (and equally correct) [Int63.equal]. Restore it, as well as (=) and
-     (<>). *)
-  let%template equal = (Int63.equal [@mode m]) [@@mode m = (local, global)]
-  let ( = ) = Int63.( = )
-  let ( <> ) = Int63.( <> )
+  let%template[@mode m = local] compare = (compare_zero_alloc [@mode m])
+
+  include%template Comparable.Comparisons_with_zero_alloc [@mode local portable] (struct
+      type nonrec t = t [@@deriving compare ~localize ~zero_alloc]
+    end)
+
+  (* [Comparable.Comparisons_with_zero_alloc] turns [equal] into a function call to
+     [compare] rather than the much simpler (and equally correct) [Int63.equal]. Restore
+     it, as well as (=) and (<>). *)
+  let%template[@mode m = (local, global)] equal t1 t2 = (Int63.equal [@mode m]) t1 t2
+  let ( = ) = [%eta2 Int63.( = )]
+  let ( <> ) = [%eta2 Int63.( <> )]
 
   module Unstable = struct
     type nonrec t = t
-    [@@deriving bin_io ~localize, globalize, compare ~localize, equal ~localize, sexp]
+    [@@deriving
+      bin_io ~localize
+      , globalize
+      , compare ~localize ~zero_alloc
+      , equal ~localize ~zero_alloc
+      , sexp ~stackify]
   end
 end
 

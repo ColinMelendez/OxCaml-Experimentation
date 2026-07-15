@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/core_bench/issues"
 dev-repo: "git+https://github.com/janestreet/core_bench.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/core_bench/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -22,14 +23,18 @@ depends: [
   "ppx_fields_conv"
   "ppx_jane"
   "ppx_let"
+  "ppx_optcomp"
   "ppx_sexp_conv"
   "textutils"
   "time_now"
   "dune"              {>= "3.17.0"}
-  "js_of_ocaml-ppx"   {= "6.0.1+ox"}
-  "re"                {= "1.14.0+ox"}
+  "js_of_ocaml-ppx"   {>= "6.0.0"}
+  "re"                {>= "1.8.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Benchmarking library"
 description: "
 "

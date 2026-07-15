@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/memtrace/issues"
 dev-repo: "git+https://github.com/janestreet/memtrace.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/memtrace/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -14,7 +15,10 @@ depends: [
   "base-threads"
   "dune"         {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Streaming client for Memprof"
 description: "
 Generates compact traces of a program's memory use.

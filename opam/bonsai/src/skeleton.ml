@@ -10,23 +10,23 @@ module Id : sig
   type t [@@deriving compare, hash, sexp_of]
 
   val to_string : t -> string
-  val of_type_id : _ Type_equal.Id.t -> t
+  val of_var_id : _ Var_id.t -> t
   val of_model_type_id : _ Meta.Model.Type_id.t -> t
   val of_int_for_testing : int -> t
 end = struct
   type t =
-    | Type of Type_equal.Id.Uid.t
+    | Type of Var_id.Packed.t
     | Test of int
   [@@deriving compare, hash, sexp_of]
 
   let to_string t =
     match t with
-    | Type uid -> Type_equal.Id.Uid.sexp_of_t uid |> Sexp.to_string
+    | Type id -> Var_id.Packed.sexp_of_t id |> Sexp.to_string
     | Test int -> Int.to_string int
   ;;
 
-  let of_type_id id = Type (Type_equal.Id.uid id)
-  let of_model_type_id id = id |> Meta.Model.Type_id.to_type_id |> of_type_id
+  let of_var_id id = Type (Var_id.pack id)
+  let of_model_type_id id = id |> Meta.Model.Type_id.to_var_id |> of_var_id
   let of_int_for_testing int = Test int
 end
 
@@ -111,7 +111,7 @@ module Value = struct
           | Constant _ -> return Constant
           | Exception _ -> return Exception
           | Incr _ -> return Incr
-          | Named (_, id) -> return (Named (Id.of_type_id id))
+          | Named (_, id) -> return (Named (Id.of_var_id id))
           | Cutoff { t; equal = _; added_by_let_syntax } ->
             let%map t =
               helper
@@ -270,15 +270,15 @@ module Computation0 = struct
         | Sub { from; via; into; here; invert_lifecycles } ->
           let%map from = helper ~current_path:(choice_point 1) from
           and into = helper ~current_path:(choice_point 2) into in
-          let kind = Sub { from; via = Id.of_type_id via; into; invert_lifecycles } in
+          let kind = Sub { from; via = Id.of_var_id via; into; invert_lifecycles } in
           { node_path; here; kind }
         | Store { id; value; inner; here } ->
           let%map value = Value.of_value' ~initial_path:(choice_point 1) value
           and inner = helper ~current_path:(choice_point 2) inner in
-          let kind = Store { id = Id.of_type_id id; value; inner } in
+          let kind = Store { id = Id.of_var_id id; value; inner } in
           { node_path; here; kind }
         | Fetch { id; here; _ } ->
-          let kind = Fetch { id = Id.of_type_id id } in
+          let kind = Fetch { id = Id.of_var_id id } in
           return { node_path; here; kind }
         | Assoc { map; key_id; cmp_id; data_id; by; here; _ } ->
           let%map map = Value.of_value' ~initial_path:(choice_point 1) map
@@ -286,9 +286,9 @@ module Computation0 = struct
           let kind =
             Assoc
               { map
-              ; key_id = Id.of_type_id key_id
-              ; cmp_id = Id.of_type_id cmp_id
-              ; data_id = Id.of_type_id data_id
+              ; key_id = Id.of_var_id key_id
+              ; cmp_id = Id.of_var_id cmp_id
+              ; data_id = Id.of_var_id data_id
               ; by
               }
           in
@@ -305,10 +305,10 @@ module Computation0 = struct
           let kind =
             Assoc_on
               { map
-              ; io_key_id = Id.of_type_id io_key_id
-              ; model_key_id = Id.of_type_id model_key_id
-              ; model_cmp_id = Id.of_type_id model_cmp_id
-              ; data_id = Id.of_type_id data_id
+              ; io_key_id = Id.of_var_id io_key_id
+              ; model_key_id = Id.of_var_id model_key_id
+              ; model_cmp_id = Id.of_var_id model_cmp_id
+              ; data_id = Id.of_var_id data_id
               ; by
               }
           in
@@ -334,8 +334,8 @@ module Computation0 = struct
           let kind =
             Fix_define
               { initial_input
-              ; fix_id = Id.of_type_id (Fix_id.type_id fix_id)
-              ; input_id = Id.of_type_id input_id
+              ; fix_id = Id.of_var_id (Fix_id.to_var_id fix_id)
+              ; input_id = Id.of_var_id input_id
               ; result
               }
           in
@@ -345,8 +345,8 @@ module Computation0 = struct
           let kind =
             Fix_recurse
               { input
-              ; input_id = Id.of_type_id input_id
-              ; fix_id = Id.of_type_id (Fix_id.type_id fix_id)
+              ; input_id = Id.of_var_id input_id
+              ; fix_id = Id.of_var_id (Fix_id.to_var_id fix_id)
               }
           in
           { node_path; here; kind }
@@ -363,14 +363,14 @@ module Computation0 = struct
           { node_path; here; kind = Lazy { t = potentially_evaluated } }
         | With_model_resetter { reset_id; inner; here } ->
           let%map inner = helper ~current_path:(Node_path.descend current_path) inner in
-          let kind = With_model_resetter { reset_id = Id.of_type_id reset_id; inner } in
+          let kind = With_model_resetter { reset_id = Id.of_var_id reset_id; inner } in
           { node_path; here; kind }
         | Wrap { inner; wrapper_model; inject_id; here; _ } ->
           let%map inner = helper ~current_path:(Node_path.descend current_path) inner in
           let kind =
             Wrap
               { model_id = Id.of_model_type_id wrapper_model.type_id
-              ; inject_id = Id.of_type_id inject_id
+              ; inject_id = Id.of_var_id inject_id
               ; inner
               }
           in
@@ -396,9 +396,9 @@ module Computation0 = struct
             Computation_watcher
               { inner
               ; free_vars =
-                  Computation_watcher.Type_id_location_map.map_to_list
+                  Computation_watcher.Var_id_location_map.map_to_list
                     free_vars
-                    { f = (fun key _ -> Id.of_type_id key) }
+                    { f = (fun key _ -> Id.of_var_id key) }
               }
           in
           { node_path; here; kind }

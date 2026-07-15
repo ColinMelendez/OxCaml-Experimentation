@@ -20,18 +20,47 @@ struct
       | Return { value; here } ->
         let acc, up, value = User.transform_v down acc value in
         return (acc, up, Computation.Return { value; here })
-      | Leaf1 { model; input_id; dynamic_action; apply_action; input; reset; here } ->
+      | Leaf1
+          { model
+          ; input_id
+          ; dynamic_action
+          ; apply_action
+          ; input
+          ; reset
+          ; action_name
+          ; sexp_of_action
+          ; here
+          } ->
         let acc, up, input = User.transform_v down acc input in
         return
           ( acc
           , up
           , Computation.Leaf1
-              { model; input_id; dynamic_action; apply_action; input; reset; here } )
-      | Leaf0 { model; static_action; apply_action; reset; here } ->
+              { model
+              ; input_id
+              ; dynamic_action
+              ; apply_action
+              ; input
+              ; reset
+              ; action_name
+              ; sexp_of_action
+              ; here
+              } )
+      | Leaf0
+          { model; static_action; apply_action; reset; action_name; sexp_of_action; here }
+        ->
         return
           ( acc
           , empty
-          , Computation.Leaf0 { model; static_action; apply_action; reset; here } )
+          , Computation.Leaf0
+              { model
+              ; static_action
+              ; apply_action
+              ; reset
+              ; action_name
+              ; sexp_of_action
+              ; here
+              } )
       | Leaf_incr { input; compute; here } ->
         let acc, up, input = User.transform_v down acc input in
         return (acc, up, Computation.Leaf_incr { input; compute; here })
@@ -167,7 +196,7 @@ struct
         | Constant (c : a Lazy.t) -> acc, empty, Value.Constant c
         | Exception (e : exn) -> acc, empty, Exception e
         | Incr incr_node -> acc, empty, Incr incr_node
-        | Named ((name_source, id) : Value.Name_source.t * a Type_equal.Id.t) ->
+        | Named ((name_source, id) : Value.Name_source.t * a Var_id.t) ->
           acc, empty, Named (name_source, id)
         | Both (a, b) ->
           let acc, up_a, a = User.transform_v down acc a in

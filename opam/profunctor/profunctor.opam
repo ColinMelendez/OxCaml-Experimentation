@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/profunctor/issues"
 dev-repo: "git+https://github.com/janestreet/profunctor.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/profunctor/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -16,7 +17,10 @@ depends: [
   "record_builder"
   "dune"           {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "A library providing a signature for simple profunctors and traversal of a record"
 description: "
 This is a very small library which provides a signature for profunctor types

@@ -303,6 +303,47 @@ let%expect_test "NOTE we do not crash on all characters" =
     |}]
 ;;
 
+let%expect_test "repro: scan all unicode scalars; print only the failing code points" =
+  (* U+007F is the ASCII DEL control character.
+
+     U+0080..U+009F are the C1 controls. These are valid unicode scalar values and encode
+     as valid UTF-8, but Notty rejects them as control characters.
+
+     We scan all unicode scalars, but only print the failures to keep output small. *)
+  let module Scalar = struct
+    type t = int
+
+    let sexp_of_t (scalar : t) = Sexp.Atom [%string "U+%{scalar#Int.Hex}"]
+  end
+  in
+  let view_text_crashes scalar =
+    match Uchar.of_scalar scalar with
+    | None ->
+      (* NOTE: We skip invalid unicode scalars. *)
+      false
+    | Some uchar ->
+      (* Only check the View path for scalars Notty itself rejects. *)
+      let string = Uchar.Utf8.to_string uchar in
+      (match
+         Option.try_with (fun () ->
+           (* NOTE: [notty_image] here forces a render. *)
+           ignore (View.Private.notty_image (View.text string) : Notty.I.t))
+       with
+       | Some () -> false
+       | None -> true)
+  in
+  let failing_code_points =
+    let rev = ref [] in
+    for scalar = 0 to 0x10FFFF do
+      if view_text_crashes scalar then rev := scalar :: !rev
+    done;
+    List.rev !rev
+  in
+  print_s [%message (failing_code_points : Scalar.t list)];
+  (* No failing code points! (good!) *)
+  [%expect {| (failing_code_points ()) |}]
+;;
+
 let%expect_test "Invalid unicode character" =
   let view =
     View.text

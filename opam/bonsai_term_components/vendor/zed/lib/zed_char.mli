@@ -1,6 +1,6 @@
 (** Minimal support for Unicode characters *)
 
-type t = private int [@@deriving sexp, compare, bin_io]
+type t = private int [@@deriving sexp, compare ~localize, bin_io]
 
 val of_int : int -> t
 val to_int : t -> int

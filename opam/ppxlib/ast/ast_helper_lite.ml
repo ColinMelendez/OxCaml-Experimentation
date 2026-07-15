@@ -154,6 +154,8 @@ module Typ = struct
         | Ptyp_quote core_type -> Ptyp_quote (loop core_type)
         | Ptyp_splice core_type -> Ptyp_splice (loop core_type)
         | Ptyp_of_kind jkind -> Ptyp_of_kind jkind
+        | Ptyp_repr (vars, core_type) -> Ptyp_repr (vars, core_type)
+        | Ptyp_newlayout (vars, core_type) -> Ptyp_newlayout (vars, loop core_type)
         | Ptyp_extension (s, arg) -> Ptyp_extension (s, arg)
       in
       { t with ptyp_desc = desc }
@@ -238,6 +240,8 @@ module Exp = struct
   let try_ ?loc ?attrs a b = mk ?loc ?attrs (Pexp_try (a, b))
   let tuple ?loc ?attrs a = mk ?loc ?attrs (Pexp_tuple (List.map (fun e -> None, e) a))
   let construct ?loc ?attrs a b = mk ?loc ?attrs (Pexp_construct (a, b))
+  let unboxed_unit ?loc ?attrs () = mk ?loc ?attrs Pexp_unboxed_unit
+  let unboxed_bool ?loc ?attrs a = mk ?loc ?attrs (Pexp_unboxed_bool a)
   let variant ?loc ?attrs a b = mk ?loc ?attrs (Pexp_variant (a, b))
   let record ?loc ?attrs a b = mk ?loc ?attrs (Pexp_record (a, b))
   let record_unboxed_product ?loc ?attrs a b = mk ?loc ?attrs (Pexp_record_unboxed_product (a, b))
@@ -280,6 +284,7 @@ module Exp = struct
   let quote ?loc ?attrs e = mk ?loc ?attrs (Pexp_quote e)
   let splice ?loc ?attrs e = mk ?loc ?attrs (Pexp_splice e)
   let hole ?loc ?attrs () = mk ?loc ?attrs Pexp_hole
+  let borrow ?loc ?attrs e = mk ?loc ?attrs (Pexp_borrow e)
 end
 
 module Mty = struct
@@ -409,6 +414,7 @@ module Val = struct
   let mk ?(loc = !default_loc) ?(attrs = []) ?(prim = [])
     name typ =
     {
+      pval_poly = false;
       pval_name = name;
       pval_type = typ;
       pval_modalities = [];
@@ -465,7 +471,7 @@ end
 
 module Vb = struct
   let mk ?(loc = !default_loc) ?(attrs = []) pat expr =
-    { pvb_pat = pat; pvb_expr = expr; pvb_modes = []; pvb_attributes = attrs; pvb_loc = loc }
+    { pvb_is_poly = false; pvb_pat = pat; pvb_expr = expr; pvb_modes = []; pvb_attributes = attrs; pvb_loc = loc }
 end
 
 module Ci = struct

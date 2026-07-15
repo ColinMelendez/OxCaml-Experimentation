@@ -37,50 +37,14 @@ end
 
 (** [dependecy_definition_position] is the first thing set when looking for free
     variables, so we know that we can use [finalized] in this map *)
-module Type_id_location_map : sig
-  type t
+module Var_id_location_map : sig
+  include
+    Var_id_intf.S_map
+    with type 'a Id.t = 'a Var_id.t
+     and type 'a Data.t = Source_code_positions.finalized Source_code_positions.t
 
-  type 'acc folder =
-    { f :
-        'a.
-        'acc
-        -> 'a Type_equal.Id.t
-        -> Source_code_positions.finalized Source_code_positions.t
-        -> 'acc
-    }
-
-  type 'b mapper =
-    { f :
-        'a.
-        'a Type_equal.Id.t
-        -> Source_code_positions.finalized Source_code_positions.t
-        -> 'b
-    }
-
-  val set
-    :  t
-    -> key:_ Type_equal.Id.t
-    -> data:Source_code_positions.finalized Source_code_positions.t
-    -> t
-
-  val find
-    :  t
-    -> _ Type_equal.Id.t
-    -> Source_code_positions.finalized Source_code_positions.t option
-
-  (** If the key exists in both a and b, b will overwrite a *)
+  val set : t -> key:'a Var_id.t -> data:'a Data.t -> t
   val merge : t -> t -> t
-
-  val empty : t
-
-  val singleton
-    :  _ Type_equal.Id.t
-    -> Source_code_positions.finalized Source_code_positions.t
-    -> t
-
-  val remove : t -> _ Type_equal.Id.t -> t
-  val fold : t -> init:'acc -> 'acc folder -> 'acc
-  val map_to_list : t -> 'a mapper -> 'a list
 end
 
 module Config : sig
@@ -102,7 +66,7 @@ module Id_location_hashmap : sig
   include
     Hashtbl.S_plain
     with type key =
-      [ `Named of Type_equal.Id.Uid.t
+      [ `Named of Var_id.Packed.t
       | `Incr of Incremental.For_analyzer.Node_id.t
       ]
 

@@ -6,8 +6,8 @@ If your list has tens or even hundreds of entries, you might get away
 with a simple HTML table. But once we get to thousands, the browser
 starts to struggle.
 
-`bonsai_web_ui_partial_render_table` implements a reusable table
-component, with a bunch of features:
+`bonsai_web_partial_render_table` implements a reusable table component,
+with a bunch of features:
 
 -   Focusable rows and cells, with support for keyboard navigation
 -   Stateful cells and a dynamic set of columns
@@ -30,9 +30,6 @@ each row must be unique.
 Our row data type (`'data`) can be anything. Most tables use a record
 type for `'data`. For example:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=row_type -->
-```
 ``` ocaml
 (* Our "row key" type is [Symbol.t], which we implement as a string. *)
 module Symbol = String
@@ -60,9 +57,6 @@ this data from your server with a
 
 Next, we need to define a "column id" type. If we use a variant type:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=variant_col_id -->
-```
 ``` ocaml
   module Col_id = struct
     module T = struct
@@ -84,11 +78,8 @@ Next, we need to define a "column id" type. If we use a variant type:
 We then create a `Column_structure.t`, which defines the order and
 grouping of columns.
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=variant_structure -->
-```
 ``` ocaml
-  module Structure = Bonsai_web_ui_partial_render_table.Column_structure
+  module Structure = Bonsai_web_partial_render_table.Column_structure
 
   let structure =
     Structure.Group.(
@@ -104,9 +95,6 @@ grouping of columns.
 
 Alternatively, you could have a flat column structure:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=flat_structure -->
-```
 ``` ocaml
   let structure = Structure.flat Col_id.all
 ```
@@ -114,15 +102,12 @@ Alternatively, you could have a flat column structure:
 You can also use `Column_structure.flat_dynamic` or
 `Column_structure.Group_dynamic` to provide your structure as a
 `Bonsai.t`. This allows you to dynamically reorder, add, remove, or
-group columns, e.g. with `bonsai_web_ui_reorderable_list`. But it
-requires more incremental nodes.
+group columns, e.g. with `bonsai_web_reorderable_list`. But it requires
+more incremental nodes.
 
 You can also specify initial widths for your columns, and whether they
 can be resized by dragging:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=variant_structure_mods -->
-```
 ``` ocaml
   let structure =
     structure
@@ -144,11 +129,8 @@ can be resized by dragging:
 
 Then, we specify how the cells and headers should be rendered:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=variant_columns -->
-```
 ``` ocaml
-  module Table = Bonsai_web_ui_partial_render_table.Basic
+  module Table = Bonsai_web_partial_render_table.Basic
 
   let columns : (Symbol.t, Row.t, Col_id.t) Table.Columns.t =
     Table.Columns.build
@@ -220,9 +202,9 @@ for tables that need stateful elements.
 #### Popovers + Modals
 
 A common element to put inside table cells is popovers / modals. Instead
-of instantiating a `Bonsai_web_ui_toplayer.Popover` per cell / row, you
-might want to instantiate a single
-`Bonsai_web_ui_toplayer.Popover.For_external_state.t`, and have the
+of instantiating a `Bonsai_web_themed_toplayer.Popover` per cell / row,
+you might want to instantiate a single
+`Bonsai_web_themed_toplayer.Popover.For_external_state.t`, and have the
 "open popover" effect set some `Bonsai.state`, which stores a row key.
 Then, you can attach the popover positioning attr to the cell whose
 `Row_id.t` matches your open state.
@@ -231,9 +213,6 @@ Then, you can attach the popover positioning attr to the cell whose
 
 Finally, we glue all our pieces together:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=table_no_focus -->
-```
 ``` ocaml
   let component (local_ graph) ~data =
     let table =
@@ -250,12 +229,6 @@ Finally, we glue all our pieces together:
   ;;
 ```
 
-```{=html}
-<iframe style="max-height: 1000px" data-external="1" src="https://bonsai:8535#prt">
-```
-```{=html}
-</iframe>
-```
 ### Sorting
 
 The `Table.Basic.Columns.build` function takes an optional `sorts`
@@ -268,11 +241,8 @@ Most sort functions are reversible, so you can use
 "ascending" sorter. Let's make our table sortable by `symbol` and
 `price`, but not by `num_owned`:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=sort_variant -->
-```
 ``` ocaml
-  module Sort_kind = Bonsai_web_ui_partial_render_table.Sort_kind
+  module Sort_kind = Bonsai_web_partial_render_table.Sort_kind
 
   let sorts (col_id : Col_id.t Bonsai.t) (local_ _graph) =
     let%arr col_id in
@@ -297,21 +267,12 @@ If we pass this as a `~sorts` argument to our column definition, we can
 click on column headers to sort by that column, or Shift+click to sort
 by multiple columns at once:
 
-```{=html}
-<iframe style="max-height: 1000px" data-external="1" src="https://bonsai:8535#sort">
-```
-```{=html}
-</iframe>
-```
 ### Focus
 
 PRT supports focusing by row or cell. It returns a "handle", which can
 be used to implement keyboard navigation by listening to keyboard
 events:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=focus_variant -->
-```
 ``` ocaml
   let component (local_ graph) ~data =
     let table =
@@ -356,7 +317,9 @@ events:
               | _ -> None
             in
             match binding with
-            | Some b -> Effect.Many [ Effect.Prevent_default; b ]
+            | Some b ->
+              kbc##preventDefault;
+              b
             | None -> Effect.Ignore)
           (* [tabindex=0] allows browser focus to be set on the table. We then remove the
              default focus ring with [outline: none] css. *)
@@ -367,12 +330,6 @@ events:
   ;;
 ```
 
-```{=html}
-<iframe style="max-height: 1000px" data-external="1" src="https://bonsai:8535#focus_variant">
-```
-```{=html}
-</iframe>
-```
 In practice, you might want to attach the listener attr somewhere higher
 up, or as a `Vdom.Attr.Global_listeners`.
 
@@ -383,9 +340,6 @@ appearance.
 
 You can configure colors, borders, and fonts explicitly:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=prt_styling -->
-```
 ``` ocaml
     let table =
       Table.component
@@ -393,7 +347,7 @@ You can configure colors, borders, and fonts explicitly:
         ~styling:
           (This_one
              (Bonsai.return
-                Bonsai_web_ui_partial_render_table_styling.(
+                Bonsai_web_partial_render_table_styling.(
                   create
                     { colors =
                         { page_bg = `Hex "#f0f4f8"
@@ -433,12 +387,6 @@ You can configure colors, borders, and fonts explicitly:
     in
 ```
 
-```{=html}
-<iframe style="max-height: 1000px" data-external="1" src="https://bonsai:8535#styling">
-```
-```{=html}
-</iframe>
-```
 By default, styling config will be pulled from the
 [theme](./theming.md). We recommend explicitly passing a `Styling.t`,
 because dynamically scoped theming is implicit, and can be difficult to
@@ -451,9 +399,6 @@ If your `Row.t` is a record type, you can derive
 `Row.t` to get a `Col_id.t` that will always match your `Row.t`
 structure:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=typed_fields_col_id -->
-```
 ``` ocaml
   module Col_id = struct
     include Row.Typed_field.Packed
@@ -463,11 +408,8 @@ structure:
 
 It reduces boilerplate when implementing `sorts`:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=typed_fields_sorts -->
-```
 ``` ocaml
-  module Sort_kind = Bonsai_web_ui_partial_render_table.Sort_kind
+  module Sort_kind = Bonsai_web_partial_render_table.Sort_kind
 
   let sort (type a) (module S : Comparable with type t = a) (field : a Row.Typed_field.t) =
     Some
@@ -487,11 +429,8 @@ It reduces boilerplate when implementing `sorts`:
 
 and cell rendering logic:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=typed_fields_columns -->
-```
 ``` ocaml
-  module Table = Bonsai_web_ui_partial_render_table.Basic
+  module Table = Bonsai_web_partial_render_table.Basic
 
   let columns : (Symbol.t, Row.t, Col_id.t) Table.Columns.t =
     Table.Columns.build
@@ -555,7 +494,7 @@ With server-side collation, we will need to provide:
 ```
 -   Sorting params, if sorting is supported. If your columns support
     `Asc | Desc | None` sorting, consider using
-    `Bonsai_web_ui_partial_render_table_protocol.Stable.Order.t`
+    `Bonsai_web_partial_render_table_protocol.Stable.Order.t`
 -   The currently viewed range of rows. This should probably be a
     `start:int * end:int` tuple or record.
 
@@ -567,18 +506,15 @@ The process of creating columns is mostly the same, except that you need
 to use the `Expert` module, and instantiate column sorting state
 yourself:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=server_side_columns -->
-```
 ``` ocaml
-  module Table = Bonsai_web_ui_partial_render_table.Expert
+  module Table = Bonsai_web_partial_render_table.Expert
 
   module Col_id = struct
     include Row.Typed_field.Packed
     include Comparator.Make (Row.Typed_field.Packed)
   end
 
-  module Structure = Bonsai_web_ui_partial_render_table.Column_structure
+  module Structure = Bonsai_web_partial_render_table.Column_structure
 
   let component (local_ graph) =
     (* We need to create the sortable state outside of the table. *)
@@ -642,9 +578,6 @@ screen.
 
 Here's how we might get around this:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/prt_examples.ml,part=server_side_query -->
-```
 ``` ocaml
     let copied_range, set_copied_range = Bonsai.state (0, 0) graph in
     let query =

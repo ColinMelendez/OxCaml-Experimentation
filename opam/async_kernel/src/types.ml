@@ -11,6 +11,8 @@ open! Core
 open! Import
 
 module rec Cell : sig
+  [@@@implicit_kind: ('a : value_or_null)]
+
   type any =
     [ `Empty
     | `Empty_one_handler
@@ -19,7 +21,7 @@ module rec Cell : sig
     | `Indir
     ]
 
-  type ('a, 'b) t =
+  type ('a : value_or_null, 'b) t =
     | Empty_one_or_more_handlers :
         { mutable run : 'a -> unit
         ; execution_context : Execution_context.t
@@ -37,21 +39,28 @@ end =
   Cell
 
 and Handler : sig
+  [@@@implicit_kind: ('a : value_or_null)]
+
   type 'a t = ('a, [ `Empty_one_or_more_handlers ]) Cell.t
 end =
   Handler
 
 and Ivar : sig
-  type 'a t = { mutable cell : ('a, Cell.any) Cell.t }
+  [@@@implicit_kind: ('a : value_or_null)]
+
+  type ('a : value_or_null) t : value mod non_float =
+    { mutable cell : ('a, Cell.any) Cell.t }
 
   module Immutable : sig
-    type 'a t = { cell : ('a, Cell.any) Cell.t }
+    type 'a t : value mod non_float = { cell : ('a, Cell.any) Cell.t }
   end
 end =
   Ivar
 
 and Deferred : sig
-  type +!'a t
+  [@@@implicit_kind: ('a : value_or_null)]
+
+  type +!'a t : value mod non_float
 end =
   Deferred
 
@@ -101,9 +110,7 @@ and Stream : sig
 end =
   Stream
 
-(* We avoid using [module rec] to define [Bvar], so that [to_repr] and [of_repr] are
-   inlined. *)
-module Bvar : sig
+and Bvar : sig @@ portable
   type ('a, -'permission) t
 
   (** [repr] exists so that we may hide the implementation of a [Bvar.t], and then add a
@@ -114,8 +121,8 @@ module Bvar : sig
     ; mutable ivar : 'a Ivar.t
     }
 
-  val of_repr : 'a repr -> ('a, 'permission) t
-  val to_repr : ('a, 'permission) t -> 'a repr
+  external to_repr : ('a, _) t -> 'a repr = "%identity"
+  external of_repr : 'a repr -> ('a, _) t = "%identity"
 end = struct
   type 'a repr =
     { mutable has_any_waiters : bool
@@ -124,11 +131,12 @@ end = struct
 
   type ('a, 'permission) t = 'a repr
 
-  let to_repr t = t
-  let of_repr t = t
+  (* Using ['a repr -> 'a repr] in the struct ensures that the %identity is type-safe. *)
+  external to_repr : 'a repr -> 'a repr @@ portable = "%identity"
+  external of_repr : 'a repr -> 'a repr @@ portable = "%identity"
 end
 
-module rec Event : sig
+and Event : sig
   module Status : sig
     type t =
       | Fired
@@ -138,7 +146,7 @@ module rec Event : sig
   end
 
   module Option : sig
-    type t
+    type t : mutable_data
   end
 
   type t =
@@ -186,7 +194,7 @@ and Job_queue : sig
   type t =
     { mutable num_jobs_run : int
     ; mutable jobs_left_this_cycle : int
-    ; mutable jobs : Obj.t Uniform_array.t
+    ; mutable jobs : Obj.Nullable.t Uniform_array.t
     ; mutable mask : int
     ; mutable front : int
     ; mutable length : int

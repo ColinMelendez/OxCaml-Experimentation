@@ -70,11 +70,11 @@ type ('k : k, 'v : v) t := (('k, 'v) t[@kind k v])
 [@@@kind.default k v]
 
 val empty : ('k, 'v) t
-val get_empty : unit -> ('k, 'v) t
-val is_empty : _ t @ contended -> bool
+val get_empty : ('k : k) ('v : v). unit -> ('k, 'v) t [@@zero_alloc]
+val is_empty : ('k : k) ('v : v). ('k, 'v) t @ contended -> bool
 
 (** Checks invariants, raising an exception if any invariants fail. *)
-val invariant : ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
+val invariant : ('k : k) ('v : v). ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
 
 (** Adds the specified key and data to the tree destructively (previous [t]'s are no
     longer valid) using the specified comparison function. O(log(N)) time, O(1) space.
@@ -88,7 +88,8 @@ val invariant : ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
     [key]. If [replace] is false, and there is an existing mapping for key, then [add] has
     no effect. *)
 val add
-  :  ('k, 'v) t
+  : ('k : k) ('v : v).
+  ('k, 'v) t
   -> replace:bool
   -> compare:local_ ('k -> 'k -> int)
   -> added:local_ bool ref
@@ -107,7 +108,7 @@ val find
 
 include sig
   [@@@mode.default c = (uncontended, shared)]
-  [@@@kind r = all]
+  [@@@kind r = v]
 
   (** [find_and_call t ~compare k ~if_found ~if_not_found]
 
@@ -124,7 +125,7 @@ include sig
     -> if_found:local_ ('v @ c -> 'r)
     -> if_not_found:local_ ('k -> 'r)
     -> 'r
-  [@@kind k = k, v = v, r = r]
+  [@@kind k = k, v = v, r = (r, value_or_null)]
 
   val findi_and_call
     : ('k : k mod c) ('v : v) ('r : r).
@@ -136,7 +137,7 @@ include sig
     -> 'r
   [@@kind k = k, v = v, r = r]
 
-  [@@@kind a = all]
+  [@@@kind a = value_or_null]
 
   val find_and_call1
     : ('k : k mod c) ('v : v) ('a : a) ('r : r).
@@ -160,7 +161,7 @@ include sig
     -> ('r : r)
   [@@kind k = k, v = v, a = a, r = r]
 
-  [@@@kind b = all]
+  [@@@kind b = value_or_null]
 
   val find_and_call2
     : ('k : k mod c) ('v : v) ('a : a) ('b : b) ('r : r).
@@ -197,7 +198,8 @@ val mem
     Previous root nodes are not usable anymore; do so at your peril. The [removed] ref
     will be set to true if a node was actually removed, and false otherwise. *)
 val remove
-  :  ('k, 'v) t
+  : ('k : k) ('v : v).
+  ('k, 'v) t
   -> removed:local_ bool ref
   -> compare:local_ ('k -> 'k -> int)
   -> 'k
@@ -205,7 +207,7 @@ val remove
 
 (** Folds over the tree. *)
 val fold
-  : ('k : k) ('v : v) 'acc.
+  : ('k : k) ('v : v) ('acc : value_or_null).
   ('k, 'v) t @ c
   -> init:'acc
   -> f:local_ (key:'k @ c -> data:'v @ c -> 'acc -> 'acc)
@@ -219,6 +221,9 @@ val iter
 [@@mode c = (uncontended, shared)]
 
 (** Map over the tree, changing the data in place. *)
-val mapi_inplace : ('k, 'v) t -> f:local_ (key:'k -> data:'v -> 'v) -> unit
+val mapi_inplace
+  : ('k : k) ('v : v).
+  ('k, 'v) t -> f:local_ (key:'k -> data:'v -> 'v) -> unit
 
-val choose_exn : ('k, 'v) t @ c -> #('k * 'v) @ c [@@mode c = (uncontended, shared)]]
+val choose_exn : ('k : k) ('v : v). ('k, 'v) t @ c -> #('k * 'v) @ c
+[@@mode c = (uncontended, shared)]]

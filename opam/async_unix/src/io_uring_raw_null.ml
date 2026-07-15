@@ -3,6 +3,12 @@ open Import
 
 type t
 
+module Submit_outcome = struct
+  type t =
+    | All_submitted
+    | Remaining_unsubmitted
+end
+
 module Int63 = struct
   type t : immediate64
 
@@ -162,7 +168,6 @@ module Open_flags = struct
   let directory = 0
   let dsync = 0
   let excl = 0
-  let largefile = 0
   let noatime = 0
   let noctty = 0
   let nofollow = 0
@@ -193,6 +198,7 @@ let create ?polling_timeout:_ ~queue_depth:_ () =
 let exit _ = assert false
 let supports_ext_arg _ = assert false
 let submit _ = assert false
+let submit_raw _ = assert false
 let cqe_ready _ ~timeout:_ = assert false
 let fill_completions _ = assert false
 let noop _ = assert false

@@ -15,7 +15,7 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*)
+ *)
 
 (* Work Stealing Queue
  *
@@ -25,12 +25,12 @@
  *  &
  *   Correct and efficient work-stealing for weak memory models
  *   https://dl.acm.org/doi/abs/10.1145/2442516.2442524
-*)
+ *)
 
 open! Base
-open Basement
 open Modes
 module Atomic = Portable_kernel.Atomic
+module Backoff = Basement.Backoff
 
 (** This must be a power of two. *)
 let min_capacity = 16
@@ -39,7 +39,7 @@ type 'a t : mutable_data with 'a @@ contended portable =
   { top : int Atomic.t
   ; bottom : int Atomic.t
   ; top_cache : int ref
-  ; mutable tab : 'a Portended.t Uopt.t ref array
+  ; mutable tab : 'a Portended.t or_null ref array
   }
 [@@unsafe_allow_any_mode_crossing (* see below for safety *)]
 
@@ -54,18 +54,14 @@ module _ = struct
     { top : int Atomic.t
     ; bottom : int Atomic.t
     ; top_cache : int ref
-    ; mutable tab : 'a Portended.t Uopt.t ref array
+    ; mutable tab : 'a Portended.t or_null ref array
     }
   [@@warning "-unused-type-declaration"]
 end
 
 let create () =
   let top = Atomic.make ~padded:true 0 in
-  let tab =
-    Array.create
-      ~len:min_capacity
-      (ref (Uopt.none |> Portability_hacks.magic_uncontended__promise_deeply_immutable))
-  in
+  let tab = Array.create ~len:min_capacity (ref Null) in
   let bottom = Atomic.make ~padded:true 0 in
   let top_cache = ref 0 |> Portable_common.Padding.copy_as_padded in
   { top; bottom; top_cache; tab } |> Portable_common.Padding.copy_as_padded
@@ -111,11 +107,7 @@ let blit_circularly ~src ~src_pos ~dst ~dst_pos ~len =
 ;;
 
 let realloc a t b sz new_sz =
-  let new_a =
-    Array.create
-      ~len:new_sz
-      (ref (Uopt.none |> Portability_hacks.magic_uncontended__promise_deeply_immutable))
-  in
+  let new_a = Array.create ~len:new_sz (ref Null) in
   blit_circularly
     ~src:a
     ~src_pos:(t land (sz - 1))
@@ -126,7 +118,8 @@ let realloc a t b sz new_sz =
 ;;
 
 let push q v =
-  let v = ref (Uopt.some { portended = v }) in
+  (* Magic: elements are returned at once and popped or stolen exactly once. *)
+  let v = ref (Obj.magic_many (This { portended = v })) in
   (* Read of [bottom] by the owner simply does not require a fence as the [bottom] is only
      mutated by the owner. *)
   let b = Atomic.Expert.fenceless_get q.bottom in
@@ -167,7 +160,8 @@ type ('a, _ : value_or_null) poly =
   | Value : ('a, 'a) poly
 
 let pop_as
-  : type a (r : value_or_null). a t @ local -> (a, r) poly -> r @ contended portable
+  : type a (r : value_or_null).
+    a t @ local -> (a, r) poly -> r @ contended once portable unique
   =
   fun q poly ->
   let b = Atomic.fetch_and_add q.bottom (-1) - 1 in
@@ -181,10 +175,11 @@ let pop_as
     let capacity = Array.length a in
     let out = Array.unsafe_get a (b land (capacity - 1)) in
     let res = !out in
-    out := Uopt.none |> Portability_hacks.magic_uncontended__promise_deeply_immutable;
+    out := Null;
     if size + size + size <= capacity - min_capacity
     then q.tab <- realloc a t b capacity (capacity lsr 1);
-    let res = Uopt.unsafe_value res in
+    (* Magic: elements are pushed at unique and popped or stolen exactly once. *)
+    let res = Obj.magic_unique (Or_null.unsafe_value res) in
     match poly with
     | Unboxed -> This res.portended
     | Option -> Some res.portended
@@ -201,8 +196,9 @@ let pop_as
       let a = q.tab in
       let out = Array.unsafe_get a (b land (Array.length a - 1)) in
       let res = !out in
-      out := Uopt.none |> Portability_hacks.magic_uncontended__promise_deeply_immutable;
-      let res = Uopt.unsafe_value res in
+      out := Null;
+      (* Magic: elements are pushed at unique and popped or stolen exactly once. *)
+      let res = Obj.magic_unique (Or_null.unsafe_value res) in
       (match poly with
        | Unboxed -> This res.portended
        | Option -> Some res.portended
@@ -226,7 +222,10 @@ let pop_opt q = pop_as q Option
 
 let rec steal_as
   : type a (r : value_or_null).
-    a t @ contended local -> Backoff.t -> (a, r) poly -> r @ contended portable
+    a t @ contended local
+    -> Backoff.t
+    -> (a, r) poly
+    -> r @ contended once portable unique
   =
   fun q backoff poly ->
   (* Read of [top] does not require a fence at this point, but the read of [top] must
@@ -244,8 +243,9 @@ let rec steal_as
     match Atomic.compare_and_set q.top ~if_phys_equal_to:t ~replace_with:(t + 1) with
     | Set_here ->
       let res = !out in
-      out := Uopt.none |> Portability_hacks.magic_uncontended__promise_deeply_immutable;
-      let res = Uopt.unsafe_value res in
+      out := Null;
+      (* Magic: elements are pushed at unique and popped or stolen exactly once. *)
+      let res = Obj.magic_unique (Or_null.unsafe_value res) in
       (match poly with
        | Unboxed -> This res.portended
        | Option -> Some res.portended

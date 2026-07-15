@@ -16,9 +16,7 @@ let textbox (local_ graph) =
   in
   let%arr text and set_text in
   let view =
-    Vdom.Node.input
-      ~attrs:[ Vdom.Attr.(value_prop text @ on_input (fun _ -> set_text)) ]
-      ()
+    Vdom.Node.input ~attrs:[ Vdom.Attr.(value text @ on_input (fun _ -> set_text)) ] ()
   in
   text, view
 ;;
@@ -41,4 +39,4 @@ let component (local_ graph) =
   Vdom.Node.div [ view; Vdom.Node.text capitalized ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

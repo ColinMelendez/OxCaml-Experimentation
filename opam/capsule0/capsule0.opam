@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/capsule0/issues"
 dev-repo: "git+https://github.com/janestreet/capsule0.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/capsule0/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -13,10 +14,14 @@ depends: [
   "ocaml" {>= "5.1.0"}
   "basement"
   "ppx_template"
+  "sexp_type"
   "dune"         {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
-synopsis: "The expert capsule api for the OxCaml mode ecosystem"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
+synopsis: "The primitive capsule api for the OxCaml mode ecosystem"
 description: "
 Part of Jane Street's Core library
 The capsule api provides a safe interface for partitioning mutable data into shareable

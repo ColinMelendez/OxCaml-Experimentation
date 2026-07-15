@@ -4,4 +4,4 @@
  (libraries patdiff.ansi_text async bonsai_term bonsai_term_test core
    expect_test_helpers_core notty-community notty_async re)
  (preprocess
-  (pps ppx_jane ppx_with)))
+  (pps ppx_jane ppx_with bonsai.ppx_bonsai)))

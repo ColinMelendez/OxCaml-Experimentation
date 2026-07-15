@@ -1,6 +1,6 @@
 @@ portable
 
-open! Base
+open! Import
 
 (** A lock-free stack of [once unique] elements. *)
 type !'a t : value mod contended portable

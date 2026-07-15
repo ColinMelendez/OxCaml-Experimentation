@@ -1,3 +1,5 @@
+open Hardcaml_kernel
+
 (** {1 Design} *)
 
 module Always = Always
@@ -38,6 +40,8 @@ module Cyclesim_float_ops = Cyclesim_float_ops
 module Logic = Logic
 module Vcd = Vcd
 module Wave_data = Wave_data
+module Wave_data_in_cycles = Wave_data_in_cycles
+module Wave_data_in_events = Wave_data_in_events
 module Wave_format = Wave_format
 
 (** {1 Rtl generation} *)
@@ -72,12 +76,12 @@ module Enum = Enum
 module Flags_vector = Flags_vector
 module Level = Level
 module Name_and_loc = Name_and_loc
-module Read_port = Read_port
+module Read_port = Read_write_port.Read_port
 module Side = Side
 module Signedness = Signedness
 module Types = Types
 module With_valid = With_valid
-module Write_port = Write_port
+module Write_port = Read_write_port.Write_port
 
 (** {1 Core circuits} *)
 
@@ -92,8 +96,6 @@ module Clocked_design = Clocked_design
 module Clocked_signal = Clocked_signal
 
 (**/**)
-
-module Tools_config = Tools_config
 
 (* These are exposed for code that does [@@deriving hardcaml]. *)
 

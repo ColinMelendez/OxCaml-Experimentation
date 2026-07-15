@@ -1,9 +1,8 @@
 (** Bonsai documentation can be found in [cont.mli].
 
-    The Bonsai API is currently in an intermediate state. It is transitioning from the
-    "old" [Proc] API to the "new" [Cont] API. The [Cont] API is now the default and is
-    included when you use [include Bonsai/_web/_web], but [Proc] style code still exists
-    in some places. Current Bonsai documentation can be found in [cont.mli]. *)
+    The Bonsai API has changed greatly over time. The default, recommended, and supported
+    api is [Cont]. You can also find older iterations in [Proc] and
+    [Bonsai_arrow_deprecated]. *)
 
 open! Core
 open! Import
@@ -70,6 +69,7 @@ module Private : sig
   module Annotate_incr = Annotate_incr
   module Computation_watcher = Computation_watcher
   module For_proc = For_proc
+  module Var_id = Var_id
 
   val gather
     :  recursive_scopes:Computation.Recursive_scopes.t

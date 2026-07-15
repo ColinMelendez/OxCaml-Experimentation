@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Reorderable_list = Bonsai_web_ui_reorderable_list
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Reorderable_list = Bonsai_web_reorderable_list
+module Form = Bonsai_web_form.With_automatic_view
 
 module S =
   [%css
@@ -108,4 +108,4 @@ let component (local_ graph) =
     [ Form.view_as_vdom num_lists; View.hbox (Map.data lists); dragged_element ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

@@ -35,6 +35,10 @@ type t =
       { filename : string
       ; config : Wave_details.t
       }
+  | Callback_hardcamlwaveform of
+      { config : Wave_details.t
+      ; f : waveform_name:string -> Hardcaml_waveterm.Waveform.t -> unit
+      }
 [@@deriving sexp]
 
 let no_waves = No_waves
@@ -78,6 +82,8 @@ let rewrite ~f t =
   | No_waves -> No_waves
   | Prefix { directory; config } -> Prefix { directory; config = f config }
   | File { filename; config } -> File { filename; config = f config }
+  | Callback_hardcamlwaveform { config; f = callback } ->
+    Callback_hardcamlwaveform { config = f config; f = callback }
 ;;
 
 let with_always_include_line_numbers =
@@ -101,6 +107,8 @@ module Getters = struct
   let extra_cycles_after_test = function
     | No_waves -> 0
     | Prefix { config = { extra_cycles_after_test; _ }; _ }
-    | File { config = { extra_cycles_after_test; _ }; _ } -> extra_cycles_after_test
+    | File { config = { extra_cycles_after_test; _ }; _ }
+    | Callback_hardcamlwaveform { config = { extra_cycles_after_test; _ }; _ } ->
+      extra_cycles_after_test
   ;;
 end

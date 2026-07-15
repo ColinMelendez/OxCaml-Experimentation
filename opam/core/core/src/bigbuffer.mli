@@ -42,6 +42,12 @@ val add_bin_prot_local
   -> 'a @ local
   -> unit
 
+(** [add_string b s] appends the string [s] at the end of the buffer [b]. *)
+val add_string : t -> string @ local -> unit
+
+(** [add_bytes b s] appends the bytes [s] at the end of the buffer [b]. *)
+val add_bytes : t -> bytes @ local -> unit
+
 (** [add_substitute b f s] appends the string pattern [s] at the end of the buffer [b]
     with substitution. The substitution process looks for variables into the pattern and
     substitutes each variable name by its value, as obtained by applying the mapping [f]
@@ -54,7 +60,7 @@ val add_bin_prot_local
     An escaped [$] character is a [$] that immediately follows a backslash character; it
     then stands for a plain [$]. Raise [Caml.Not_found] or [Not_found_s] if the closing
     character of a parenthesized variable cannot be found. *)
-val add_substitute : t -> (string -> string) -> string -> unit
+val add_substitute : t -> (string -> string) @ local -> string -> unit
 
 (** *)
 

@@ -1,19 +1,43 @@
 (** @open *)
+
+open! Core
+open! Import
+
 include
   Ppx_log_types.S
-  with type time = Core.Time_float.t
+  with type time = Time_float.t
    and type Instance.t = Log.t
    and type Instance.return_type = unit
    and type Global.return_type = unit
+
+module Portable : sig @@ portable
+  include
+    Ppx_log_types.S
+    with type time = Time_float.t
+     and type Instance.t = Log.t
+     and type Instance.return_type = unit
+     and type Global.return_type = unit
+end
 
 (** If you wish you prevent global logging with ppx_log, you can open this module and any
     use of global logging will return a warning type `Do_not_use_because_it_will_not_log
     (and will not actually log anything). *)
 module No_global : sig
-  module Ppx_log_syntax :
-    Ppx_log_types.S
-    with type time = Core.Time_float.t
-     and type Instance.t = Log.t
-     and type Instance.return_type = unit
-     and type Global.return_type = [ `Do_not_use_because_it_will_not_log ]
+  module Ppx_log_syntax : sig
+    include
+      Ppx_log_types.S
+      with type time = Time_float.t
+       and type Instance.t = Log.t
+       and type Instance.return_type = unit
+       and type Global.return_type = [ `Do_not_use_because_it_will_not_log ]
+
+    module Portable : sig @@ portable
+      include
+        Ppx_log_types.S
+        with type time = Time_float.t
+         and type Instance.t = Log.t
+         and type Instance.return_type = unit
+         and type Global.return_type = [ `Do_not_use_because_it_will_not_log ]
+    end
+  end
 end

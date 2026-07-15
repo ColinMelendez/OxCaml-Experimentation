@@ -830,7 +830,7 @@ module Type_alias = struct
   end
 
   module C : sig
-    type t = int as 'a [@@deriving yojson]
+    type t = int as 'a [@@warning "-unused-type-declaration"] [@@deriving yojson]
   end = struct
     type t = int [@@deriving yojson]
   end
@@ -866,6 +866,9 @@ module Drop_default = struct
 
   type my_int = int [@@deriving yojson]
 
+  let%template[@mode _ = (local, global)] equal_my_int = equal_int
+  let%template[@mode _ = (local, global)] compare_my_int = compare_int
+
   module Poly = struct
     type nonrec t = t = { a : my_int [@default 2] [@yojson_drop_default ( = )] }
     [@@deriving yojson]
@@ -877,8 +880,6 @@ module Drop_default = struct
   end
 
   module Equal = struct
-    let equal_my_int = equal_int
-
     type nonrec t = t = { a : my_int [@default 2] [@yojson_drop_default.equal] }
     [@@deriving yojson]
 
@@ -889,9 +890,27 @@ module Drop_default = struct
   end
 
   module Compare = struct
-    let compare_my_int = compare_int
-
     type nonrec t = t = { a : my_int [@default 2] [@yojson_drop_default.compare] }
+    [@@deriving yojson]
+
+    let%expect_test _ =
+      test t_of_yojson yojson_of_t;
+      [%expect {| |}]
+    ;;
+  end
+
+  module Equal_local = struct
+    type nonrec t = t = { a : my_int [@default 2] [@yojson_drop_default.equal.local] }
+    [@@deriving yojson]
+
+    let%expect_test _ =
+      test t_of_yojson yojson_of_t;
+      [%expect {| |}]
+    ;;
+  end
+
+  module Compare_local = struct
+    type nonrec t = t = { a : my_int [@default 2] [@yojson_drop_default.compare.local] }
     [@@deriving yojson]
 
     let%expect_test _ =
@@ -1495,13 +1514,15 @@ module Exceptions = struct
     ;;
 
     let%expect_test _ =
-      let wrong_arg_type = `List [ `String "C"; `Assoc [ "b", `Int 1 ] ] in
+      let wrong_arg_type =
+        `List [ `String "C"; `Assoc [ "b", `Int 1; "with a space", `Int 1 ] ]
+      in
       require_does_raise (fun () -> t_of_yojson wrong_arg_type);
       [%expect
         {|
         (Of_yojson_error
-         "ppx_yojson_test.ml.Exceptions.Variant.t_of_yojson: extra fields: b"
-         "[\"C\",{\"b\":1}]")
+         "ppx_yojson_test.ml.Exceptions.Variant.t_of_yojson: extra fields: b \"with a space\""
+         "[\"C\",{\"b\":1,\"with a space\":1}]")
         |}]
     ;;
 
@@ -1684,14 +1705,15 @@ module Exceptions = struct
           ; "e", `Int 1
           ; "f", `Int 1
           ; "g", `Int 1
+          ; "with a space", `Int 1
           ]
       in
       require_does_raise (fun () -> t_of_yojson extra_fields);
       [%expect
         {|
         (Of_yojson_error
-         "ppx_yojson_test.ml.Exceptions.Record.t_of_yojson: extra fields: g"
-         "{\"A\":1,\"b\":\"str\",\"c\":1.0,\"d\":null,\"e\":1,\"f\":1,\"g\":1}")
+         "ppx_yojson_test.ml.Exceptions.Record.t_of_yojson: extra fields: g \"with a space\""
+         "{\"A\":1,\"b\":\"str\",\"c\":1.0,\"d\":null,\"e\":1,\"f\":1,\"g\":1,\"with a space\":1}")
         |}]
     ;;
   end

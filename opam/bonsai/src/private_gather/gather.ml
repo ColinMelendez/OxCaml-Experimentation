@@ -8,7 +8,17 @@ let rec gather : type result. result Computation.gather_fun =
   let open Computation in
   fun ~recursive_scopes ~time_source -> function
     | Return { value; here } -> Gather_return.f ~value ~here
-    | Leaf1 { model; input_id; dynamic_action; apply_action; input; reset; here } ->
+    | Leaf1
+        { model
+        ; input_id
+        ; dynamic_action
+        ; apply_action
+        ; input
+        ; reset
+        ; action_name
+        ; sexp_of_action
+        ; here
+        } ->
       Gather_leaf1.f
         ~model
         ~input_id
@@ -17,9 +27,21 @@ let rec gather : type result. result Computation.gather_fun =
         ~input
         ~reset
         ~time_source
+        ~action_name
+        ~sexp_of_action
         ~here
-    | Leaf0 { model; static_action; apply_action; reset; here } ->
-      Gather_leaf0.f ~model ~static_action ~time_source ~apply_action ~reset ~here
+    | Leaf0
+        { model; static_action; apply_action; reset; action_name; sexp_of_action; here }
+      ->
+      Gather_leaf0.f
+        ~model
+        ~static_action
+        ~time_source
+        ~apply_action
+        ~reset
+        ~action_name
+        ~sexp_of_action
+        ~here
     | Leaf_incr { input; compute; here } ->
       Gather_leaf_incr.f ~input ~compute ~time_source ~here
     | Sub

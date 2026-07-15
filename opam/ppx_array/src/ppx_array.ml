@@ -1,8 +1,7 @@
 open! Ppxlib
 open! Stdppx
 open Ast_builder.Default
-module Common = Ppx_array_base.Common
-module Function = Ppx_array_base.Function
+open Ppx_array_base
 
 let assert_single_unboxed_type loc = function
   | [ type_decl ] ->
@@ -39,16 +38,20 @@ let validate_and_return_single_type loc type_declaration args =
   assert_single_unboxed_type loc type_declaration
 ;;
 
-let array_submodule loc ~type_name =
+let array_submodule loc surface_type ~type_name =
+  let module_root =
+    String.capitalize_ascii (Surface_type.extension_prefix surface_type)
+  in
   let submodule =
-    match Ppx_helpers.demangle_template type_name with
-    | "t", mangle -> "Array" ^ mangle
-    | type_name, mangle -> "Array_" ^ type_name ^ mangle
+    (match Ppx_helpers.demangle_template type_name with
+     | "t", mangle -> [ module_root; mangle ]
+     | type_name, mangle -> [ module_root; "_"; type_name; mangle ])
+    |> String.concat ~sep:""
   in
   Loc.make ~loc (Some submodule)
 ;;
 
-let array_submodule_type_decl loc ~params ~cstrs ~type_ =
+let array_submodule_type_decl loc surface_type ~params ~cstrs ~type_ =
   type_declaration
     ~loc
     ~name:(Loc.make ~loc "t")
@@ -56,10 +59,10 @@ let array_submodule_type_decl loc ~params ~cstrs ~type_ =
     ~cstrs
     ~kind:Ptype_abstract
     ~private_:Public
-    ~manifest:(Some [%type: [%t type_] Ppx_array_runtime.t])
+    ~manifest:(Some (Surface_type.to_core_type surface_type (Deriving type_) ~loc type_))
 ;;
 
-let generator ~extensions ~wrap_in_array_submodule =
+let generator surface_type ~extensions ~wrap_in_array_submodule =
   let args =
     Deriving.Args.(
       empty
@@ -90,56 +93,71 @@ let generator ~extensions ~wrap_in_array_submodule =
        let type_decl =
          array_submodule_type_decl
            loc
+           surface_type
            ~params:original_type_decl.ptype_params
            ~cstrs:original_type_decl.ptype_cstrs
            ~type_
        in
-       let name = array_submodule loc ~type_name:original_type_decl.ptype_name.txt in
+       let name =
+         array_submodule loc surface_type ~type_name:original_type_decl.ptype_name.txt
+       in
        args
-       |> List.concat_map ~f:(fun function_ -> extensions function_ loc type_)
+       |> List.concat_map ~f:(fun function_ ->
+         extensions function_ surface_type loc type_)
        |> wrap_in_array_submodule loc ~type_decl ~name)
 ;;
 
 (* deriving *)
 let () =
-  let implementation =
-    generator
-      ~extensions:Function.For_deriving.structure_extensions
-      ~wrap_in_array_submodule:(fun loc ~type_decl ~name items ->
-        [ (let module_expr =
-             (* We need to put items before a type declaration because if the type is an
-                implicit unboxed, we cannot shadow [t] and then refer to the implicit
-                unboxed [t#].
+  List.iter Surface_type.all ~f:(fun surface_type ->
+    let implementation =
+      generator
+        surface_type
+        ~extensions:Function.For_deriving.structure_extensions
+        ~wrap_in_array_submodule:(fun loc ~type_decl ~name items ->
+          [ (let module_expr =
+               (* We need to put items before a type declaration because if the type is an
+                  implicit unboxed, we cannot shadow [t] and then refer to the implicit
+                  unboxed [t#].
 
-                It also makes the code here a lot messier if we try to do something like
-                {[
-                  type nonrec implicit_unboxed = t#
-                  and t = implicit_unboxed array
-                ]}
-             *)
-             pmod_structure ~loc (items @ [ pstr_type ~loc Nonrecursive [ type_decl ] ])
-           in
-           let module_binding = module_binding ~loc ~name ~expr:module_expr in
-           pstr_module ~loc module_binding)
-        ])
-  in
-  let interface =
-    generator
-      ~extensions:Function.For_deriving.signature_extensions
-      ~wrap_in_array_submodule:(fun loc ~type_decl ~name items ->
-        [ (let module_type =
-             pmty_signature ~loc (items @ [ psig_type ~loc Nonrecursive [ type_decl ] ])
-           in
-           let module_declaration = module_declaration ~loc ~name ~type_:module_type in
-           psig_module ~loc module_declaration)
-        ])
-  in
-  Deriving.add "array" ~str_type_decl:implementation ~sig_type_decl:interface
-  |> Deriving.ignore
+                  It also makes the code here a lot messier if we try to do something like
+                  {[
+                    type nonrec implicit_unboxed = t#
+                    and t = implicit_unboxed array
+                  ]}
+               *)
+               pmod_structure ~loc (items @ [ pstr_type ~loc Nonrecursive [ type_decl ] ])
+             in
+             let module_binding = module_binding ~loc ~name ~expr:module_expr in
+             pstr_module ~loc module_binding)
+          ])
+    in
+    let interface =
+      generator
+        surface_type
+        ~extensions:Function.For_deriving.signature_extensions
+        ~wrap_in_array_submodule:(fun loc ~type_decl ~name items ->
+          [ (let module_type =
+               pmty_signature ~loc (items @ [ psig_type ~loc Nonrecursive [ type_decl ] ])
+             in
+             let module_declaration = module_declaration ~loc ~name ~type_:module_type in
+             psig_module ~loc module_declaration)
+          ])
+    in
+    Deriving.add
+      (Surface_type.extension_prefix surface_type)
+      ~str_type_decl:implementation
+      ~sig_type_decl:interface
+    |> Deriving.ignore)
 ;;
 
 (* register extensions *)
 let () =
-  let rules = List.concat_map ~f:Function.extensions Function.all in
-  Driver.register_transformation "array" ~rules
+  List.iter Surface_type.all ~f:(fun surface_type ->
+    let rules =
+      List.concat_map
+        ~f:(fun function_ -> Function.extensions function_ surface_type)
+        Function.all
+    in
+    Driver.register_transformation (Surface_type.extension_prefix surface_type) ~rules)
 ;;

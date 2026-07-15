@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/unboxed/issues"
 dev-repo: "git+https://github.com/janestreet/unboxed.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/unboxed/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -14,18 +15,18 @@ depends: [
   "base"
   "bin_prot"
   "core"
-  "core_extended"
-  "core_kernel"
   "float_array"
-  "int_repr"
   "ocaml_intrinsics_kernel"
+  "ppx_box"
   "ppx_jane"
-  "ppx_stable_witness"
   "sexplib"
   "typerep"
   "dune"                    {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Unboxed types for OxCaml"
 description: "
  A library for unboxed number types.

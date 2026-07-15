@@ -32,6 +32,7 @@ module Private = struct
   module Annotate_incr = Annotate_incr
   module Computation_watcher = Computation_watcher
   module For_proc = Cont.For_proc
+  module Var_id = Var_id
 
   let path ~(here : [%call_pos]) (local_ graph) = Cont.path ~here graph
   let gather = Gather.gather

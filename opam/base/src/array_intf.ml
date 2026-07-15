@@ -4,10 +4,8 @@ open! Import
 module Option = Option0
 module List = List0.Constructors
 
-[@@@warning "-incompatible-with-upstream"]
-
 [%%template
-[@@@kind_set.define base_with_ext = (base, value mod external64)]
+[@@@kind_set.define base_or_null_with_ext = (base_or_null, value_or_null mod external64)]
 
 module Definitions = struct
   module type Public = sig
@@ -17,17 +15,19 @@ module Definitions = struct
 
     val array_should_be_polymorphic_over_value_or_null : unit
     [@@ocaml.doc
-      {| Refer to this in code that hacks around array's current lack of [value_or_null]
-          support. When the appropriate compiler features land, we will remove this
-          binding and fix up relevant client code. |}]
+      {| Refer to this in code that hacks around array's current lack of
+          [value_or_null mod non_float] support. When the appropriate compiler features
+          land, we will remove this binding and fix up relevant client code. |}]
 
     [%%template:
     include
       Indexed_container.S1_with_creators
-    [@kind_set.explicit base_with_ext]
+    [@kind_set.explicit base_or_null_with_ext]
     [@with:
-      type 'a t := 'a t
-      type 'a t = 'a t [@@kind __ = (base_non_value, value mod external64)]]
+      type ('a : value_or_null mod separable) t := 'a t
+
+      type ('a : k mod separable) t = 'a t
+      [@@kind k = (base_non_value, value_or_null mod external64)]]
 
     [@@@kind k = base_or_null]
 
@@ -39,11 +39,17 @@ module Definitions = struct
     [%%rederive:
       type nonrec ('a : value_or_null mod separable) t = 'a t [@@deriving sexp_grammar]]
 
-    include Indexed_container.S1_with_creators with type 'a t := 'a t
+    include
+      Indexed_container.S1_with_creators
+      [@kind_set.explicit value_or_null]
+      with type ('a : value_or_null mod separable) t := 'a t
+
     include Invariant.S1 with type 'a t := 'a t
 
-    val%template map : ('a : k1) ('b : k2). 'a t -> f:local_ ('a -> 'b) -> 'b t
-    [@@kind k1 = base_with_ext, k2 = base_with_ext]
+    val%template map
+      : ('a : k1 mod separable) ('b : k2 mod separable).
+      'a t -> f:local_ ('a -> 'b) -> 'b t
+    [@@kind k1 = base_or_null_with_ext, k2 = base_or_null_with_ext]
 
     (** Maximum length of a normal array. The maximum length of a float array is
         [max_length/2] on 32-bit machines and [max_length] on 64-bit machines. *)
@@ -108,7 +114,7 @@ module Definitions = struct
     [%%template:
       external create
         : ('a : any mod separable).
-        len:int -> 'a -> 'a array @ m
+        len:int -> 'a -> 'a array @ m unique
         = "%makearray_dynamic"
       [@@ocaml.doc
         {| [create ~len x] creates an array of length [len] with the value [x] populated in
@@ -118,7 +124,7 @@ module Definitions = struct
 
     external create_local
       : ('a : any mod separable).
-      len:int -> 'a -> local_ 'a array
+      len:int -> 'a -> 'a array @ local unique
       = "%makearray_dynamic"
     [@@ocaml.doc
       {| [create_local ~len x] is like [create]. It allocates the array on the local
@@ -173,7 +179,8 @@ module Definitions = struct
     val copy_matrix : local_ 'a t t -> 'a t t
 
     [%%template:
-    [@@@kind.default k = base_with_ext]
+    [@@@kind.default k' = base_or_null_with_ext]
+    [@@@kind k = k' mod separable]
 
     (** Like [Array.append], but concatenates a list of arrays. *)
     val concat : ('a : k). local_ 'a t list -> 'a t
@@ -199,50 +206,59 @@ module Definitions = struct
 
         [int_blit] and [float_blit] provide fast bound-checked blits for immediate data
         types. The unsafe versions do not bound-check the arguments. *)
-    include Blit.S1 with type 'a t := 'a t
+    include
+      Blit.S1 [@kind.explicit value_or_null mod separable] with type ('a : any) t := 'a t
 
-    val%template unsafe_blit : ('a : k). ('a array, 'a array) Blit.blit
-    [@@kind k = (base_non_value, value mod external64)]
+    val%template unsafe_blit : ('a : k mod separable). ('a array, 'a array) Blit.blit
+    [@@kind k = base_or_null_with_ext]
 
-    val%template sub : ('a : k). ('a array, 'a array) Blit.sub
-    [@@kind k = (base_non_value, value mod external64)]
+    val%template sub : ('a : k mod separable). ('a array, 'a array) Blit.sub
+    [@@kind k = base_or_null_with_ext]
 
-    val%template foldi_right
-      :  'a t @ local
-      -> init:'acc @ m
-      -> f:(int -> 'a -> 'acc @ m -> 'acc @ m)
-      -> 'acc @ m
-    [@@alloc a @ m = (stack_local, heap_global)]
+    include sig
+      [@@@implicit_kind: ('a : value_or_null mod separable)]
 
-    (** [folding_map] is a version of [map] that threads an accumulator through calls to
-        [f]. *)
-    val folding_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'b t
+      val%template foldi_right
+        :  'a t @ local
+        -> init:'acc @ m
+        -> f:(int -> 'a -> 'acc @ m -> 'acc @ m)
+        -> 'acc @ m
+      [@@alloc a @ m = (stack_local, heap_global)]
 
-    val folding_mapi
-      :  'a t
-      -> init:'acc
-      -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
-      -> 'b t
+      (** [folding_map] is a version of [map] that threads an accumulator through calls to
+          [f]. *)
+      val folding_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'b t
 
-    (** [Array.fold_map] is a combination of [Array.fold] and [Array.map] that threads an
-        accumulator through calls to [f]. *)
-    val fold_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
+      val folding_mapi
+        :  'a t
+        -> init:'acc
+        -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
+        -> 'b t
 
-    val fold_mapi
-      :  'a t
-      -> init:'acc
-      -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
-      -> 'acc * 'b t
+      (** [Array.fold_map] is a combination of [Array.fold] and [Array.map] that threads
+          an accumulator through calls to [f]. *)
+      val fold_map
+        :  'a t
+        -> init:'acc
+        -> f:local_ ('acc -> 'a -> 'acc * 'b)
+        -> 'acc * 'b t
 
-    (** [Array.fold_right f a ~init] computes
-        [f a.(0) (f a.(1) ( ... (f a.(n-1) init) ...))], where [n] is the length of the
-        array [a]. *)
-    val%template fold_right
-      :  'a t @ m
-      -> f:local_ ('a @ m -> 'acc -> 'acc)
-      -> init:'acc
-      -> 'acc
-    [@@mode m = (uncontended, shared)]
+      val fold_mapi
+        :  'a t
+        -> init:'acc
+        -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
+        -> 'acc * 'b t
+
+      (** [Array.fold_right f a ~init] computes
+          [f a.(0) (f a.(1) ( ... (f a.(n-1) init) ...))], where [n] is the length of the
+          array [a]. *)
+      val%template fold_right
+        :  'a t @ m
+        -> f:local_ ('a @ m -> 'acc -> 'acc)
+        -> init:'acc
+        -> 'acc
+      [@@mode m = (uncontended, shared)]
+    end
 
     (** All sort functions in this module sort in increasing order by default. *)
 
@@ -251,57 +267,71 @@ module Definitions = struct
         To sort only part of the array, specify [pos] to be the index to start sorting
         from and [len] indicating how many elements to sort. *)
     val sort
-      :  ?pos:int
-      -> ?len:int
-      -> local_ 'a t
-      -> compare:local_ ('a -> 'a -> int)
-      -> unit
+      : ('a : k mod separable).
+      ?pos:int -> ?len:int -> local_ 'a t -> compare:local_ ('a -> 'a -> int) -> unit
+    [@@kind k = base_or_null_with_ext]
 
     val stable_sort : 'a t -> compare:('a -> 'a -> int) -> unit
-    val is_sorted : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
+
+    [%%template:
+    [@@@kind.default k = base_or_null_with_ext]
+    [@@@kind k = k mod separable]
+
+    val is_sorted : ('a : k). local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
 
     (** [is_sorted_strictly xs ~compare] iff [is_sorted xs ~compare] and no two
         consecutive elements in [xs] are equal according to [compare]. *)
-    val is_sorted_strictly : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
+    val is_sorted_strictly
+      : ('a : k).
+      local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool]
 
     (** Merges two arrays: assuming that [a1] and [a2] are sorted according to the
         comparison function [compare], [merge a1 a2 ~compare] will return a sorted array
         containing all the elements of [a1] and [a2]. If several elements compare equal,
         the elements of [a1] will be before the elements of [a2]. *)
-    val merge : 'a t -> 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
+    val merge
+      : ('a : k mod separable).
+      'a t -> 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
+    [@@kind k = base_or_null_with_ext]
 
-    val partitioni_tf : 'a t -> f:local_ (int -> 'a -> bool) -> 'a t * 'a t
-    val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
+    include sig
+      [@@@implicit_kind: ('a : value_or_null mod separable)]
+      [@@@implicit_kind: ('b : value_or_null mod separable)]
 
-    (** [transpose] in the sense of a matrix transpose. It returns [None] if the arrays
-        are not all the same length. *)
-    val transpose : 'a t t -> 'a t t option
+      val partitioni_tf : 'a t -> f:local_ (int -> 'a -> bool) -> 'a t * 'a t
+      val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
 
-    val transpose_exn : 'a t t -> 'a t t
+      (** [transpose] in the sense of a matrix transpose. It returns [None] if the arrays
+          are not all the same length. *)
+      val transpose : 'a t t -> 'a t t option
 
-    (** [filter_opt array] returns a new array where [None] entries are omitted and
-        [Some x] entries are replaced with [x]. Note that this changes the index at which
-        elements will appear. *)
-    val filter_opt : 'a option t -> 'a t
+      val transpose_exn : 'a t t -> 'a t t
 
-    (** Functions with the 2 suffix raise an exception if the lengths of the two given
-        arrays aren't the same. *)
+      (** [filter_opt array] returns a new array where [None] entries are omitted and
+          [Some x] entries are replaced with [x]. Note that this changes the index at
+          which elements will appear. *)
+      val filter_opt : 'a option t -> 'a t
 
-    val iter2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> unit) -> unit
-    val map2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> 'c) -> 'c t
+      (** Functions with the 2 suffix raise an exception if the lengths of the two given
+          arrays aren't the same. *)
 
-    val fold2_exn
-      :  'a t
-      -> 'b t
-      -> init:'acc
-      -> f:local_ ('acc -> 'a -> 'b -> 'acc)
-      -> 'acc
+      val iter2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> unit) -> unit
+      val map2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> 'c) -> 'c t
 
-    (** Modifies an array in place, applying [f] to every element of the array *)
-    val map_inplace : local_ 'a t -> f:local_ ('a -> 'a) -> unit
+      val fold2_exn
+        :  'a t
+        -> 'b t
+        -> init:'acc
+        -> f:local_ ('acc -> 'a -> 'b -> 'acc)
+        -> 'acc
+
+      (** Modifies an array in place, applying [f] to every element of the array *)
+      val map_inplace : local_ 'a t -> f:local_ ('a -> 'a) -> unit
+    end
 
     [%%template:
-    [@@@kind.default k1 = base_with_ext]
+    [@@@kind.default k1' = base_or_null_with_ext]
+    [@@@kind k1 = k1' mod separable]
 
     (** [find_exn f t] returns the first [a] in [t] for which [f t.(i)] is true. It raises
         [Stdlib.Not_found] or [Not_found_s] if there is no such [a]. *)
@@ -317,10 +347,10 @@ module Definitions = struct
     val rev : ('a : k1). 'a t -> 'a t
 
     (** [of_list_rev l] converts from list then reverses in place. *)
-    val of_list_rev : ('a : k1). ('a List.t[@kind k1 or value_or_null]) -> 'a t
+    val of_list_rev : ('a : k1). ('a List.t[@kind k1' or value_or_null]) -> 'a t
 
     [%%template:
-    [@@@kind.default k1 = k1, k2 = base]
+    [@@@kind.default k1' = k1', k2 = base_or_null]
 
     (** Returns the first evaluation of [f] that returns [Some]. Raises [Stdlib.Not_found]
         or [Not_found_s] if [f] always returns [None]. *)
@@ -333,34 +363,31 @@ module Definitions = struct
       : ('a : k1) ('b : k2).
       'a t -> f:local_ (int -> 'a -> ('b Option.t[@kind k2])) -> 'b]
 
-    [%%template:
-    [@@@kind.default k1 = k1, k2 = base_with_ext]
-    [@@@kind k2 = (k2 or (value mod external64, value_or_null mod separable))]
+    [@@@kind.default k2' = base_or_null_with_ext]
+    [@@@kind k2 = k2' mod separable]
 
     (** [of_list_map l ~f] is the same as [of_list (List.map l ~f)]. *)
     val of_list_map
-      : ('a : k1) ('b : k2).
-      ('a List.t[@kind k1 or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
+      : ('a : k1') ('b : k2).
+      ('a List.t[@kind k1' or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
 
     (** [of_list_mapi l ~f] is the same as [of_list (List.mapi l ~f)]. *)
     val of_list_mapi
-      : ('a : k1) ('b : k2).
-      ('a List.t[@kind k1 or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t]
-
-    [@@@kind.default k2 = base_with_ext]
+      : ('a : k1') ('b : k2).
+      ('a List.t[@kind k1' or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
 
     (** [of_list_rev_map l ~f] is the same as [of_list (List.rev_map l ~f)]. *)
     val of_list_rev_map
-      : ('a : k1) ('b : k2).
-      ('a List.t[@kind k1 or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
+      : ('a : k1') ('b : k2).
+      ('a List.t[@kind k1' or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
 
     (** [of_list_rev_mapi l ~f] is the same as [of_list (List.rev_mapi l ~f)]. *)
     val of_list_rev_mapi
-      : ('a : k1) ('b : k2).
-      ('a List.t[@kind k1 or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
+      : ('a : k1') ('b : k2).
+      ('a List.t[@kind k1' or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
 
     [%%template:
-    [@@@kind.default k1 k2]
+    [@@@kind.default k1' k2']
     [@@@mode.default m = (global, local)]
 
     (** [for_all2_exn t1 t2 ~f] fails if [length t1 <> length t2]. *)
@@ -375,84 +402,100 @@ module Definitions = struct
 
     (** [findi_exn t f] returns the first index [i] of [t] for which [f i t.(i)] is true.
         It raises [Stdlib.Not_found] or [Not_found_s] if there is no such element. *)
-    val%template findi_exn : ('a : k). 'a t -> f:local_ (int -> 'a -> bool) -> #(int * 'a)
-    [@@kind k = (base_non_value, value mod external64)]
+    val%template findi_exn
+      : ('a : k mod separable).
+      'a t -> f:local_ (int -> 'a -> bool) -> #(int * 'a)
+    [@@kind k = (base_non_value, value_or_null mod external64)]
 
-    (** For backwards compatibility, we return a boxed product for the value-only version
-        of [findi_exn] (instead of a [value & value] product) *)
-    val findi_exn : 'a t -> f:local_ (int -> 'a -> bool) -> int * 'a
+    (** Like [find] but returning [or_null] instead of [option]. *)
+    val find_or_null : ('a : value). 'a t -> f:local_ ('a -> bool) -> 'a or_null
 
-    (** [find_consecutive_duplicate t ~equal] returns the first pair of consecutive
-        elements [(a1, a2)] in [t] such that [equal a1 a2]. They are returned in the same
-        order as they appear in [t]. *)
-    val find_consecutive_duplicate
-      :  'a t
-      -> equal:local_ ('a -> 'a -> bool)
-      -> ('a * 'a) option
+    (** Like [findi] but returning [or_null] instead of [option]. *)
+    val findi_or_null
+      : ('a : value).
+      'a t -> f:local_ (int -> 'a -> bool) -> (int * 'a) or_null
 
-    (** [reduce f [a1; ...; an]] is [Some (f (... (f (f a1 a2) a3) ...) an)]. Returns
-        [None] on the empty array. *)
-    val reduce : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a option
+    include sig
+      [@@@implicit_kind: ('a : value_or_null mod separable)]
 
-    val reduce_exn : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a
+      (** For backwards compatibility, we return a boxed product for the value-only
+          version of [findi_exn] (instead of a [value & value] product) *)
+      val findi_exn : 'a t -> f:local_ (int -> 'a -> bool) -> int * 'a
 
-    (** [permute ?random_state ?pos ?len t] randomly permutes [t] in place.
+      (** [find_consecutive_duplicate t ~equal] returns the first pair of consecutive
+          elements [(a1, a2)] in [t] such that [equal a1 a2]. They are returned in the
+          same order as they appear in [t]. *)
+      val find_consecutive_duplicate
+        :  'a t
+        -> equal:local_ ('a -> 'a -> bool)
+        -> ('a * 'a) option
 
-        To permute only part of the array, specify [pos] to be the index to start
-        permuting from and [len] indicating how many elements to permute.
+      (** [reduce f [a1; ...; an]] is [Some (f (... (f (f a1 a2) a3) ...) an)]. Returns
+          [None] on the empty array. *)
+      val reduce : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a option
 
-        [permute] side-effects [random_state] by repeated calls to [Random.State.int]. If
-        [random_state] is not supplied, [permute] uses [Random.State.default]. *)
-    val permute
-      :  ?random_state:Random.State.t
-      -> ?pos:int
-      -> ?len:int
-      -> local_ 'a t
-      -> unit
+      val reduce_exn : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a
 
-    (** [random_element ?random_state t] is [None] if [t] is empty, else it is [Some x]
-        for some [x] chosen uniformly at random from [t].
+      (** [permute ?random_state ?pos ?len t] randomly permutes [t] in place.
 
-        [random_element] side-effects [random_state] by calling [Random.State.int]. If
-        [random_state] is not supplied, [random_element] uses [Random.State.default]. *)
-    val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
+          To permute only part of the array, specify [pos] to be the index to start
+          permuting from and [len] indicating how many elements to permute.
 
-    val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
+          [permute] side-effects [random_state] by repeated calls to [Random.State.int].
+          If [random_state] is not supplied, [permute] uses [Random.State.default]. *)
+      val permute
+        :  ?random_state:Random.State.t
+        -> ?pos:int
+        -> ?len:int
+        -> local_ 'a t
+        -> unit
 
-    (** [split_n t n] returns a pair of arrays [(first, second)] where [first] contains
-        the first [n] elements of [t] and [second] contains the remaining elements.
+      (** [random_element ?random_state t] is [None] if [t] is empty, else it is [Some x]
+          for some [x] chosen uniformly at random from [t].
 
-        - If [n >= length t], returns [(t, [||])].
-        - If [n <= 0], returns [([||], t)]. *)
-    val split_n : 'a t -> int -> 'a t * 'a t
+          [random_element] side-effects [random_state] by calling [Random.State.int]. If
+          [random_state] is not supplied, [random_element] uses [Random.State.default]. *)
+      val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
 
-    (** [chunks_of t ~length] returns an array of arrays whose concatenation is equal to
-        the original array. Every array has [length] elements, except for possibly the
-        last array, which may have fewer. [chunks_of] raises if [length <= 0]. *)
-    val chunks_of : 'a t -> length:int -> 'a t t
+      val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
 
-    (** [zip] is like [List.zip], but for arrays. *)
-    val zip : 'a t -> 'b t -> ('a * 'b) t option
+      (** [split_n t n] returns a pair of arrays [(first, second)] where [first] contains
+          the first [n] elements of [t] and [second] contains the remaining elements.
 
-    val zip_exn : 'a t -> 'b t -> ('a * 'b) t
+          - If [n >= length t], returns [(t, [||])].
+          - If [n <= 0], returns [([||], t)]. *)
+      val split_n : 'a t -> int -> 'a t * 'a t
 
-    (** [unzip] is like [List.unzip], but for arrays. *)
-    val unzip : ('a * 'b) t -> 'a t * 'b t
+      (** [chunks_of t ~length] returns an array of arrays whose concatenation is equal to
+          the original array. Every array has [length] elements, except for possibly the
+          last array, which may have fewer. [chunks_of] raises if [length <= 0]. *)
+      val chunks_of : 'a t -> length:int -> 'a t t
 
-    (** [sorted_copy ar compare] returns a shallow copy of [ar] that is sorted. Similar to
-        List.sort *)
-    val sorted_copy : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
+      (** [zip] is like [List.zip], but for arrays. *)
+      val zip : 'a t -> 'b t -> ('a * 'b) t option
 
-    val last : 'a t -> 'a [@@deprecated "[since 2024-07] This was renamed to [last_exn]"]
-    val last_exn : 'a t -> 'a
+      val zip_exn : 'a t -> 'b t -> ('a * 'b) t
 
-    (** The input array is copied internally so that future modifications of it do not
-        change the sequence. *)
-    val to_sequence : 'a t -> 'a Sequence.t
+      (** [unzip] is like [List.unzip], but for arrays. *)
+      val unzip : ('a * 'b) t -> 'a t * 'b t
 
-    (** The input array is shared with the sequence and modifications of it will result in
-        modification of the sequence. *)
-    val to_sequence_mutable : 'a t -> 'a Sequence.t
+      (** [sorted_copy ar compare] returns a shallow copy of [ar] that is sorted. Similar
+          to List.sort *)
+      val sorted_copy : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
+
+      val last : 'a t -> 'a
+      [@@deprecated "[since 2024-07] This was renamed to [last_exn]"]
+
+      val last_exn : 'a t -> 'a
+
+      (** The input array is copied internally so that future modifications of it do not
+          change the sequence. *)
+      val to_sequence : 'a t -> 'a Sequence.t
+
+      (** The input array is shared with the sequence and modifications of it will result
+          in modification of the sequence. *)
+      val to_sequence_mutable : 'a t -> 'a Sequence.t
+    end
   end
 end
 
@@ -469,14 +512,11 @@ module type Array = sig @@ portable
 
       https://opensource.janestreet.com/standards/#private-submodules *)
   module Private : sig
-    module%template [@kind k = (value, value mod external64)] Sort : sig
+    module%template [@kind k = base_or_null_with_ext] Sort : sig
       module type Sort = sig @@ portable
         val sort
-          :  local_ ('a : k) t
-          -> compare:local_ ('a -> 'a -> int)
-          -> left:int
-          -> right:int
-          -> unit
+          : ('a : k mod separable).
+          local_ 'a t -> compare:local_ ('a -> 'a -> int) -> left:int -> right:int -> unit
       end
 
       module Insertion_sort : Sort
@@ -486,7 +526,8 @@ module type Array = sig @@ portable
         include Sort
 
         val five_element_sort
-          :  local_ ('a : k) t
+          : ('a : k mod separable).
+          local_ 'a t
           -> compare:local_ ('a -> 'a -> int)
           -> int
           -> int
@@ -498,19 +539,18 @@ module type Array = sig @@ portable
     end
 
     module%template.portable
-      [@kind k = (value, value mod external64)] Sorter (S : sig
+      [@kind k = (base_or_null_with_ext, value_or_null mod external64 non_float)] Sorter (S : sig
+        [@@@kind k = k mod separable]
+
         type ('a : k) t
 
-        val get : local_ 'a t -> int -> 'a
-        val set : local_ 'a t -> int -> 'a -> unit
-        val length : local_ 'a t -> int
+        val get : ('a : k). local_ 'a t -> int -> 'a
+        val set : ('a : k). local_ 'a t -> int -> 'a -> unit
+        val length : ('a : k). local_ 'a t -> int
       end) : sig
       val sort
-        :  ?pos:int
-        -> ?len:int
-        -> local_ 'a S.t
-        -> compare:local_ ('a -> 'a -> int)
-        -> unit
+        : ('a : k mod separable).
+        ?pos:int -> ?len:int -> local_ 'a S.t -> compare:local_ ('a -> 'a -> int) -> unit
     end
   end
 end]

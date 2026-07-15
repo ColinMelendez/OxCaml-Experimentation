@@ -41,11 +41,18 @@ val suffix : string = "CE"
 # [%log "message" (year : int) ~suffix];
 (message(year 2014)(suffix CE))
 - : unit = ()
-# [%log "with_optional" 
-        ~id1:(None : int option[@sexp.option])
+# [%log "with_optional"
+        ~id1:(Null : int or_null[@sexp.or_null])
         ~id2:(Some 123 : int option[@sexp.option])
         ~id3:(Some 456 : int option[@sexp.omit_nil])]
 (with_optional(id2 123)(id3(456)))
+- : unit = ()
+```
+
+It additionally permits optional labels instead of `[@sexp.option]`:
+```ocaml
+# [%log "with_optional" ?id1:(None : int option) ?id2:(Some 123 : int option)]
+(with_optional(id2 123))
 - : unit = ()
 ```
 
@@ -63,16 +70,16 @@ parentheses.
 # let s = [%sexp (1234 : int)] in [%log.sexp s]
 1234
 - : unit = ()
-# [%log.info_format "hello %s" "world"] 
+# [%log.info_format "hello %s" "world"]
 hello world
 - : unit = ()
-# let i = 3 in [%log.info_string "hello %{i#Int}"] 
+# let i = 3 in [%log.info_string "hello %{i#Int}"]
 hello 3
 - : unit = ()
 # [%log "hello" (3 : int)]
 (hello(3 3))
 - : unit = ()
-# [%log "hello" (3 : int) [@@legacy_tag_parentheses]] 
+# [%log "hello" (3 : int) [@@legacy_tag_parentheses]]
 (hello((3 3)))
 - : unit = ()
 ```
@@ -112,7 +119,7 @@ against accidental uses of global logging in your code.
 # Advanced usage
 ## Structural preservation
 ppx_log's normal usage tries to preserve certain structural information about its message
-payload. For instance, 
+payload. For instance,
 
 ```ocaml
 [%log "message" (year : int) ~suffix];
@@ -140,6 +147,30 @@ let my_t = { users = [ "me"; "you" ] }
 - : unit = ()
 ```
 
+## Raw messages
+
+Use `[%log.make_raw ...]` to create a raw message, and `[%log.raw ...]` to log it. Raw
+messages preserve structural information and can be serialized or passed around before
+logging.
+
+```ocaml
+# let raw = [%log.make_raw "event" ~user:("alice" : string) ~code:(200 : int)] in
+  [%log.raw raw];
+(event(user alice)(code 200))
+- : unit = ()
+```
+
+Raw messages are useful when you want to separate message creation from logging, or to
+embed structured log data in error types. Use
+`Ppx_log_types.{Raw_message,Message_data}.sexp_of_t_hum` to serialize a raw message:
+
+```ocaml
+# let (_raw_source_position, raw_data) = [%log.make_raw "event" ~user:("alice" : string) ~code:(200 : int)] in
+  Ppx_log_types.Message_data.sexp_of_t_hum raw_data |> Core.print_s;
+(event (user alice) (code 200))
+- : unit = ()
+```
+
 ## Source code position output
 `ppx_log` can add source code position to each logged message in two ways. The legacy way
 is configurable at a library level by the `-log-source-position` switch and adds source
@@ -156,13 +187,40 @@ type that does not have source locations).
 In non-legacy usage, the source can be customized using `[@@loc]`:
 ```ocaml
 module Warning_kind = struct
-  type t = 
+  type t =
     | Long_async_cycle
-    | Falling_behind 
+    | Falling_behind
     [@@deriving sexp]
 end
 
 let emit_warning ~(here : [%call_pos]) kind =
   [%log.info "Warning" (kind : Warning_kind.t) [@@loc here]]
 ;;
+```
+
+## [@list] tags
+`ppx_log` allows duplicate tags, which can be useful for matching on one of many values in a
+log message after it's been written.  The legacy way of doing this was by manually constructing
+a `(string * string) list` and using it to populate `[@@tags]`.  Instead, you can annotate a
+`_ list` type in the message with `[@list]` and one tag will be created per entry in the list.
+
+```ocaml
+# let ids = [ "abc"; "123" ] in
+  [%log "one_tag_per_id" (ids : (string list[@list]))]
+(one_tag_per_id(ids abc)(ids 123))
+- : unit = ()
+```
+
+Empty lists produce no tags.  You can use labels to rename the tag produced.
+
+```ocaml
+# let nothing = [] in
+  let ids = [ "abc"; "123" ] in
+  let users = [ "alice"; "bob" ] in
+  [%log "advanced_lists"
+    (nothing : (int list[@list]))
+    ~renamed_id:(ids : (string list[@list]))
+    ~_:(users : (string list[@list]))]
+(advanced_lists(renamed_id abc)(renamed_id 123)alice bob)
+- : unit = ()
 ```

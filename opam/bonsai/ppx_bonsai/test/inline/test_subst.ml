@@ -23,7 +23,8 @@ let%expect_test "single let%sub " =
                 pos_lnum = 0;
                 pos_cnum = (-1);
                 pos_bol = 0
-              } ((MY_EXPR)[@ppxlib.enter_value a]) ~f:(fun a -> MY_BODY))
+              } ((MY_EXPR)[@ppxlib.enter_value a])
+        ~f:(fun a -> let () = ()[@@merlin.hide ] in MY_BODY))
     [@nontail ])
     |}]
 ;;
@@ -41,7 +42,7 @@ let%expect_test "single let%sub - location in scope" =
   [%expect
     {|
     ((Let_syntax.sub ~here ((MY_EXPR)[@ppxlib.enter_value a])
-        ~f:(fun a -> MY_BODY))
+        ~f:(fun a -> let () = ()[@@merlin.hide ] in MY_BODY))
     [@nontail ])
     |}]
 ;;
@@ -64,7 +65,8 @@ let%expect_test "single pattern sub with modul" =
                 pos_lnum = 0;
                 pos_cnum = (-1);
                 pos_bol = 0
-              } ((MY_EXPR)[@ppxlib.enter_value a]) ~f:(fun a -> MY_BODY))
+              } ((MY_EXPR)[@ppxlib.enter_value a])
+        ~f:(fun a -> let () = ()[@@merlin.hide ] in MY_BODY))
     [@nontail ])
     |}]
 ;;
@@ -126,7 +128,8 @@ let%expect_test "single pattern sub open" =
                 pos_lnum = 0;
                 pos_cnum = (-1);
                 pos_bol = 0
-              } ((MY_EXPR_1)[@ppxlib.enter_value a]) ~f:(fun a -> MY_BODY))
+              } ((MY_EXPR_1)[@ppxlib.enter_value a])
+        ~f:(fun a -> let () = ()[@@merlin.hide ] in MY_BODY))
     [@nontail ])
     |}]
 ;;
@@ -300,7 +303,9 @@ let%expect_test "destructuring let%sub" =
                                                     { b = _; c = _ }) ->
                                                      __pattern_syntax__008_))
                                          [@merlin.hide ]))
-                                      ~f:(fun a -> ((MY_BODY)[@nontail ])))
+                                      ~f:(fun a ->
+                                            let () = ()[@@merlin.hide ] in
+                                            ((MY_BODY)[@nontail ])))
                                   [@nontail ])))
                         [@nontail ])))
               [@nontail ])))
@@ -347,7 +352,9 @@ let%expect_test "destructuring let%sub (location in scope)" =
                                                     { b = _; c = _ }) ->
                                                      __pattern_syntax__012_))
                                          [@merlin.hide ]))
-                                      ~f:(fun a -> ((MY_BODY)[@nontail ])))
+                                      ~f:(fun a ->
+                                            let () = ()[@@merlin.hide ] in
+                                            ((MY_BODY)[@nontail ])))
                                   [@nontail ])))
                         [@nontail ])))
               [@nontail ])))
@@ -458,7 +465,9 @@ let%expect_test "destructuring let%sub (comparing location of callsite vs locati
                                                       { b = _; c = _ }) ->
                                                        __pattern_syntax__ID_REPLACED_IN_TEST_))
                                            [@merlin.hide ]))
-                                        ~f:(fun a -> ((MY_BODY)[@nontail ])))
+                                        ~f:(fun a ->
+                                              let () = ()[@@merlin.hide ] in
+                                              ((MY_BODY)[@nontail ])))
                                     [@nontail ])))
                           [@nontail ])))
                 [@nontail ])))
@@ -794,7 +803,7 @@ let%expect_test "type annotations are preserved" =
                                  pos_bol = 0
                                } __pattern_syntax__034_
                          ~f:(function | (_ : int) -> ()))[@nontail ]))
-                  ~f:(fun _ -> ((BODY)[@nontail ])))
+                  ~f:(fun _ -> let () = ()[@@merlin.hide ] in ((BODY)[@nontail ])))
               [@nontail ])))
     [@nontail ])
     |}]
@@ -2467,8 +2476,8 @@ module%test [@name "match%sub with when clause"] _ = struct
                                                      [@ocaml.warning "-11"]))
                                                  [@merlin.hide ]))
                                               ~f:(fun x1 ->
-                                                    ((let _ : _ = x1 in BODY)
-                                                    [@nontail ])))
+                                                    let _ : _ = x1 in ((BODY)
+                                                      [@nontail ])))
                                           [@nontail ])))
                                 [@nontail ])
                             | ((1)[@merlin.hide ]) -> BODY
@@ -3062,6 +3071,198 @@ module%test [@name "arrn nesting edge cases"] _ = struct
                (x36, x37, x38, x39, x40, x41, x42),
                (x43, x44, x45, x46, x47, x48, x49))
               x50 -> MY_BODY)
+      |}]
+  ;;
+end
+
+module%test [@name "arr_debug expansion"] _ = struct
+  let expand_arr_debug expr =
+    Ppx_let_expander.expand
+      (Ppx_bonsai_expander.arr_debug Location_of_callsite)
+      Ppx_let_expander.Extension_kind.default
+      ~modul:None
+      ~locality
+      expr
+    |> print_expr
+  ;;
+
+  let%expect_test "single let%arr_debug, unpunned" =
+    expand_arr_debug
+      [%expr
+        let a = E in
+        MY_BODY];
+    [%expect
+      {|
+      Let_syntax.arr
+        ~here:{
+                Ppx_here_lib.pos_fname = "_none_";
+                pos_lnum = 0;
+                pos_cnum = (-1);
+                pos_bol = 0
+              }
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"a" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque ((E)[@ppxlib.enter_value a]))
+        ~f:(fun a -> MY_BODY)
+      |}]
+  ;;
+
+  let%expect_test "let%arr_debug on 2 things" =
+    expand_arr_debug
+      [%expr
+        let x1 = E1
+        and x2 = E2 in
+        MY_BODY];
+    [%expect
+      {|
+      let __let_syntax__509_ = ((E1)[@ppxlib.enter_value x1])[@@ppxlib.do_not_enter_value
+                                                               ]
+      and __let_syntax__510_ = ((E2)[@ppxlib.enter_value x2])[@@ppxlib.do_not_enter_value
+                                                               ] in
+      Let_syntax.arr2
+        ~here:{
+                Ppx_here_lib.pos_fname = "_none_";
+                pos_lnum = 0;
+                pos_cnum = (-1);
+                pos_bol = 0
+              }
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"x1" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque __let_syntax__509_)
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"x2" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque __let_syntax__510_)
+        ~f:(fun x1 x2 -> MY_BODY)
+      |}]
+  ;;
+
+  let%expect_test "let%arr_debug with ignored fields" =
+    expand_arr_debug
+      [%expr
+        let { a; _ } = E in
+        MY_BODY];
+    [%expect
+      {|
+      Let_syntax.arr
+        ~here:{
+                Ppx_here_lib.pos_fname = "_none_";
+                pos_lnum = 0;
+                pos_cnum = (-1);
+                pos_bol = 0
+              }
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"a" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque
+           ((Let_syntax.map
+               ~here:{
+                       Ppx_here_lib.pos_fname = "_none_";
+                       pos_lnum = 0;
+                       pos_cnum = (-1);
+                       pos_bol = 0
+                     } ((E)[@ppxlib.enter_value a])
+               ~f:(function
+                   | { a = __pattern_syntax__513_;_} -> __pattern_syntax__513_))
+           [@merlin.hide ])) ~f:(fun a -> MY_BODY)
+      |}]
+  ;;
+
+  let%expect_test "let%arr_debug with multiple ignored fields" =
+    expand_arr_debug
+      [%expr
+        let { a; b; _ } = E in
+        MY_BODY];
+    [%expect
+      {|
+      Let_syntax.arr2
+        ~here:{
+                Ppx_here_lib.pos_fname = "_none_";
+                pos_lnum = 0;
+                pos_cnum = (-1);
+                pos_bol = 0
+              }
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"a" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque
+           ((Let_syntax.map
+               ~here:{
+                       Ppx_here_lib.pos_fname = "_none_";
+                       pos_lnum = 0;
+                       pos_cnum = (-1);
+                       pos_bol = 0
+                     } E
+               ~f:(function
+                   | { a = __pattern_syntax__515_; b = _;_} ->
+                       __pattern_syntax__515_))[@merlin.hide ]))
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"b" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque
+           ((Let_syntax.map
+               ~here:{
+                       Ppx_here_lib.pos_fname = "_none_";
+                       pos_lnum = 0;
+                       pos_cnum = (-1);
+                       pos_bol = 0
+                     } E
+               ~f:(function
+                   | { a = _; b = __pattern_syntax__516_;_} ->
+                       __pattern_syntax__516_))[@merlin.hide ]))
+        ~f:(fun a b -> MY_BODY)
+      |}]
+  ;;
+
+  let%expect_test "let%arr_debug with type-annotated binding" =
+    expand_arr_debug
+      [%expr
+        let (a : int) = E in
+        MY_BODY];
+    [%expect
+      {|
+      Let_syntax.arr
+        ~here:{
+                Ppx_here_lib.pos_fname = "_none_";
+                pos_lnum = 0;
+                pos_cnum = (-1);
+                pos_bol = 0
+              }
+        (Let_syntax.debug_node
+           ~here:{
+                   Ppx_here_lib.pos_fname = "_none_";
+                   pos_lnum = 0;
+                   pos_cnum = (-1);
+                   pos_bol = 0
+                 } ~name:"a" ~equal:Base.phys_equal
+           ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque ((E)[@ppxlib.enter_value a]))
+        ~f:(fun (a : int) -> MY_BODY)
       |}]
   ;;
 end

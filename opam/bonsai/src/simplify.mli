@@ -9,7 +9,7 @@ open! Import
     applicative interface. *)
 val computation_to_function
   :  'result Computation.t
-  -> key_compare:('key -> 'key -> int)
-  -> key_id:'key Type_equal.Id.t
-  -> data_id:'data Type_equal.Id.t
+  -> key_id:'key Var_id.t
+  -> key_comparator:('key, _) Comparator.Module.t
+  -> data_id:'data Var_id.t
   -> ((Path.t -> 'key -> 'data -> 'result) * May_contain.resolved May_contain.t) option

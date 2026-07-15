@@ -12,6 +12,12 @@ module type S = sig
   val optimize_for_same_clock_rate_and_always_reading : bool
 end
 
+module Fifo_memory_type = struct
+  type t =
+    | Distributed
+    | Registers
+end
+
 module Make (M : S) = struct
   open Clocked_design
   open Signal
@@ -49,18 +55,28 @@ module Make (M : S) = struct
   module O = struct
     type 'a t =
       { full : 'a
+      ; almost_full : 'a
+      ; prog_full : 'a
       ; data_out : 'a [@bits M.width]
       ; valid : 'a
       ; almost_empty : 'a
+      ; prog_empty : 'a
       }
     [@@deriving hardcaml]
 
     let domains =
-      { full = write_dom; data_out = read_dom; valid = read_dom; almost_empty = read_dom }
+      { full = write_dom
+      ; almost_full = write_dom
+      ; prog_full = write_dom
+      ; data_out = read_dom
+      ; valid = read_dom
+      ; almost_empty = read_dom
+      ; prog_empty = read_dom
+      }
     ;;
   end
 
-  module Async_distributed_ram = struct
+  module Ram = struct
     type t =
       { clock_write : Signal.t
       ; clock_read : Signal.t
@@ -73,7 +89,7 @@ module Make (M : S) = struct
       ; read_address : Signal.t
       }
 
-    let create_clocked ~name ~clock_write ~clock_read =
+    let create_clocked ~(memory_type : Fifo_memory_type.t) ~name ~clock_write ~clock_read =
       let read_dom = Signal.get_domain clock_read in
       let write_dom = Signal.get_domain clock_write in
       let write_data = Signal.wire M.width ~dom:write_dom in
@@ -83,7 +99,11 @@ module Make (M : S) = struct
       let multiport_mem =
         Signal.multiport_memory
           ~name
-          ~attributes:[ Rtl_attribute.Vivado.Ram_style.distributed ]
+          ~attributes:
+            [ (match memory_type with
+               | Distributed -> Rtl_attribute.Vivado.Ram_style.distributed
+               | Registers -> Rtl_attribute.Vivado.Ram_style.registers)
+            ]
           ~write_ports:
             [| { write_clock = clock_write
                ; write_data
@@ -133,10 +153,83 @@ module Make (M : S) = struct
     ; raddr_wd_ffs : Always.Variable.t array
     }
 
+  type write_side_flags =
+    { full : Signal.t
+    ; almost_full : Signal.t
+    ; prog_full : Signal.t
+    }
+
+  let write_side_flags ~waddr_wd ~raddr_wd ~prog_full_thresh =
+    match raddr_wd with
+    | None -> { full = gnd; almost_full = gnd; prog_full = gnd }
+    | Some raddr_wd ->
+      let full = gray_inc ~by:1 waddr_wd ==: raddr_wd in
+      let almost_full =
+        let full_after_one_write =
+          if address_width = 1
+          then gnd (* fifo not large enough to look this far ahead *)
+          else gray_inc ~by:2 waddr_wd ==: raddr_wd
+        in
+        let full_after_two_writes =
+          if address_width = 1
+          then gnd (* fifo not large enough to look this far ahead *)
+          else gray_inc ~by:3 waddr_wd ==: raddr_wd
+        in
+        full |: full_after_one_write |: full_after_two_writes
+      in
+      let prog_full =
+        match prog_full_thresh with
+        | None -> gnd
+        | Some thresh ->
+          let used_wd =
+            uresize
+              ~width:address_width
+              (gray_to_binary waddr_wd -: gray_to_binary raddr_wd)
+          in
+          used_wd >=:. thresh
+      in
+      { full; almost_full; prog_full }
+  ;;
+
+  type read_side_flags =
+    { valid : Signal.t
+    ; almost_empty : Signal.t
+    ; prog_empty : Signal.t
+    }
+
+  let read_side_flags ~waddr_rd ~raddr_rd ~prog_empty_thresh =
+    let valid = waddr_rd <>: raddr_rd in
+    let almost_empty =
+      let current_empty = waddr_rd ==: raddr_rd in
+      let empty_after_one_read = waddr_rd ==: gray_inc ~by:1 raddr_rd in
+      let empty_after_two_reads =
+        if address_width = 1
+        then gnd (* fifo not large enough to look this far ahead *)
+        else waddr_rd ==: gray_inc ~by:2 raddr_rd
+      in
+      current_empty |: empty_after_one_read |: empty_after_two_reads
+    in
+    let prog_empty =
+      match prog_empty_thresh with
+      | None -> gnd
+      | Some thresh ->
+        let used_rd =
+          uresize
+            (gray_to_binary waddr_rd -: gray_to_binary raddr_rd)
+            ~width:address_width
+        in
+        used_rd <=:. thresh
+    in
+    { valid; almost_empty; prog_empty }
+  ;;
+
   let create_internal_clocked
     ?(use_synchronous_clear_semantics = false)
     ?(use_negedge_sync_chain = false)
     ?(sync_stages = 2)
+    ?(memory_type = Fifo_memory_type.Distributed)
+    ?prog_full_thresh
+    ?prog_empty_thresh
     ?scope
     (i : _ I.t)
     =
@@ -240,27 +333,24 @@ module Make (M : S) = struct
         in
         Some { raddr_wd; raddr_wd_ffs })
     in
-    let full =
-      match raddr_wd with
-      | None -> gnd
-      | Some { raddr_wd; _ } -> gray_inc ~by:1 waddr_wd.value ==: raddr_wd.value
+    let raddr_wd_signal =
+      Option.map raddr_wd ~f:(fun { raddr_wd; _ } -> raddr_wd.value)
     in
-    let vld = waddr_rd.value <>: raddr_rd.value in
-    let almost_empty =
-      let current = waddr_rd.value ==: raddr_rd.value in
-      let one_ahead = waddr_rd.value ==: gray_inc ~by:1 raddr_rd.value in
-      let two_ahead_if_possible =
-        if address_width = 1
-        then gnd (* fifo not large enough to look this far ahead *)
-        else waddr_rd.value ==: gray_inc ~by:2 raddr_rd.value
-      in
-      current |: one_ahead |: two_ahead_if_possible
+    let { full; almost_full; prog_full } =
+      write_side_flags
+        ~waddr_wd:waddr_wd.value
+        ~raddr_wd:raddr_wd_signal
+        ~prog_full_thresh
+    in
+    let { valid = vld; almost_empty; prog_empty } =
+      read_side_flags ~waddr_rd:waddr_rd.value ~raddr_rd:raddr_rd.value ~prog_empty_thresh
     in
     let ram =
-      Async_distributed_ram.create_clocked
+      Ram.create_clocked
         ~name:(Option.value_map scope ~default:"ram" ~f:(fun s -> Scope.name s "ram"))
         ~clock_write:i.clock_write
         ~clock_read:i.clock_read
+        ~memory_type
     in
     let raddr_rd_next =
       let read_enable =
@@ -300,20 +390,33 @@ module Make (M : S) = struct
         ; (* @(posedge clk_write) *)
           when_
             (i.write_enable &: ~:full)
-            [ Async_distributed_ram.write ram ~address:waddr_wd.value ~data:i.data_in
+            [ Ram.write ram ~address:waddr_wd.value ~data:i.data_in
             ; waddr_wd <-- gray_inc ~by:1 waddr_wd.value
             ]
         ; (* @(posedge clk_read) *)
-          data_out <-- Async_distributed_ram.read ram ~address:raddr_rd_next
+          data_out <-- Ram.read ram ~address:raddr_rd_next
         ; (* @(posedge clk_read) *)
           raddr_rd <-- raddr_rd_next
         ]);
-    { O.full; data_out = data_out.value; valid = vld; almost_empty }
+    { O.full
+    ; almost_full
+    ; prog_full
+    ; data_out = data_out.value
+    ; valid = vld
+    ; almost_empty
+    ; prog_empty
+    }
   ;;
 
   let create_clocked = create_internal_clocked ~use_synchronous_clear_semantics:false
 
-  let create_with_delay_clocked ?(delay = 0) scope (i : _ I.t) =
+  let create_with_delay_clocked
+    ?prog_full_thresh
+    ?prog_empty_thresh
+    ?(delay = 0)
+    scope
+    (i : _ I.t)
+    =
     let read_dom = Signal.get_domain i.clock_read in
     let ( -- ) = Scope.naming_clocked scope in
     let async_fifo_has_valid_value = wire ~dom:read_dom 1 in
@@ -338,6 +441,8 @@ module Make (M : S) = struct
     in
     let async_fifo =
       create_clocked
+        ?prog_full_thresh
+        ?prog_empty_thresh
         ~scope
         { i with
           read_enable = (i.read_enable &: delay_val) -- "read_en"
@@ -347,9 +452,12 @@ module Make (M : S) = struct
     in
     async_fifo_has_valid_value <-- async_fifo.valid;
     { O.full = async_fifo.full -- "full"
+    ; almost_full = async_fifo.almost_full -- "almost_full"
+    ; prog_full = async_fifo.prog_full -- "prog_full"
     ; data_out = async_fifo.data_out
     ; valid = async_fifo.valid &: delay_val
     ; almost_empty = async_fifo.almost_empty
+    ; prog_empty = async_fifo.prog_empty -- "prog_empty"
     }
   ;;
 
@@ -361,6 +469,9 @@ module Make (M : S) = struct
     ?name
     ?use_negedge_sync_chain
     ?sync_stages
+    ?memory_type
+    ?prog_full_thresh
+    ?prog_empty_thresh
     ?scope
     input
     =
@@ -379,23 +490,40 @@ module Make (M : S) = struct
           ~use_synchronous_clear_semantics
           ?use_negedge_sync_chain
           ?sync_stages
+          ?memory_type
+          ?prog_full_thresh
+          ?prog_empty_thresh
           ~scope
           input)
       input
   ;;
 
-  let make_create_or_hierarchical_delayed ?name ~how_to_instantiate ~delay ~scope input =
+  let make_create_or_hierarchical_delayed
+    ?name
+    ?prog_full_thresh
+    ?prog_empty_thresh
+    ~how_to_instantiate
+    ~delay
+    ~scope
+    input
+    =
     H.hierarchical
       ?name
       ~how_to_instantiate
       ~caller_signal_type:Signal
       ~scope
-      (create_with_delay_clocked ?delay)
+      (create_with_delay_clocked ?prog_full_thresh ?prog_empty_thresh ?delay)
       input
   ;;
 
-  let create_with_delay ?delay scope (i : _ I.t) =
-    make_create_or_hierarchical_delayed ~delay ~how_to_instantiate:Inlined ~scope i
+  let create_with_delay ?prog_full_thresh ?prog_empty_thresh ?delay scope (i : _ I.t) =
+    make_create_or_hierarchical_delayed
+      ?prog_full_thresh
+      ?prog_empty_thresh
+      ~delay
+      ~how_to_instantiate:Inlined
+      ~scope
+      i
   ;;
 
   (* The tcl scripts that constrain the name of this module depend on the module name
@@ -409,21 +537,41 @@ module Make (M : S) = struct
       ~how_to_instantiate:Inlined
   ;;
 
-  let hierarchical ?(name = base_name) ?use_negedge_sync_chain ?sync_stages scope i =
+  let hierarchical
+    ?(name = base_name)
+    ?use_negedge_sync_chain
+    ?sync_stages
+    ?memory_type
+    ?prog_full_thresh
+    ?prog_empty_thresh
+    scope
+    i
+    =
     make_create_or_hierarchical_basic
       ~how_to_instantiate:Hierarchical_or_inlined_by_scope
       ~use_synchronous_clear_semantics:false
       ~name
       ?use_negedge_sync_chain
       ?sync_stages
+      ?memory_type
+      ?prog_full_thresh
+      ?prog_empty_thresh
       ~scope
       i
   ;;
 
-  let hierarchical_with_delay ?(name = [%string "%{base_name}_with_delay"]) ?delay scope i
+  let hierarchical_with_delay
+    ?(name = [%string "%{base_name}_with_delay"])
+    ?prog_full_thresh
+    ?prog_empty_thresh
+    ?delay
+    scope
+    i
     =
     make_create_or_hierarchical_delayed
       ~name
+      ?prog_full_thresh
+      ?prog_empty_thresh
       ~how_to_instantiate:Inlined_in_scope
       ~delay
       ~scope
@@ -434,6 +582,8 @@ module Make (M : S) = struct
     let create_with_synchronous_clear_semantics_for_simulation_only
       ?use_negedge_sync_chain
       ?sync_stages
+      ?prog_full_thresh
+      ?prog_empty_thresh
       ?scope
       input
       : _ O.t
@@ -443,6 +593,8 @@ module Make (M : S) = struct
         ~use_synchronous_clear_semantics:true
         ?use_negedge_sync_chain
         ?sync_stages
+        ?prog_full_thresh
+        ?prog_empty_thresh
         ?scope
         input
     ;;

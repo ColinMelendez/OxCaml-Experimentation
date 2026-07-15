@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/async_iterator/issues"
 dev-repo: "git+https://github.com/janestreet/async_iterator.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/async_iterator/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -20,7 +21,10 @@ depends: [
   "rpc_parallel"
   "dune"             {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "An opinionated asynchronous stream-processing framework"
 description: "
 Async_iterator provides a suite of tools for building single-process,

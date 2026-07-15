@@ -3,9 +3,9 @@ open! Bonsai_web
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Table = Bonsai_web_ui_partial_render_table.Basic
+module Table = Bonsai_web_partial_render_table.Basic
 module Column = Table.Columns.Dynamic_cells
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Form = Bonsai_web_form.With_automatic_view
 
 let header text = Vdom.Node.text text |> Bonsai.return
 
@@ -133,11 +133,11 @@ let component (local_ graph) =
             | _ -> None
           in
           match binding with
-          | Some b -> Effect.Many [ Effect.Prevent_default; b ]
+          | Some b -> Effect.Many [ (Effect.Prevent_default [@alert "-deprecated"]); b ]
           | None -> Effect.Ignore)
       ]
   in
   Vdom.Node.div ~attrs:[ attr ] [ Form.view_as_vdom which_form; tables ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

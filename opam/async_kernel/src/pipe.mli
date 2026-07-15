@@ -69,8 +69,8 @@ val create_reader
     pipe, applies [f] to its reader end, and returns its writer end. [create_writer] calls
     [close_read] when the result of [f] becomes determined. If [f] raises, [create_writer]
     closes the pipe and raises the exception to the caller of [create_writer].
-    [create_writer] closes on exception, unlike [create_reader], because closing closing
-    the read end of a pipe is a signal to the writer that the consumer has failed. *)
+    [create_writer] closes on exception, unlike [create_reader], because closing the read
+    end of a pipe is a signal to the writer that the consumer has failed. *)
 val create_writer : ?size_budget:int -> ('a Reader.t -> unit Deferred.t) -> 'a Writer.t
 
 (** [create ()] creates a new pipe. It is preferable to use [create_reader] or
@@ -466,7 +466,14 @@ val read_now
     [`Nothing_available] cases. *)
 val read_now_exn : ?consumer:Consumer.t -> 'a Reader.t -> 'a
 
+(** [peek] returns the next element if known, without consuming it. This conflates the two
+    very different situations: no value available yet, and Eof has been reached. See
+    [peek'_now] to distinguish those. *)
 val peek : 'a Reader.t -> 'a option
+
+(** [peek'_now] is like [read_now] except it does not remove the returned value from the
+    pipe. (it's also like [peek'], but without waiting) *)
+val peek'_now : 'a Reader.t -> [ `Eof | `Nothing_available | `Ok of 'a ]
 
 (** [ peek' ] is like [ read ] except it does not remove the returned value from the pipe *)
 val peek' : 'a Reader.t -> [ `Eof | `Ok of 'a ] Deferred.t

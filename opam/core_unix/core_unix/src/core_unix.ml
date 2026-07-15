@@ -79,7 +79,7 @@ external exit_immediately : int -> _ @ portable unique @@ portable = "caml_sys_e
 
 external unsafe_read_assume_fd_is_nonblocking
   :  File_descr.t
-  -> Bytes.t
+  -> Bytes.t @ local
   -> pos:int
   -> len:int
   -> int
@@ -116,7 +116,7 @@ let read_assume_fd_is_nonblocking fd ?pos ?len buf =
 
 external unsafe_write_assume_fd_is_nonblocking
   :  File_descr.t
-  -> Bytes.t @ shared
+  -> Bytes.t @ local read
   -> pos:int
   -> len:int
   -> int
@@ -425,7 +425,7 @@ let get_iovec_count loc iovecs = function
 
 external unsafe_writev_assume_fd_is_nonblocking
   :  File_descr.t
-  -> string IOVec.t array @ shared
+  -> string IOVec.t array @ local read
   -> int
   -> int
   @@ portable
@@ -438,7 +438,7 @@ let writev_assume_fd_is_nonblocking fd ?count iovecs =
 
 external unsafe_writev
   :  File_descr.t
-  -> string IOVec.t array @ shared
+  -> string IOVec.t array @ local read
   -> int
   -> int
   @@ portable
@@ -594,22 +594,6 @@ end
 
 module Priority = struct
   external nice : int -> int @@ portable = "core_unix_nice"
-end
-
-module Mman = struct
-  module Mcl_flags = struct
-    type t =
-      (* Do not change the ordering of this type without also changing the C stub. *)
-      | Current
-      | Future
-    [@@deriving sexp]
-  end
-
-  external unix_mlockall : Mcl_flags.t array -> unit @@ portable = "core_unix_mlockall"
-  external unix_munlockall : unit -> unit @@ portable = "core_unix_munlockall"
-
-  let mlockall flags = unix_mlockall (List.to_array flags)
-  let munlockall = unix_munlockall
 end
 
 let dirname_r filename = "dirname", atom filename
@@ -1104,11 +1088,7 @@ let wait4 ?(restart = true) ~mode wait_on =
   if x = 0 then None else Some ((Pid.of_int x, Exit_or_signal_or_stop.of_unix ps), rusage)
 ;;
 
-let wait_with_resource_usage ?restart wait_on =
-  let (pid, ps), rusage =
-    wait4 ?restart ~mode:[] wait_on
-    |> Option.value_exn ~message:"unexpected None with wait4 without WNOHANG"
-  in
+let wait_with_resource_usage_gen ((pid, ps), rusage) =
   match ps with
   | (Ok _ | Error #Exit_or_signal.error) as x -> (pid, x), rusage
   | Error (`Stop _) ->
@@ -1118,6 +1098,16 @@ let wait_with_resource_usage ?restart wait_on =
           , ~~(pid : Pid.t)
           , ~~(ps : Exit_or_signal_or_stop.t) )
         ]]
+;;
+
+let wait_with_resource_usage ?restart wait_on =
+  wait4 ?restart ~mode:[] wait_on
+  |> Option.value_exn ~message:"unexpected None with wait4 without WNOHANG"
+  |> wait_with_resource_usage_gen
+;;
+
+let wait_nohang_with_resource_usage wait_on =
+  wait4 ~mode:[ WNOHANG ] wait_on |> Option.map ~f:wait_with_resource_usage_gen
 ;;
 
 let system s =
@@ -1228,7 +1218,7 @@ let%template read_write f ?restart ?pos ?len fd ~buf =
     ?restart
     (stack_ fun () -> f fd ~buf ~pos ~len)
     (stack_ fun () -> [ fd_r fd; "pos", Int.sexp_of_t pos; len_r len ]) [@nontail]
-[@@mode c = (uncontended, shared)]
+[@@mode v = (read_write, read)]
 ;;
 
 let read_write_string f ?restart ?pos ?len fd ~buf =
@@ -1246,9 +1236,9 @@ let read_write_string f ?restart ?pos ?len fd ~buf =
 ;;
 
 let read = read_write Unix.read
-let write = [%template read_write [@mode shared]] Unix.write ?restart:None
+let write = [%template read_write [@mode read]] Unix.write ?restart:None
 let write_substring = read_write_string Unix.write_substring ?restart:None
-let single_write = [%template read_write [@mode shared]] Unix.single_write
+let single_write = [%template read_write [@mode read]] Unix.single_write
 let single_write_substring = read_write_string Unix.single_write_substring
 let in_channel_of_descr = Unix.in_channel_of_descr
 let out_channel_of_descr = Unix.out_channel_of_descr
@@ -2165,6 +2155,8 @@ module Pre_exec_command = struct
         ; ignore_eperm : bool
         }
     | Sched_setaffinity of int list
+    | Chdir of string
+    | Setsid of unit (* Takes a unit argument to simplify C stubs - all ctors are boxed *)
   [@@deriving sexp]
 end
 
@@ -2188,15 +2180,17 @@ let fork_exec ~prog ~argv ?(preexec = []) ?(use_path = true) ?env () =
   match do_fork_exec ~progs ~argv ~env ~preexec with
   | Ok pid -> pid
   | Error (ix, errno) ->
-    let cmd =
+    let function_name =
       assert (ix >= -1);
       if ix = -1
-      then [%sexp "vfork"]
+      then "Core_unix.fork_exec: vfork"
       else if ix < List.length preexec
-      then [%sexp (List.nth_exn preexec ix : Pre_exec_command.t)]
-      else [%sexp (("exec", prog) : string * string)]
+      then
+        "Core_unix.fork_exec: "
+        ^ Sexp.to_string [%sexp (List.nth_exn preexec ix : Pre_exec_command.t)]
+      else "Core_unix.fork_exec: exec"
     in
-    raise_s [%sexp (("Core_unix.fork_exec", cmd, errno) : string * Sexp.t * Error.t)]
+    raise (Unix.Unix_error (errno, function_name, prog))
 ;;
 
 external setpgid : int -> int -> unit @@ portable = "core_unix_setpgid"

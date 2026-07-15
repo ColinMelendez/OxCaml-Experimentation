@@ -241,7 +241,7 @@ class map_with_expansion_context_and_errors =
       with_value_description >>= fun ctxt -> super#value_description ctxt vd
 
     method! value_binding ctxt
-        ({ pvb_pat; pvb_expr; pvb_attributes; pvb_loc; pvb_modes } as vb) =
+        ({ pvb_is_poly; pvb_pat; pvb_expr; pvb_attributes; pvb_loc; pvb_modes } as vb) =
       Attribute.get_res do_not_enter_value_binding vb |> of_result ~default:None
       >>= function
       | Some () -> super#value_binding ctxt vb
@@ -271,7 +271,7 @@ class map_with_expansion_context_and_errors =
                 ("pvb_modes", modes_errors);
               ]
           in
-          ({ pvb_pat; pvb_expr; pvb_attributes; pvb_loc; pvb_modes }, errors)
+          ({ pvb_is_poly; pvb_pat; pvb_expr; pvb_attributes; pvb_loc; pvb_modes }, errors)
   end
 
 class sexp_of =

@@ -502,6 +502,34 @@ let change =
        | Some data -> insert_link t ~index ~key ~data ~it)
 ;;
 
+let change_or_null =
+  let call t f x = without_mutating t (fun () -> f x) () [@nontail] in
+  let rec change_key t key f index e prev =
+    if Entry.is_null e
+    then `Not_found
+    else (
+      let curr_key = Entry.key t.entries e in
+      if compare_key t curr_key key = 0
+      then (
+        (match call t f (This (Entry.data t.entries e)) with
+         | This data -> Entry.set_data t.entries e data
+         | Null -> delete_link t ~index ~prev ~e);
+        `Changed)
+      else change_key t key f index (Entry.next t.entries e) e)
+  in
+  fun t key ~f ->
+    ensure_mutation_allowed t;
+    let index = slot t key in
+    let it = table_get t.table index in
+    match change_key t key f index it (Entry.null ()) with
+    | `Changed -> ()
+    | `Not_found ->
+      (* New entry is inserted in the beginning of the list (it) *)
+      (match call t f Null with
+       | Null -> ()
+       | This data -> insert_link t ~index ~key ~data ~it)
+;;
+
 let incr_by ~remove_if_zero t key by =
   if remove_if_zero
   then
@@ -521,6 +549,16 @@ let incr_by ~remove_if_zero t key by =
 let incr ?(by = 1) ?(remove_if_zero = false) t key = incr_by ~remove_if_zero t key by
 let decr ?(by = 1) ?(remove_if_zero = false) t key = incr_by ~remove_if_zero t key (-by)
 let update t key ~f = change t key ~f:(fun data -> Some (f data)) [@nontail]
+
+let update_or_null t key ~f =
+  change_or_null t key ~f:(fun data -> This (f data)) [@nontail]
+;;
+
+(* This could be optimized if desired. *)
+let update_or_null_and_return t key ~f =
+  update_or_null t key ~f;
+  find_exn t key
+;;
 
 (* This could be optimized if desired. *)
 let update_and_return t key ~f =
@@ -1006,7 +1044,10 @@ module Accessors = struct
   let add = add
   let add_exn = add_exn
   let change = change
+  let change_or_null = change_or_null
   let update = update
+  let update_or_null = update_or_null
+  let update_or_null_and_return = update_or_null_and_return
   let update_and_return = update_and_return
   let add_multi = add_multi
   let remove_multi = remove_multi
@@ -1022,7 +1063,7 @@ module Accessors = struct
   let count = count
   let counti = counti
   let fold = fold
-  let length = length
+  let length = [%eta1 length]
   let capacity = capacity
   let growth_allowed = growth_allowed
   let is_empty = is_empty
@@ -1225,7 +1266,11 @@ Bin_prot.Utils.Make_iterable_binable1 (struct
   end)
 
 module Make_plain_with_hashable (T : sig
-    module Key : Key_plain
+    module Key : sig
+      type t
+
+      include Key_plain with type t := t
+    end
 
     val hashable : Key.t Hashable.t
   end) =
@@ -1307,7 +1352,12 @@ struct
   include Provide_stable_witness (T.Key)
 end
 
-module Make_plain (Key : Key_plain) = Make_plain_with_hashable (struct
+module Make_plain (Key : sig
+    type t
+
+    include Key_plain with type t := t
+  end) =
+Make_plain_with_hashable (struct
     module Key = Key
 
     let hashable =

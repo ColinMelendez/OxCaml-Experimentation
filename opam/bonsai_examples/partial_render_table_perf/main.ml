@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Form = Bonsai_web_ui_form.With_manual_view
-open Bonsai_web_ui_partial_render_table_configs_for_testing
+module Form = Bonsai_web_form.With_manual_view
+open Bonsai_web_partial_render_table_configs_for_testing
 module Config = All_apis_configs
 module Snips = Bonsai_experimental_snips
 
@@ -245,7 +245,7 @@ let component (local_ graph) =
           | _ -> None
         in
         match binding with
-        | Some b -> Effect.Many [ Effect.Prevent_default; b ]
+        | Some b -> Effect.Many [ (Effect.Prevent_default [@alert "-deprecated"]); b ]
         | None -> Effect.Ignore)
     in
     let layout =
@@ -269,7 +269,5 @@ let component (local_ graph) =
 let () =
   component
   |> View.Theme.set_for_app (Bonsai.return (Kado.theme ~version:Bleeding ()))
-  |> Bonsai_web.Start.start
-       ~use_new_experimental_implementation:true
-       ~enable_bonsai_telemetry:Enabled
+  |> Bonsai_web.Start.start ~use_new_experimental_implementation:true
 ;;

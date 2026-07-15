@@ -3,7 +3,7 @@ open! Bonsai_private_base.Import
 open! Bonsai_private_base
 
 val f
-  :  id:'a Type_equal.Id.t
+  :  id:'a Var_id.t
   -> default:'b
   -> for_some:('a -> 'b)
   -> here:Source_code_position.t

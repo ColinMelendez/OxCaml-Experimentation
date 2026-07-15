@@ -252,3 +252,18 @@ If you do that, you can now use two new flags of the executable containing the t
 
 A build system can combine these two commands by first listing partitions, and then
 running one command for each partition.
+
+Inline test code in executable artifacts
+----------------------------------------
+
+Inline tests are only run when the inline-test-runner executable is linked.
+`ppx_inline_test` is set up so that, with a high optimization level, the native compiler
+is able to dead-code eliminate tests from the produced executable artifacts during native
+builds.
+
+For js\_of\_ocaml, however, the dead-code elimination needs a bit more help, which can be
+done by statically setting an environment variable under js\_of\_ocaml builds in your dune
+file:
+```
+(js_of_ocaml (flags (:standard --setenv FORCE_DROP_INLINE_TEST=true)))
+```

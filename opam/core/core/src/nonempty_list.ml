@@ -1,5 +1,8 @@
 [@@@ocaml.flambda_o3]
 
+[%%template
+[@@@kind_set.define all_ks_non_value = base_non_value]
+
 module Stable = struct
   open Stable_internal
   open Ppx_compare_lib.Builtin
@@ -12,7 +15,8 @@ module Stable = struct
     module T = struct
       type%template ('a : k) t = ('a Base.Nonempty_list.t[@kind k]) =
         | ( :: ) of 'a * ('a List.V1.t[@kind k])
-      [@@kind k = base_non_value] [@@deriving compare ~localize, equal ~localize]
+      [@@kind k = all_ks_non_value]
+      [@@deriving bin_io ~localize, compare ~localize, equal ~localize]
 
       type nonrec ('a : value_or_null) t = 'a Base.Nonempty_list.t =
         | ( :: ) of 'a * 'a list
@@ -22,7 +26,7 @@ module Stable = struct
     include T
 
     module Format = struct
-      type 'a t = 'a list [@@deriving bin_io, sexp, stable_witness]
+      type 'a t = 'a list [@@deriving bin_io, sexp ~stackify, stable_witness]
     end
 
     include%template
@@ -39,15 +43,18 @@ module Stable = struct
           ;;
         end)
 
-    include%template
-      Sexpable.Of_sexpable1.V1 [@modality portable]
-        (Format)
-        (struct
-          include T
+    module To = struct
+      include T
 
-          let to_sexpable = Base.Nonempty_list.to_list
-          let of_sexpable = Base.Nonempty_list.of_list_exn
-        end)
+      let%template[@alloc a @ m = (heap_global, stack_local)] to_sexpable =
+        (Base.Nonempty_list.to_list [@mode m])
+      ;;
+
+      let of_sexpable = Base.Nonempty_list.of_list_exn
+    end
+
+    include%template
+      Sexpable.Of_sexpable1.V1 [@modality portable] [@alloc stack] (Format) (To)
 
     let t_sexp_grammar (type a) ({ untyped = element } : [%sexp_grammar: a])
       : [%sexp_grammar: a t]
@@ -77,7 +84,7 @@ module Stable = struct
       type nonrec 'a t = 'a V3.t = ( :: ) of 'a * 'a list
       [@@deriving compare ~localize, equal ~localize, hash]
 
-      let sexp_of_t = V3.sexp_of_t
+      let%template[@alloc a = (heap, stack)] sexp_of_t = (V3.sexp_of_t [@alloc a])
       let t_of_sexp = V3.t_of_sexp
       let t_sexp_grammar = V3.t_sexp_grammar
     end
@@ -127,7 +134,7 @@ module Stable = struct
       type 'a t = 'a V2.t = ( :: ) of 'a * 'a list
       [@@deriving compare ~localize, equal ~localize]
 
-      let sexp_of_t = V2.sexp_of_t
+      let%template[@alloc a = (heap, stack)] sexp_of_t = (V2.sexp_of_t [@alloc a])
       let t_of_sexp = V2.t_of_sexp
       let t_sexp_grammar = V2.t_sexp_grammar
     end
@@ -173,6 +180,13 @@ open Std_internal
 module Unstable = Stable.V3
 include Base.Nonempty_list
 
+[%%template
+[@@@kind.default k = all_ks_non_value]
+
+[%%rederive
+  type nonrec ('a : k) t = ('a t[@kind k]) = ( :: ) of 'a * ('a List.t[@kind k])
+  [@@deriving bin_io ~localize]]]
+
 [%%rederive
   type nonrec 'a t = 'a t = ( :: ) of 'a * 'a list
   [@@deriving bin_io ~localize ~portable, quickcheck ~portable, typerep]]
@@ -208,7 +222,13 @@ let anons anons =
 module Option = struct
   type 'a t = 'a list
   [@@deriving
-    compare ~localize, equal ~localize, sexp, sexp_grammar, hash, quickcheck, typerep]
+    compare ~localize
+    , equal ~localize
+    , sexp ~stackify
+    , sexp_grammar
+    , hash
+    , quickcheck
+    , typerep]
 
   let[@inline always] none () = []
   let some (_ :: _ as value : 'a nonempty_list) : 'a t = Obj.magic value
@@ -237,4 +257,4 @@ module Option = struct
       let unsafe_value = unchecked_value
     end
   end
-end
+end]

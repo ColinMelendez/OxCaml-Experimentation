@@ -14,7 +14,7 @@ type t =
   }
 [@@deriving sexp_of, fields ~getters]
 
-let create ?(outputs = []) ~name properties =
+let create ?(normalize_uids = false) ?(outputs = []) ~name properties =
   let module Signal_compare = struct
     module T = struct
       type t = Signal.t [@@deriving sexp_of]
@@ -61,6 +61,7 @@ let create ?(outputs = []) ~name properties =
   { circuit =
       Circuit.create_exn
         ~name
+        ~config:{ Circuit.Config.default with normalize_uids }
         (List.concat [ List.map atomic_propositions ~f:snd; outputs ])
   ; properties
   ; atomic_propositions_map =
@@ -75,6 +76,7 @@ let of_circuit ?(outputs = false) circuit properties =
   create
     ~outputs:(if outputs then Circuit.outputs circuit else [])
     ~name:(Circuit.name circuit)
+    ~normalize_uids:(Circuit.config circuit).normalize_uids
     properties
 ;;
 
@@ -200,10 +202,10 @@ let to_rope { circuit = circ; properties = props; atomic_propositions_map } =
           Option.value_map
             register.reset
             ~default:nxt
-            ~f:(fun { reset; reset_edge; reset_to } ->
-              match reset_edge with
-              | Rising -> mux2 (name reset) (name reset_to) nxt
-              | Falling -> mux2 (name reset) nxt (name reset_to))
+            ~f:(fun { reset; reset_level; reset_to } ->
+              match reset_level with
+              | High -> mux2 (name reset) (name reset_to) nxt
+              | Low -> mux2 (name reset) nxt (name reset_to))
         in
         nxt
       in
@@ -225,7 +227,7 @@ let to_rope { circuit = circ; properties = props; atomic_propositions_map } =
         Option.value_map
           register.reset
           ~default
-          ~f:(fun { reset = _; reset_edge = _; reset_to } ->
+          ~f:(fun { reset = _; reset_level = _; reset_to } ->
             const_string_of_signal reset_to)
       in
       Rope.concat
@@ -416,7 +418,7 @@ module Output_parser = struct
   ;;
 end
 
-let nusmv_path = Tools_config.nusmv
+let nusmv_path = Hardcaml_tools_config.nusmv
 
 let run (t : t) =
   let tmp_file = Stdlib.Filename.temp_file "hardcaml_verify_nusmv" "txt" in
@@ -461,9 +463,11 @@ module With_interface (I : Hardcaml.Interface.S) (O : Hardcaml.Interface.S) = st
 
   let to_alist signals = List.map signals ~f:(fun s -> name_exn s, s)
 
-  let create ~name create =
+  let create ?(normalize_uids = false) ~name create =
     let module C = Hardcaml.Circuit.With_interface (I) (O) in
-    let circuit = C.create_exn ~name create in
+    let circuit =
+      C.create_exn ~name ~config:{ Circuit.Config.default with normalize_uids } create
+    in
     let inputs =
       I.Unsafe_assoc_by_port_name.of_alist (to_alist (Hardcaml.Circuit.inputs circuit))
     in

@@ -209,6 +209,7 @@ module Make (Config : Config) (Memory : Memory_bus_intf.S) = struct
     let%hw next_pixel_reg = reg spec next_pixel in
     let%hw.Fifo.Of_signal pixel_buffer =
       Fifo.create
+        ~scope
         ~showahead:true
         ~clock
         ~clear:(clear |: next_frame)

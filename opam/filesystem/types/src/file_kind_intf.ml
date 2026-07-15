@@ -18,10 +18,7 @@ module type S = sig @@ portable
     , quickcheck ~portable
     , sexp_of ~portable]
 
-  (** Conversions *)
-
-  val to_unix_file_kind : t -> Core_unix.file_kind
-  val of_unix_file_kind : Core_unix.file_kind -> t
+  (** Conversions (Async) *)
 
   val to_async_file_kind
     :  t

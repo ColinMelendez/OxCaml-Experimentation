@@ -202,7 +202,14 @@ let test_observer (type a) ?config ?(mode = `transparent) ?cr observer m =
           (lazy [%message "generated functions did not treat input as opaque"]))
 ;;
 
-let test_shrinker (type a : value_or_null) ?config:_ ?(mode = `compound) ?cr shrinker m =
+let test_shrinker
+  (type a : value_or_null mod separable)
+  ?config:_
+  ?(mode = `compound)
+  ?cr
+  shrinker
+  m
+  =
   let (module Value : With_examples with type t = a) = m in
   let alist =
     List.map Value.examples ~f:(fun value ->
@@ -337,6 +344,7 @@ let m_list (type elt : value_or_null) (module Elt : With_examples with type t = 
 ;;
 
 let m_array m = m_biject (m_list m) ~f:Array.of_list ~f_inverse:Array.to_list
+let m_iarray m = m_biject (m_list m) ~f:Iarray.of_list ~f_inverse:Iarray.to_list
 let m_ref m = m_biject m ~f:Ref.create ~f_inverse:Ref.( ! )
 let m_lazy_t m = m_biject m ~f:Lazy.from_val ~f_inverse:Lazy.force
 

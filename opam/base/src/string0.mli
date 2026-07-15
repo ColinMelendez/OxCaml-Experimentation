@@ -25,7 +25,10 @@ val max_length : int
 val ( ^ ) : string @ local -> string @ local -> string
 val capitalize : string -> string
 val compare : string -> string -> int
-val escaped : string -> string
+
+val%template escaped : string @ l -> string @ l
+[@@alloc a @ l = (heap @ global, stack @ local)]
+
 val sub : string -> pos:int -> len:int -> string
 val uncapitalize : string -> string
 val is_valid_utf_8 : string @ local -> bool
@@ -44,12 +47,11 @@ val make : int -> char -> string @ m
 val concat : ?sep:string -> string list @ local -> string @ m
 val append : string @ local -> string @ local -> string @ m
 val lowercase : string @ m -> string @ m
-val uppercase : string @ m -> string @ m]
+val uppercase : string @ m -> string @ m
+val split_lines : string @ m -> string list @ m]
 
 val%template iter : string @ m -> f:(char -> unit) @ local -> unit
 [@@mode m = (global, local)]
-
-val split_lines : string -> string list
 
 val unsafe_blits
   :  dst:bytes @ local

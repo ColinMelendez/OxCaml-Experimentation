@@ -1,7 +1,5 @@
 open Base
 
-[@@@warning "-incompatible-with-upstream"]
-
 (** Each single_error is a path indicating the location within the datastructure in
     question that is being validated, along with an error message. *)
 type single_error =
@@ -74,8 +72,7 @@ let%template pass_bool (_ : bool) = get_pass () [@@mode __ = (portable, nonporta
 let%template pass_unit (_ : unit) = get_pass () [@@mode __ = (portable, nonportable)]
 
 [%%template
-[@@@kind.default
-  k = (value_or_null, float64, bits32, bits64, word, immediate, immediate64)]
+[@@@kind.default k = base_or_null_with_imm]
 
 let protect (type a : k) (f : (a check[@mode p1]) @ p2) (v : a) =
   try f v with
@@ -97,6 +94,21 @@ let field (type a : k) (check : (a check[@mode p])) record fld =
   let v = (Field.get [@kind k]) fld record in
   (field_direct [@kind k] [@mode p]) check fld record v
 [@@mode p = (portable, nonportable)] [@@warning "-unused-value-declaration"]
+;;
+
+let field_folder (type a : k) (check : (a check[@mode p])) record =
+  ();
+  fun acc fld -> (field [@kind k] [@mode p]) check record fld :: acc
+[@@mode p = (portable, nonportable)]
+;;
+
+let[@inline] lazy_booltest (type a : k) (f : a -> bool) ~if_false =
+  (protect [@kind k]) (fun (v : a) ->
+    if f v then get_pass () else fail (Lazy.force if_false))
+;;
+
+let[@inline] booltest f ~if_false =
+  (lazy_booltest [@kind k]) f ~if_false:(Lazy.from_val if_false)
 ;;]
 
 let%template try_with (f @ p) =
@@ -134,12 +146,6 @@ let maybe_raise t =
 ;;
 
 let valid_or_error check x = Or_error.map (result (protect check x)) ~f:(fun () -> x)
-
-let%template field_folder check record =
-  ();
-  fun acc fld -> (field [@mode p]) check record fld :: acc
-[@@mode p = (portable, nonportable)]
-;;
 
 let%template portable_field_folder check record =
   let f = (field_folder [@mode portable]) check record in
@@ -180,12 +186,6 @@ let%template of_error f =
     | Error error -> [ { path = []; error } ])
 [@@mode p = (portable, nonportable)]
 ;;
-
-let[@inline] lazy_booltest f ~if_false =
-  protect (fun v -> if f v then get_pass () else fail (Lazy.force if_false))
-;;
-
-let[@inline] booltest f ~if_false = lazy_booltest f ~if_false:(Lazy.from_val if_false)
 
 let%template pair ~fst ~snd (fst_value, snd_value) =
   (of_list [@mode p1])

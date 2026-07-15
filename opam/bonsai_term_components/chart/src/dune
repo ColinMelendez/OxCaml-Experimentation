@@ -1,0 +1,7 @@
+(library
+ (name bonsai_term_chart)
+ (public_name bonsai_term_components.chart)
+ (libraries bonsai_term bonsai_term_border_box bonsai_term_color_scheme
+   bonsai_term_typography core)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))

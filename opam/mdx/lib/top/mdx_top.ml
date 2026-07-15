@@ -455,13 +455,13 @@ let add_directive ~name ~doc kind =
               | Longident.Lident s -> s
               | Longident.Ldot (_, s) -> s
               | Longident.Lapply _ ->
-                  Format.printf "Invalid path %a@." Printtyp.longident lid;
+                  Format.printf "Invalid path %a@." Printtyp.Compat.longident lid;
                   raise Exit
             in
             let id = Ident.create_persistent s in
             let sg = to_sig env loc id lid in
             Printtyp.wrap_printing_env ~error:false env (fun () ->
-                Format.printf "@[%a@]@." Printtyp.signature sg)
+                Format.printf "@[%a@]@." Printtyp.Compat.signature sg)
           with
           | Not_found -> Format.printf "@[Unknown element.@]@."
           | Exit -> ()

@@ -1,0 +1,6 @@
+(library
+ (name bonsai_term_color_scheme_solarized_light)
+ (public_name bonsai_term_components.color_scheme.solarized_light)
+ (libraries bonsai_term_color_scheme_catppuccin core)
+ (preprocess
+  (pps ppx_jane)))

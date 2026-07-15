@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/notty_async/issues"
 dev-repo: "git+https://github.com/janestreet/notty_async.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/notty_async/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -15,9 +16,12 @@ depends: [
   "core_unix"
   "ppx_jane"
   "dune"            {>= "3.17.0"}
-  "notty-community" {= "0.2.4+ox"}
+  "notty-community" {>= "0.2.4"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "An Async driver for Notty"
 description: "
 Notty is a library for writing graphical terminal applications, and Notty_async

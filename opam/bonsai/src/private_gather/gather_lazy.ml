@@ -91,19 +91,20 @@ let f
     in
     let new_model =
       match input with
-      | Some (Meta.Input.Hidden.T { input; type_id = input_type_id; key = () }) ->
+      | Computation_status.Active
+          (Meta.Input.Hidden.T { input; type_id = input_type_id; key = () }) ->
         let T = Meta.Input.same_witness_exn input_type_id input_info in
         apply_action
           ~inject:(wrap_lazy ~type_id:action_info inject)
           ~schedule_event
-          (Some input)
+          (Active input)
           chosen_model
           action
-      | None ->
+      | Inactive ->
         apply_action
           ~inject:(wrap_lazy ~type_id:action_info inject)
           ~schedule_event
-          None
+          Inactive
           chosen_model
           action
     in

@@ -9,7 +9,7 @@ Usage
 ```ocaml
 let foo_bar = [%VAR_NAME]      in
 let foo_bar = [%Var_name]      in
-let foo_bar = [%var_name] 
+let foo_bar = [%var_name]
 and foo_bar = [%var_dash_name] in
 
 let%map       foo_bar = [%Var_name] in
@@ -38,6 +38,12 @@ module Foo_Bar = struct
   let name = [%module_name]
   let name = [%module_dash_name]
 end
+
+
+let name = [%Library_name]
+let name = [%library_name]
+let name = [%LIBRARY_NAME]
+let name = [%library_dash_name]
 ```
 
 produces:
@@ -74,7 +80,16 @@ module Foo_bar = struct
   let name = "foo_bar"
   let name = "foo-bar"
 end
+
+let name = "Ppx_var_name"
+let name = "ppx_var_name"
+let name = "PPX_VAR_NAME"
+let name = "ppx-var-name"
 ```
+
+The `[%Library_name]` family depends on the "build unit" specified by the build system.
+In a library, this is the library name. In non-library contexts (e.g., executables),
+these extensions may fail to resolve or produce less natural identifiers.
 
 For typical usage you can apply this in bulk to existing code with a command like:
 ```bash

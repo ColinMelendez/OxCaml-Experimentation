@@ -6,14 +6,18 @@ include Char0
 
 module T = struct
   type t = char
-  [@@deriving compare ~localize, hash, globalize, sexp ~stackify, sexp_grammar]
+  [@@deriving compare ~localize, hash, globalize, sexp ~stackify ~unboxed, sexp_grammar]
 
-  let to_string t = String.make 1 t
+  let%template[@alloc a = (heap, stack)] to_string t =
+    (String.make [@alloc a]) 1 t [@exclave_if_stack a]
+  ;;
 
-  let of_string s =
+  let%template of_string s =
     match String.length s with
-    | 1 -> s.[0]
-    | _ -> Printf.failwithf "Char.of_string: %S" s ()
+    | 1 -> String.unsafe_get s 0
+    | _ ->
+      failwith
+        (String.concat [ "Char.of_string: \""; (String.escaped [@alloc stack]) s; "\"" ])
   ;;
 end
 
@@ -25,6 +29,7 @@ include%template Identifiable.Make [@modality portable] (struct
     let module_name = "Base.Char"
   end)
 
+let of_string = T.of_string
 let pp fmt c = Stdlib.Format.fprintf fmt "%C" c
 
 (* Open replace_polymorphic_compare after including functor instantiations so they do not
@@ -129,7 +134,7 @@ module Caseless = struct
     type t = char [@@deriving sexp ~stackify, sexp_grammar]
 
     let compare c1 c2 = compare (lowercase c1) (lowercase c2)
-    let compare__local c1 c2 = compare c1 c2
+    let%template[@mode local] compare c1 c2 = compare c1 c2
     let hash_fold_t state t = hash_fold_char state (lowercase t)
     let hash t = Hash.run hash_fold_t t
   end
@@ -138,7 +143,7 @@ module Caseless = struct
 
   include%template Comparable.Make [@modality portable] (T)
 
-  let equal__local t1 t2 = equal_int (compare__local t1 t2) 0
+  let%template[@mode local] equal t1 t2 = equal_int ((compare [@mode local]) t1 t2) 0
 end
 
 (* Include type-specific [Replace_polymorphic_compare] at the end, after including functor

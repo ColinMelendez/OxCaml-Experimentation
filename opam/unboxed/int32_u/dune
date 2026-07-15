@@ -3,4 +3,4 @@
  (public_name unboxed.int32_u)
  (libraries bin_prot_unboxed_numbers core int64_u ocaml_intrinsics_kernel)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

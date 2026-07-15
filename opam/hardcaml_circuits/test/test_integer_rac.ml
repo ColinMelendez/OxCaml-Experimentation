@@ -4,7 +4,7 @@ open Hardcaml_waveterm
 module Make (Config : Rac.Config) = struct
   module Rac = Rac.Make (Config)
   module Circuit = Circuit.With_interface (Rac.I) (Rac.O)
-  module Step = Hardcaml_step_testbench.Effectful.Functional.Cyclesim.Make (Rac.I) (Rac.O)
+  module Step = Hardcaml_step_testbench.Functional.Cyclesim.Make (Rac.I) (Rac.O)
   module Sim = Cyclesim.With_interface (Rac.I) (Rac.O)
 
   let testbench (h @ local) ~data_in _ =
@@ -54,7 +54,7 @@ module Make (Config : Rac.Config) = struct
   ;;
 
   let run_and_print_waves ~simulator ~testbench ~data_in =
-    let waves, simulator = Waveform.create simulator in
+    let waves, simulator = Cyclesim.Waveform.create simulator in
     let result = run ~simulator ~testbench ~data_in in
     Waveform.expect ~display_width:120 ~wave_width:2 waves;
     result
@@ -85,7 +85,7 @@ let test ?print () ~coefs ~data_in =
   print_s [%message "" (result : int)]
 ;;
 
-let%expect_test ("simulation example" [@tags "runtime5-only"]) =
+let%expect_test "simulation example" =
   test ~print:true () ~coefs:[| 1; 2; 3; 4 |] ~data_in:[| 1; 2; 3; 4 |];
   [%expect
     {|
@@ -95,12 +95,12 @@ let%expect_test ("simulation example" [@tags "runtime5-only"]) =
     │                  ││   └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘ │
     │clr               ││──────┐                                                                                           │
     │                  ││      └─────────────────────────────────────────────────────────────────                          │
-    │addsub            ││            ┌─────┐                                                                               │
-    │                  ││────────────┘     └─────────────────────────────────────────────────────                          │
     │en                ││      ┌─────────────────────────────────────────────────────────────────                          │
     │                  ││──────┘                                                                                           │
     │ld                ││      ┌─────┐                                                                                     │
     │                  ││──────┘     └───────────────────────────────────────────────────────────                          │
+    │addsub            ││            ┌─────┐                                                                               │
+    │                  ││────────────┘     └─────────────────────────────────────────────────────                          │
     │                  ││──────┬─────┬───────────────────────────────────────────────────────────                          │
     │x_0               ││ 00   │01   │00                                                                                   │
     │                  ││──────┴─────┴───────────────────────────────────────────────────────────                          │
@@ -122,7 +122,7 @@ let%expect_test ("simulation example" [@tags "runtime5-only"]) =
     |}]
 ;;
 
-let%expect_test ("tests" [@tags "runtime5-only"]) =
+let%expect_test "tests" =
   test () ~coefs:[| 3; 6; 1; 2 |] ~data_in:[| 7; 9; 3; 5 |];
   [%expect
     {|

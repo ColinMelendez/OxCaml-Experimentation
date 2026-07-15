@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-module Form = Bonsai_web_ui_form.With_manual_view
+module Form = Bonsai_web_form.With_manual_view
 
 let days_until_saturday ~year ~month =
   let rec loop ~day acc =
@@ -149,4 +149,4 @@ let component (local_ graph) =
     ]
 ;;
 
-let () = Bonsai_web.Start.start ~enable_bonsai_telemetry:Enabled component
+let () = Bonsai_web.Start.start component

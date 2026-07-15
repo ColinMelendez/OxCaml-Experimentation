@@ -6,12 +6,9 @@
 
 (rule
  (targets js_to_native.diff)
+ (alias default)
  (deps %{workspace_root}/lib/testable_timeout/test_js/test.ml
    %{workspace_root}/lib/testable_timeout/test_native/test.ml)
  (action
   (bash
     "%{bin:patdiff-for-review} %{bin:patdiff} %{deps} > %{targets} || true")))
-
-(alias
- (name default)
- (deps js_to_native.diff))

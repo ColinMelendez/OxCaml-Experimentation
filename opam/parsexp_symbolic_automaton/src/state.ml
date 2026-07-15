@@ -12,7 +12,7 @@ type t =
   | Block_comment of Block_comment.t
 [@@deriving enumerate, compare ~localize, sexp_of]
 
-include Comparator.Make (struct
+include%template Comparator.Make [@mode local] (struct
     type nonrec t = t [@@deriving compare ~localize, sexp_of]
   end)
 
@@ -20,7 +20,8 @@ let to_int t =
   let rec loop i t l =
     match l with
     | [] -> assert false
-    | x :: l -> if [%compare.equal: t] t x then i else loop (i + 1) t l
+    | x :: l ->
+      if [%template [%compare.equal: t] [@mode local]] t x then i else loop (i + 1) t l
   in
   loop 0 t all
 ;;

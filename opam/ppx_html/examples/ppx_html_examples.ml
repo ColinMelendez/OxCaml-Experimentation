@@ -11,9 +11,8 @@ let () =
     ((* $MDX part-begin=simple-syntax-manual *)
      {%html|
        <div>
-         <%{Custom_typography.text}>
-           <strong>Capybara</strong> UI
-         </>
+         <%{Custom_typography.text}
+           ><strong>#{"Capybara"}</strong>#{" UI "}</>
        </div>
      |}
      (* $MDX part-end *)
@@ -25,9 +24,8 @@ let () =
     ((* $MDX part-begin=simple-syntax-sugar *)
      {%html|
        <div>
-         <Custom_typography.text>
-           <strong>Capybara</strong> UI
-         </>
+         <Custom_typography.text
+           ><strong>#{"Capybara"}</strong>#{" UI "}</>
        </div>
      |}
      (* $MDX part-end *)
@@ -88,23 +86,16 @@ let () =
     ((* $MDX part-begin=many-syntaxes-sugar *)
      {%html|
        <div>
-         <Custom_typography.text>
-           <strong>Capybara</strong> UI
-         </>
-
-         <!-- Function with children and attributes. Named args use ~, optional args use ?. -->
-         <Button.view
+         <Custom_typography.text
+           ><strong>#{"Capybara"}</strong>#{" UI "}</><!-- Function with children and attributes. Named args use ~, optional args use ?. --><Button.view
            ~on_click
            ~variant:%{Variant.Filled}
            ~size:%{`Xs}
            %{tomato : Vdom.Attr.t}
            disabled
-         >
-           Hello!
-         </>
-
-         <!-- Self-closing function with optional arg punning -->
-         <Loading_indicator.spinner ?icon />
+           >#{" Hello! "}</><!-- Self-closing function with optional arg punning --><Loading_indicator.spinner
+           ?icon
+         />
        </div>
      |}
      (* $MDX part-end *)
@@ -152,10 +143,8 @@ let () =
     ((* $MDX part-begin=how-to-write-apis-usage *)
      {%html|
        <div>
-         <Components.button on_click=%{fun _ -> order_tomato}>
-           Order Tomato
-         </>
-         <Components.image src="./images/order-confirmation.png" />
+         <Components.button on_click=%{fun _ -> order_tomato}
+           >#{" Order Tomato "}</><Components.image src="./images/order-confirmation.png" />
        </div>
      |}
      (* $MDX part-end *)
@@ -190,9 +179,8 @@ module Foo = struct
     ignore
       ((* $MDX part-begin=how-to-write-apis-usage-2 *)
        {%html|
-         <Components.button ~icon:%{Heart} on_click=%{fun _ -> order_tomato}>
-           Order Tomato
-         </>
+         <Components.button ~icon:%{Heart} on_click=%{fun _ -> order_tomato}
+           >#{" Order Tomato "}</>
        |}
        (* $MDX part-end *)
        : Vdom.Node.t)

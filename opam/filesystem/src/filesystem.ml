@@ -3,7 +3,7 @@
     asynchronous i/o, and [Filesystem_core], for blocking i/o. *)
 
 open! Core
-open Filesystem_types
+open Filesystem_types_unix
 
 module type S = sig
   module IO : T1

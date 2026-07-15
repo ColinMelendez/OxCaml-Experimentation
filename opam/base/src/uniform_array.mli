@@ -12,19 +12,23 @@ open! Import
 
 (** See [Base.Array] for comments. *)
 type ('a : value_or_null) t : mutable_data with 'a
-[@@deriving sexp, sexp_grammar, compare ~localize]
+[@@deriving sexp ~stackify, sexp_grammar, compare ~localize]
 
 val invariant : ('a : value_or_null). 'a t -> unit
 val empty : ('a : value_or_null). 'a t
 
 (** For obtaining uncontended access to [empty] from a portable function. *)
-val get_empty : unit -> _ t
+val get_empty : ('a : value_or_null). unit -> 'a t
+[@@zero_alloc]
 
 val create : ('a : value_or_null). len:int -> 'a -> 'a t
 val singleton : ('a : value_or_null). 'a -> 'a t
 val init : ('a : value_or_null). int -> f:local_ (int -> 'a) -> 'a t
 val length : ('a : value_or_null). local_ 'a t @ contended -> int
-val get : ('a : value_or_null). local_ 'a t -> int -> 'a
+
+val%template get : ('a : value_or_null). local_ 'a t @ c -> int -> 'a @ c
+[@@mode c = (uncontended, shared)]
+
 val unsafe_get : ('a : value_or_null). local_ 'a t -> int -> 'a
 val set : ('a : value_or_null). local_ 'a t -> int -> 'a -> unit
 val unsafe_set : ('a : value_or_null). local_ 'a t -> int -> 'a -> unit
@@ -59,12 +63,20 @@ val iter : ('a : value_or_null). 'a t -> f:local_ ('a -> unit) -> unit
 val iteri : ('a : value_or_null). 'a t -> f:local_ (int -> 'a -> unit) -> unit
 
 val fold
-  : ('a : value_or_null) 'acc.
+  : ('a : value_or_null) ('acc : value_or_null).
   'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc) -> 'acc
 
 val foldi
-  : ('a : value_or_null) 'acc.
+  : ('a : value_or_null) ('acc : value_or_null).
   'a t -> init:'acc -> f:local_ (int -> 'acc -> 'a -> 'acc) -> 'acc
+
+val fold_until
+  : ('a : value_or_null) ('acc : value_or_null) ('final : value_or_null).
+  'a t
+  -> init:'acc
+  -> f:local_ ('acc -> 'a -> ('acc, 'final) Container.Continue_or_stop.t)
+  -> finish:('acc -> 'final)
+  -> 'final
 
 (** [unsafe_to_array_inplace__promise_not_a_float] converts from a [t] to an [array] in
     place. This function is unsafe if the underlying type is a float. *)
@@ -81,7 +93,8 @@ val of_list : ('a : value_or_null). 'a list -> 'a t
 val of_list_rev : ('a : value_or_null). 'a list -> 'a t
 val to_list : ('a : value_or_null). 'a t -> 'a list
 
-include Blit.S1 with type 'a t := 'a t
+include%template
+  Blit.S1 [@kind.explicit value_or_null] with type ('a : value_or_null) t := 'a t
 
 val copy : ('a : value_or_null). 'a t -> 'a t
 val exists : ('a : value_or_null). 'a t -> f:local_ ('a -> bool) -> bool
@@ -99,7 +112,7 @@ val concat_mapi
   'a t -> f:local_ (int -> 'a -> 'b t) -> 'b t
 
 val partition_map
-  : ('a : value_or_null) 'b 'c.
+  : ('a : value_or_null) ('b : value_or_null) ('c : value_or_null).
   'a t -> f:local_ ('a -> ('b, 'c) Either.t) -> 'b t * 'c t
 
 val filter : ('a : value_or_null). 'a t -> f:local_ ('a -> bool) -> 'a t
@@ -119,10 +132,12 @@ val findi
   : ('a : value_or_null).
   'a t -> f:local_ (int -> 'a -> bool) -> (int * 'a) option
 
-val find_map : ('a : value_or_null) 'b. 'a t -> f:local_ ('a -> 'b option) -> 'b option
+val find_map
+  : ('a : value_or_null) ('b : value_or_null).
+  'a t -> f:local_ ('a -> 'b option) -> 'b option
 
 val find_mapi
-  : ('a : value_or_null) 'b.
+  : ('a : value_or_null) ('b : value_or_null).
   'a t -> f:local_ (int -> 'a -> 'b option) -> 'b option
 
 (** Functions with the 2 suffix raise an exception if the lengths of the two given arrays
@@ -132,7 +147,7 @@ val map2_exn
   'a t -> 'b t -> f:local_ ('a -> 'b -> 'c) -> 'c t
 
 val fold2_exn
-  : ('a : value_or_null) ('b : value_or_null) 'acc.
+  : ('a : value_or_null) ('b : value_or_null) ('acc : value_or_null).
   'a t -> 'b t -> init:'acc -> f:local_ ('acc -> 'a -> 'b -> 'acc) -> 'acc
 
 val min_elt : 'a t -> compare:local_ ('a -> 'a -> int) -> 'a option
@@ -153,6 +168,9 @@ val unsafe_create_uninitialized : ('a : value_or_null). len:int -> 'a t
 
 (** New obj array filled with [Obj.repr 0] *)
 val create_obj_array : len:int -> Stdlib.Obj.t t
+
+(** New nullable obj array filled with [Obj.repr 0] *)
+val create_nullable_obj_array : len:int -> Obj.Nullable.t t
 
 (** [unsafe_set_assuming_currently_int t i obj] sets index [i] of [t] to [obj], but only
     works correctly if the value there is an immediate, i.e.

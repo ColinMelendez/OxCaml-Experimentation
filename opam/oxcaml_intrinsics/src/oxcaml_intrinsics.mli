@@ -1,6 +1,4 @@
 module Atomic = Ocaml_intrinsics.Atomic
-module Atomic_expert = Ocaml_intrinsics.Atomic_expert
-module Bigstring_intf = Ocaml_intrinsics.Bigstring_intf
 module Conditional = Ocaml_intrinsics.Conditional
 module Crc = Ocaml_intrinsics.Crc
 module Ext_pointer = Ocaml_intrinsics.Ext_pointer
@@ -13,4 +11,3 @@ module Native_pointer = Native_pointer
 module Nativeint = Ocaml_intrinsics.Nativeint
 module Perfmon = Ocaml_intrinsics.Perfmon
 module Prefetch = Ocaml_intrinsics.Prefetch
-module Prefetch_expert = Ocaml_intrinsics.Prefetch_expert

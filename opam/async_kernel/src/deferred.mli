@@ -4,10 +4,12 @@
     at some point become determined with value v, and will henceforth always be determined
     with value v. *)
 
+[@@@implicit_kind: ('a : value_or_null)]
+
 open! Core
 open! Import
 
-type +'a t = 'a Deferred1.t [@@deriving sexp_of]
+type +'a t : value mod non_float = 'a Deferred1.t [@@deriving sexp_of]
 
 include Invariant.S1 with type 'a t := 'a t
 
@@ -73,10 +75,10 @@ val is_determined : 'a t -> bool
     In general, for deferreds that are allocated by [let%bind] to be garbage collected
     quickly, it is sufficient that the allocating bind be executed in tail-call position
     of the right-hand side of an outer bind. *)
-include Monad with type 'a t := 'a t
+include Base.Monad.S [@kind value_or_null mod maybe_null] with type 'a t := 'a t
 
 module Infix : sig
-  include Monad.Infix with type 'a t := 'a t
+  include Base.Monad.Infix [@kind value_or_null mod maybe_null] with type 'a t := 'a t
 
   val ( >>> ) : 'a t -> ('a -> unit) -> unit
 end
@@ -85,7 +87,7 @@ end
 val unit : unit t
 
 (** [never ()] returns a deferred that never becomes determined. *)
-val never : unit -> _ t
+val never : ('a : value_or_null). unit -> 'a t
 
 (** [both t1 t2] becomes determined after both [t1] and [t2] become determined. *)
 val both : 'a t -> 'b t -> ('a * 'b) t

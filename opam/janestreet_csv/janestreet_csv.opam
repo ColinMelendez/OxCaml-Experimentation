@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/janestreet_csv/issues"
 dev-repo: "git+https://github.com/janestreet/janestreet_csv.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/janestreet_csv/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -20,7 +21,6 @@ depends: [
   "core_unix"
   "csvfields"
   "delimited_parsing"
-  "fieldslib"
   "numeric_string"
   "ppx_jane"
   "re2"
@@ -29,7 +29,10 @@ depends: [
   "pcre"
   "tyxml"             {>= "4.3.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Tools for working with CSVs on the command line"
 description: "
 A suite of tools for working with CSVs from the command line.  It

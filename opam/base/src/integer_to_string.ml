@@ -22,7 +22,13 @@ module Bytes =
       ((bytes)[@local_opt ]) ->
         ((int)[@local_opt ]) -> ((char)[@local_opt ]) -> unit @@ stateless =
         "%bytes_unsafe_set"
-    let create = Stdlib.Bytes.create
+    external unsafe_create_local :
+      int -> bytes @ local @@ portable = "Base_unsafe_create_local_bytes"
+    [@@noalloc ]
+    [%%template
+      let unsafe_create x = exclave_ unsafe_create_local x[@@alloc stack]
+        [@@zero_alloc ]]
+    let unsafe_create = Stdlib.Bytes.create
     external unsafe_to_string :
       no_mutation_while_string_reachable:((bytes)[@local_opt ]) ->
         ((string)[@local_opt ]) @@ stateless = "%bytes_to_string"
@@ -35,29 +41,34 @@ module I64 =
   struct
     type t = int64
     external (+) :
-      local_ t -> local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_add"
+      t @ local -> t @ local -> ((t)[@local_opt ]) @@ stateless =
+        "%int64_add"
     external (-) :
-      local_ t -> local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_sub"
+      t @ local -> t @ local -> ((t)[@local_opt ]) @@ stateless =
+        "%int64_sub"
     external ( * ) :
-      local_ t -> local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_mul"
+      t @ local -> t @ local -> ((t)[@local_opt ]) @@ stateless =
+        "%int64_mul"
     external (/) :
-      local_ t -> local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_div"
+      t @ local -> t @ local -> ((t)[@local_opt ]) @@ stateless =
+        "%int64_div"
     external (~-) :
-      local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_neg"
+      t @ local -> ((t)[@local_opt ]) @@ stateless = "%int64_neg"
     external \#land :
-      local_ t -> local_ t -> ((t)[@local_opt ]) @@ stateless = "%int64_and"
+      t @ local -> t @ local -> ((t)[@local_opt ]) @@ stateless =
+        "%int64_and"
     include Int64_replace_polymorphic_compare
     let clz = Ocaml_intrinsics_kernel.Int64.count_leading_zeros
     external \#lsr :
-      local_ t -> local_ int -> ((t)[@local_opt ]) @@ stateless =
+      t @ local -> int @ local -> ((t)[@local_opt ]) @@ stateless =
         "%int64_lsr"
     external of_int :
       int -> ((t)[@local_opt ]) @@ stateless = "%int64_of_int"
-    external to_int_trunc : local_ t -> int @@ stateless = "%int64_to_int"
+    external to_int_trunc : t @ local -> int @@ stateless = "%int64_to_int"
     external of_int32 :
-      local_ int32 -> ((t)[@local_opt ]) @@ stateless = "%int64_of_int32"
+      int32 @ local -> ((t)[@local_opt ]) @@ stateless = "%int64_of_int32"
     external of_nativeint :
-      local_ nativeint -> ((t)[@local_opt ]) @@ stateless =
+      nativeint @ local -> ((t)[@local_opt ]) @@ stateless =
         "%int64_of_nativeint"
   end
 module I64u =
@@ -103,13 +114,13 @@ module I64u =
       let v = unsafe_get_int64 Constants.pow10 (i * #8L) in
       if Stdlib.Sys.big_endian then swap64 v else v
     external bytes_unsafe_set_i8 :
-      bytes -> ((t)[@unboxed ]) -> ((I8.t)[@unboxed ]) -> unit @@ stateless =
-        "%unsafe_set_idx"
+      bytes @ local -> ((t)[@unboxed ]) -> ((I8.t)[@unboxed ]) -> unit @@
+        stateless = "%set_idx"
     external string_unsafe_get_i16 :
-      string -> t -> ((I16.t)[@unboxed ]) @@ stateless = "%unsafe_get_idx"
+      string @ local -> t -> ((I16.t)[@unboxed ]) @@ stateless = "%get_idx"
     external bytes_unsafe_set_i16 :
-      bytes -> ((t)[@unboxed ]) -> ((I16.t)[@unboxed ]) -> unit @@ stateless
-        = "%unsafe_set_idx"
+      bytes @ local -> ((t)[@unboxed ]) -> ((I16.t)[@unboxed ]) -> unit @@
+        stateless = "%set_idx"
     external i8_of_i64 :
       ((t)[@unboxed ]) -> ((I8.t)[@unboxed ]) @@ stateless =
         "%int8#_of_int64#"
@@ -118,6 +129,7 @@ module I64u =
       let bits = select (x = #0L) x ((#64L - (clz v)) - #1L) in
       let est = #1L + ((bits * #1233L) lsr 12) in
       let need_extra = of_bool (v > (get_pow10 est)) in est + need_extra
+    let num_digits_nonneg x = num_digits_neg (- x)
     let bytes_unsafe_set_i8 buf pos x =
       match Sys.backend_type with
       | Native -> bytes_unsafe_set_i8 buf pos (i8_of_i64 x)
@@ -139,7 +151,8 @@ module I64u =
            Bytes.unsafe_set buf (to_int_trunc pos)
              (String.unsafe_get Constants.digit_pairs
                 (to_int_trunc (digit_idx + #1L))))
-    let write_negative_decimal_without_sign buf ~pos ~num_digits n =
+    let write_negative_decimal_without_sign (buf @ local) ~pos ~num_digits n
+      =
       let rec loop ~n ~pos ~remaining_digit_pairs =
         match remaining_digit_pairs > #0L with
         | true ->
@@ -152,23 +165,38 @@ module I64u =
             if (num_digits land #1L) <> #0L
             then let d = - n in write_one_digit buf ~pos d in
       let remaining_digit_pairs = num_digits / #2L in
-      loop ~n ~pos ~remaining_digit_pairs
-    let to_string n =
-      let is_neg = n < #0L in
-      let always_negative_n = select is_neg n (- n) in
-      let num_digits = num_digits_neg always_negative_n in
-      let len = (of_bool is_neg) + num_digits in
-      let buf = Bytes.create (to_int_trunc len) in
-      bytes_unsafe_set_i8 buf #0L (select is_neg #45L #48L);
-      write_negative_decimal_without_sign buf ~pos:(len - #1L) ~num_digits
-        always_negative_n;
-      Bytes.unsafe_to_string ~no_mutation_while_string_reachable:buf[@@inline
-                                                                    never]
+      ((loop ~n ~pos ~remaining_digit_pairs)[@nontail ])
+    let unsafe_write_nonnegative_decimal (buf @ local) ~pos ~num_digits n =
+      let pos = (pos + num_digits) - #1L in
+      write_negative_decimal_without_sign buf ~pos ~num_digits (- n)
+    [%%template
+      let to_string n =
+        ((let is_neg = n < #0L in
+          let always_negative_n = select is_neg n (- n) in
+          let num_digits = num_digits_neg always_negative_n in
+          let len = (of_bool is_neg) + num_digits in
+          let buf = ((Bytes.unsafe_create)[@alloc a]) (to_int_trunc len) in
+          bytes_unsafe_set_i8 buf #0L (select is_neg #45L #48L);
+          write_negative_decimal_without_sign buf ~pos:(len - #1L)
+            ~num_digits always_negative_n;
+          Bytes.unsafe_to_string ~no_mutation_while_string_reachable:buf)
+        [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline never]]
   end
-let int64_u_to_string i = I64u.to_string i[@@inline ]
-let int_to_string i = I64u.to_string (I64u.of_int i)[@@inline ]
-let int64_to_string i = I64u.to_string (I64u.of_int64 i)[@@inline ]
-let int32_to_string i = I64u.to_string (I64u.of_int32 i)[@@inline ]
-let nativeint_to_string i = I64u.to_string (I64u.of_nativeint i)[@@inline ]
+[%%template
+  let int64_u_to_string i = ((((I64u.to_string)[@alloc a]) i)
+    [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline ]]
+[%%template
+  let int_to_string i = ((((I64u.to_string)[@alloc a]) (I64u.of_int i))
+    [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline ]]
+[%%template
+  let int64_to_string i = ((((I64u.to_string)[@alloc a]) (I64u.of_int64 i))
+    [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline ]]
+[%%template
+  let int32_to_string i = ((((I64u.to_string)[@alloc a]) (I64u.of_int32 i))
+    [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline ]]
+[%%template
+  let nativeint_to_string i =
+    ((((I64u.to_string)[@alloc a]) (I64u.of_nativeint i))
+    [@exclave_if_stack a])[@@alloc a = (heap, stack)][@@inline ]]
 module Private = struct module Constants = Constants end
 

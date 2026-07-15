@@ -1,16 +1,15 @@
 open Stdlib_shim
-(* This is the implementation of the encoder/decoder for the memtrace
-   format. This format is quite involved, and to understand it it's
-   best to read the CTF specification and comments in memtrace.tsl
-   first. *)
+(* This is the implementation of the encoder/decoder for the memtrace format. This format
+   is quite involved, and to understand it it's best to read the CTF specification and
+   comments in memtrace.tsl first. *)
 
 (* Increment this when the format changes in an incompatible way *)
-(* Version 2: added context field to trace_info event
-   Version 3: added domain field to packet header *)
+(* Version 2: added context field to trace_info event Version 3: added domain field to
+   packet header *)
 let memtrace_version = 3
 
-(* If this is true, then all backtraces are immediately decoded and
-   verified after encoding. This is slow, but helpful for debugging. *)
+(* If this is true, then all backtraces are immediately decoded and verified after
+   encoding. This is slow, but helpful for debugging. *)
 let cache_enable_debug = false
 
 open Buf
@@ -56,8 +55,8 @@ module IntTbl = Hashtbl.MakeSeededPortable (struct
       h lxor (h lsr 23)
     ;;
 
-    (* Required for OCaml >= 5.0.0, but causes errors for older compilers
-     because it is an unused value declaration. *)
+    (* Required for OCaml >= 5.0.0, but causes errors for older compilers because it is an
+       unused value declaration. *)
     let[@warning "-32"] seeded_hash = hash
     let equal (a : t) (b : t) = a = b
   end)
@@ -76,8 +75,7 @@ end
 
 (** CTF packet headers *)
 
-(* Small enough that Unix.write still does single writes.
-   (i.e. below 64k) *)
+(* Small enough that Unix.write still does single writes. (i.e. below 64k) *)
 let max_packet_size = 1 lsl 15
 
 type packet_header_info =
@@ -92,8 +90,7 @@ type packet_header_info =
   ; cache_verifier : Backtrace_codec.Reader.cache_verifier
   }
 
-(* When writing a packet, some fields can be filled in only once the
-   packet is complete. *)
+(* When writing a packet, some fields can be filled in only once the packet is complete. *)
 type ctf_header_offsets =
   { off_packet_size : Write.position_32
   ; off_timestamp_begin : Write.position_64
@@ -101,6 +98,7 @@ type ctf_header_offsets =
   ; off_flush_duration : Write.position_32
   ; off_alloc_begin : Write.position_64
   ; off_alloc_end : Write.position_64
+  ; total_header_size : int
   }
 
 let put_ctf_header b ~pid ~domain ~cache =
@@ -118,12 +116,14 @@ let put_ctf_header b ~pid ~domain ~cache =
    | None -> Backtrace_codec.Writer.put_dummy_verifier b);
   let off_alloc_begin = skip_64 b in
   let off_alloc_end = skip_64 b in
+  let total_header_size = b.pos in
   { off_packet_size
   ; off_timestamp_begin
   ; off_timestamp_end
   ; off_flush_duration
   ; off_alloc_begin
   ; off_alloc_end
+  ; total_header_size
   }
 ;;
 
@@ -245,14 +245,30 @@ let[@inline] get_event_header info b =
 
 module Location = Location_codec.Location
 
+exception Closed
+
 module Obj_id = struct
   type t = int
 
   module Tbl = IntTbl
 
   module Allocator = struct
+    module Packed : sig
+      type t : immediate (* = { id: int62; closed: bool }, but packed *)
+
+      val make : id:int -> closed:bool -> t
+      val id : t -> int
+      val closed : t -> bool
+    end = struct
+      type t = int
+
+      let make ~id ~closed = (id lsl 1) lor Bool.to_int closed
+      let id t = t lsr 1
+      let closed t = t land 1 <> 0
+    end
+
     type nonrec t =
-      { global_ids : t Atomic.t @@ contended
+      { global_ids_packed : Packed.t Atomic.t @@ contended
       ; mutable start_id : t (* first object ID this packet *)
       ; mutable next_id : t (* next object ID in this packet *)
       ; mutable last_id : t (* object ID at which we need to reallocate *)
@@ -271,28 +287,60 @@ module Obj_id = struct
       id
     ;;
 
+    let is_closed t = Packed.closed (Atomic.get t.global_ids_packed)
+
+    let rec close t =
+      let p = Atomic.get t.global_ids_packed in
+      let id = Packed.id p in
+      if Packed.closed p
+      then id
+      else if Atomic.compare_and_set t.global_ids_packed p (Packed.make ~id ~closed:true)
+      then id
+      else close t
+    ;;
+
+    let rec alloc_new_ids_exn t chunk =
+      let p = Atomic.get t.global_ids_packed in
+      let id = Packed.id p in
+      if Packed.closed p
+      then raise Closed
+      else if Atomic.compare_and_set
+                t.global_ids_packed
+                p
+                (Packed.make ~id:(id + chunk) ~closed:false)
+      then id
+      else alloc_new_ids_exn t chunk
+    ;;
+
     let ids_per_chunk = Atomic.make 10_000
 
-    let new_packet t =
+    let new_packet_exn t =
       if not (has_next t)
       then (
         let ids_per_chunk = Atomic.get ids_per_chunk in
-        t.next_id <- Atomic.fetch_and_add t.global_ids ids_per_chunk;
+        t.next_id <- alloc_new_ids_exn t ids_per_chunk;
         t.last_id <- t.next_id + ids_per_chunk);
       t.start_id <- t.next_id
     ;;
 
-    let of_global_ids global_ids =
-      let t = { global_ids; start_id = 0; next_id = 0; last_id = 0 } in
-      new_packet t;
+    let of_global_ids_packed global_ids_packed =
+      let t = { global_ids_packed; start_id = 0; next_id = 0; last_id = 0 } in
+      (try new_packet_exn t with
+       | Closed -> assert (is_closed t));
       t
     ;;
 
-    let create () = of_global_ids (Atomic.make 0)
-
-    let for_new_domain { global_ids; _ } : (unit -> t) @ portable =
-      fun () -> of_global_ids global_ids
+    let create () =
+      of_global_ids_packed (Atomic.make_contended (Packed.make ~id:0 ~closed:false))
     ;;
+
+    let for_new_domain { global_ids_packed; _ } : (unit -> t) @ portable =
+      fun () -> of_global_ids_packed global_ids_packed
+    ;;
+  end
+
+  module Expert = struct
+    let of_int x = x
   end
 end
 
@@ -364,6 +412,7 @@ type writer : value mod portable =
   { dest : Buf.Shared_writer_fd.t
   ; pid : int64
   ; getpid : unit -> int64 @@ portable
+  ; write : Buf.write_fn @@ portable
   ; domain : Domain_id.t
   ; loc_writer : Location_codec.Writer.t
   ; cache : Backtrace_codec.Writer.t
@@ -383,7 +432,7 @@ type writer : value mod portable =
   ; mutable packet : Write.t
   }
 
-let writer_for_domain ~dest ~pid ~getpid ~domain ~obj_ids ~start_time
+let writer_for_domain ~dest ~pid ~getpid ~write ~domain ~obj_ids ~start_time
   : writer @ uncontended
   =
   let packet = Write.of_bytes (Bytes.make max_packet_size '\042') in
@@ -396,6 +445,7 @@ let writer_for_domain ~dest ~pid ~getpid ~domain ~obj_ids ~start_time
     { dest
     ; pid
     ; getpid
+    ; write
     ; domain
     ; loc_writer = Location_codec.Writer.create ()
     ; new_locs = [||]
@@ -415,7 +465,9 @@ let writer_for_domain ~dest ~pid ~getpid ~domain ~obj_ids ~start_time
   s
 ;;
 
-let make_writer dest ?getpid (info : Info.t) =
+let default_write fd buf pos len = Unix.write fd buf pos len
+
+let make_writer dest ?(write = default_write) ?getpid (info : Info.t) =
   let dest = Buf.Shared_writer_fd.make dest in
   let open Write in
   let getpid =
@@ -437,8 +489,8 @@ let make_writer dest ?getpid (info : Info.t) =
      ~timestamp_end:info.start_time
      ~alloc_id_begin:0
      ~alloc_id_end:0;
-   write_fd dest packet);
-  writer_for_domain ~dest ~pid ~getpid ~domain ~obj_ids ~start_time:info.start_time
+   write_fd ~write dest packet);
+  writer_for_domain ~dest ~pid ~getpid ~write ~domain ~obj_ids ~start_time:info.start_time
 ;;
 
 module Location_code = struct
@@ -535,12 +587,12 @@ let log_new_loc s loc =
 exception Pid_changed
 
 let flush_at s ~now =
-  (* If the PID has changed, then the process forked and we're in the subprocess.
-     Don't write anything to the file, and raise an exception to quit tracing *)
+  (* If the PID has changed, then the process forked and we're in the subprocess. Don't
+     write anything to the file, and raise an exception to quit tracing *)
   if s.pid <> s.getpid () then raise Pid_changed;
   let open Write in
-  (* First, flush newly-seen locations.
-     These must be emitted before any events that might refer to them *)
+  (* First, flush newly-seen locations. These must be emitted before any events that might
+     refer to them *)
   let i = ref 0 in
   while !i < s.new_locs_len do
     let b = Write.of_bytes s.new_locs_buf in
@@ -557,7 +609,7 @@ let flush_at s ~now =
       ~timestamp_end:s.packet_time_start
       ~alloc_id_begin:s.obj_ids.start_id
       ~alloc_id_end:s.obj_ids.start_id;
-    write_fd s.dest b
+    write_fd ~write:s.write s.dest b
   done;
   (* Next, flush the actual events *)
   finish_ctf_header
@@ -567,21 +619,20 @@ let flush_at s ~now =
     ~timestamp_end:s.packet_time_end
     ~alloc_id_begin:s.obj_ids.start_id
     ~alloc_id_end:s.obj_ids.next_id;
-  write_fd s.dest s.packet;
+  write_fd ~write:s.write s.dest s.packet;
   (* Finally, reset the buffer *)
   s.packet_time_start <- now;
   s.packet_time_end <- now;
   s.new_locs_len <- 0;
   s.packet <- Write.of_bytes s.packet.buf;
-  Obj_id.Allocator.new_packet s.obj_ids;
+  Obj_id.Allocator.new_packet_exn s.obj_ids;
   s.packet_header
   <- put_ctf_header s.packet ~pid:s.pid ~domain:s.domain ~cache:(Some s.cache)
 ;;
 
 let max_ev_size =
   100
-  (* upper bound on fixed-size portion of events
-         (i.e. not backtraces or locations) *)
+  (* upper bound on fixed-size portion of events (i.e. not backtraces or locations) *)
   + max Location_codec.Writer.max_length Backtrace_codec.Writer.max_length
 ;;
 
@@ -596,7 +647,15 @@ let begin_event s ev ~(now : Timestamp.t) =
   put_event_header s.packet ev now
 ;;
 
-let flush s = flush_at s ~now:s.packet_time_end
+let needs_flush s =
+  (* Check whether something more than the packet header has been written *)
+  not
+    (s.new_locs_len = 0
+     && s.packet_header.total_header_size + Write.remaining s.packet
+        = Bytes.length s.packet.buf)
+;;
+
+let flush s = if needs_flush s then flush_at s ~now:s.packet_time_end
 
 (* Returns length of the longest suffix of curr which is also a suffix of prev *)
 let find_common_suffix (prev : int array) prev_start (curr : int array) curr_start =
@@ -685,8 +744,8 @@ let put_alloc
      assert (nencoded <= 0xff);
      update_8 b p nencoded
    | Len_long p ->
-     (* This can't overflow because there isn't room in a packet for more than
-        0xffff entries. (See max_packet_size) *)
+     (* This can't overflow because there isn't room in a packet for more than 0xffff
+        entries. (See max_packet_size) *)
      assert (nencoded <= 0xffff);
      update_16 b p nencoded);
   (match s.debug_reader_cache with
@@ -763,7 +822,10 @@ let put_promote s now id =
 let get_promote ~domain alloc_id b =
   let open Read in
   let id_delta = get_vint b in
-  check_fmt "promote id sync" (id_delta >= 0);
+  (* Typically, id_delta >= 0, because you are collecting an object with an earlier object
+     ID. However, a tricky case in domain termination (promoting an object previously
+     allocated by a now-terminated domain) means that this is not necessarily the case, so
+     there's no assertion here *)
   let id = alloc_id - 1 - id_delta in
   Event.Promote (id, domain)
 ;;
@@ -913,29 +975,24 @@ module Writer = struct
   type t = writer
 
   exception Pid_changed = Pid_changed
+  exception Closed = Closed
 
   let create = make_writer
   let domain t = t.domain
 
-  let for_domain_at_time ~start_time (t @ nonportable uncontended)
-    : (domain:int -> t) @ portable
-    =
-    let { dest; pid; getpid; _ } = t in
+  let for_domain_at_time (t @ contended) ~start_time ~domain : t =
+    let { dest; pid; getpid; write; _ } = t in
     let obj_ids = Obj_id.Allocator.for_new_domain t.obj_ids in
-    fun ~domain ->
-      let obj_ids @ uncontended = obj_ids () in
-      let t @ uncontended =
-        writer_for_domain ~dest ~pid ~getpid ~domain ~obj_ids ~start_time
-      in
-      t
+    let obj_ids @ uncontended = obj_ids () in
+    let t @ uncontended =
+      writer_for_domain ~dest ~pid ~getpid ~write ~domain ~obj_ids ~start_time
+    in
+    t
   ;;
 
-  let for_domain t = for_domain_at_time ~start_time:t.packet_time_end t
-
-  (* Unfortunately, efficient access to the backtrace is not possible
-     with the current Printexc API, even though internally it's an int
-     array. For now, wave the Obj.magic wand. There's a PR to fix this:
-     https://github.com/ocaml/ocaml/pull/9663 *)
+  (* Unfortunately, efficient access to the backtrace is not possible with the current
+     Printexc API, even though internally it's an int array. For now, wave the Obj.magic
+     wand. There's a PR to fix this: https://github.com/ocaml/ocaml/pull/9663 *)
   let location_code_array_of_raw_backtrace (b : Printexc.raw_backtrace)
     : Location_code.t array
     =
@@ -1033,11 +1090,18 @@ module Writer = struct
   let put_collect = put_collect
   let put_promote = put_promote
   let flush = flush
+  let needs_flush = needs_flush
 
   let close t =
-    flush t;
-    Buf.Shared_writer_fd.close t.dest
+    (* Best-effort attempt to flush during close, which may fail *)
+    (try flush t with
+     | _ -> ());
+    let n = Obj_id.Allocator.close t.obj_ids in
+    Buf.Shared_writer_fd.close t.dest;
+    n
   ;;
+
+  let is_closed t = Obj_id.Allocator.is_closed t.obj_ids
 
   let put_event w ~decode_callstack_entry now (ev : Event.t) =
     if Event.domain ev <> w.domain

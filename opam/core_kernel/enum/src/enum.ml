@@ -175,14 +175,42 @@ let make_param_optional_one_of_flags ?aliases ~doc m =
        Command.Param.flag ?aliases name (Command.Param.no_arg_some enum) ~doc))
 ;;
 
-let comma_separated_extra_doc m =
+let%template comma_separated_extra_doc m =
   let options =
     enum m
     |> List.map ~f:fst
-    |> List.sort ~compare:[%compare: string]
+    |> List.sort ~compare:([%compare: string] [@mode local])
     |> String.concat ~sep:", "
   in
   [%string "(can be comma-separated values: %{options})"]
+;;
+
+let make_param_comma_separated
+  ?allow_empty
+  ?strip_whitespace
+  ?unique_values
+  ?case_sensitive
+  ?represent_choice_with
+  ?list_values_in_help
+  ?aliases
+  ?key
+  flag_name
+  ~doc
+  m
+  =
+  make_param
+    ?case_sensitive
+    ?represent_choice_with
+    ?list_values_in_help
+    ?aliases
+    ?key
+    flag_name
+    m
+    ~f:
+      (Fn.compose
+         Command.Param.required
+         (Command.Arg_type.comma_separated ?allow_empty ?strip_whitespace ?unique_values))
+    ~doc:[%string {|%{doc} %{comma_separated_extra_doc m}|}]
 ;;
 
 let make_param_optional_comma_separated

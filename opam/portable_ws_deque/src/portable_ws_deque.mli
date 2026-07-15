@@ -26,22 +26,22 @@ val create : unit -> 'a t
     the capsule that the queue lives in. *)
 
 (** [push owner v] adds [v] to the front of the queue [owner]. *)
-val push : 'a t @ local -> 'a @ contended portable -> unit
+val push : 'a t @ local -> 'a @ contended once portable unique -> unit
 
-val of_list : 'a list @ contended portable -> 'a t
+val of_list : ('a : value mod aliased many). 'a list @ contended portable -> 'a t
 
 (** [pop_exn owner] removes and returns the first element in queue [owner].
 
     @raise Empty if the queue is empty. *)
-val pop_exn : 'a t @ local -> 'a @ contended portable
+val pop_exn : 'a t @ local -> 'a @ contended once portable unique
 
 (** [pop owner] removes and returns the first element in queue [owner], or returns [Null]
     if the queue is empty. *)
-val pop : 'a t @ local -> 'a or_null @ contended portable
+val pop : 'a t @ local -> 'a or_null @ contended once portable unique
 
 (** [pop_opt owner] removes and returns the first element in queue [owner], or returns
     [None] if the queue is empty. *)
-val pop_opt : 'a t @ local -> 'a option @ contended portable
+val pop_opt : 'a t @ local -> 'a option @ contended once portable unique
 
 (** {1 Stealer functions}
 
@@ -51,15 +51,15 @@ val pop_opt : 'a t @ local -> 'a option @ contended portable
 (** [steal_exn stealer] removes and returns the last element from queue [stealer].
 
     @raise Empty if the queue is empty. *)
-val steal_exn : 'a t @ contended local -> 'a @ contended portable
+val steal_exn : 'a t @ contended local -> 'a @ contended once portable unique
 
 (** [steal stealer] removes and returns the last element from queue [stealer], or returns
     [Null] if the queue is empty. *)
-val steal : 'a t @ contended local -> 'a or_null @ contended portable
+val steal : 'a t @ contended local -> 'a or_null @ contended once portable unique
 
 (** [steal_opt stealer] removes and returns the last element from queue [stealer], or
     returns [None] if the queue is empty. *)
-val steal_opt : 'a t @ contended local -> 'a option @ contended portable
+val steal_opt : 'a t @ contended local -> 'a option @ contended once portable unique
 
 module For_testing : sig
   val blit_circularly

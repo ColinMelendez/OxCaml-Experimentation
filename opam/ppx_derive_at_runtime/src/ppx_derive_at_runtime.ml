@@ -20,7 +20,7 @@ module Config = struct
     (** [@foo.custom] attribute *)
     ; attribute_core_type : (core_type, expression) Attribute.t (** [@foo] on types *)
     ; attribute_clause : (constructor_declaration, expression) Attribute.t
-    (** \@foo on variant clauses *)
+    (** @foo on variant clauses *)
     ; attribute_field : (label_declaration, expression) Attribute.t
     (** [@foo] on record fields *)
     ; attribute_row : (row_field, expression) Attribute.t
@@ -140,7 +140,7 @@ module Binary_tree = struct
     | [] -> None
     | [ one ] -> Some (Leaf one)
     | _ :: _ :: _ ->
-      let left, right = List.split_n list (List.length list / 2) in
+      let #(left, right) = List.split_n list (List.length list / 2) in
       (* the below is always [Some] *)
       Option.map2 (create left) (create right) ~f:(fun l r -> Node (l, r))
   ;;

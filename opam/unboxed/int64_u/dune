@@ -2,6 +2,6 @@
  (name int64_u)
  (public_name unboxed.int64_u)
  (libraries base bin_prot_unboxed_numbers ocaml_intrinsics_kernel)
- (ocamlopt_flags :standard -O3)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality ppx_box))
+ (ocamlopt_flags :standard -O3))

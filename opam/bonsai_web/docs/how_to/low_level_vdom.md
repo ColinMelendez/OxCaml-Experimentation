@@ -36,9 +36,6 @@ Some use cases of hooks include:
 
 Here's an example illustrating the API:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/low_level_vdom_examples.ml,part=noop_hook -->
-```
 ``` ocaml
 module Noop_hook = struct
   module T = struct
@@ -158,9 +155,6 @@ Similarly to hooks, widgets can take inputs, and maintain state.
 
 Here's an example illustrating the API:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/low_level_vdom_examples.ml,part=trivial_widget -->
-```
 ``` ocaml
 open Js_of_ocaml
 
@@ -233,19 +227,10 @@ let app (local_ graph) =
 ;;
 ```
 
-```{=html}
-<iframe data-external="1" src="https://bonsai:8535#trivial_widget">
-```
-```{=html}
-</iframe>
-```
 You can use \[Vdom.Node.t\]s in your widgets. Here's an example that
 renders a `Vdom.Node.t` that it receives as input, and also counts the
 number of patches:
 
-```{=html}
-<!-- $MDX file=../../examples/bonsai_guide_code/low_level_vdom_examples.ml,part=widget_using_diff_patch -->
-```
 ``` ocaml
 open Js_of_ocaml
 
@@ -317,20 +302,13 @@ let app (local_ graph) =
   {%html|
     <div>
       <button on_click=%{fun _ -> update_num_clicks (fun x -> x + 1)}>
-        Click me
-      </button>
-      %{widget}
+        #{" Click me "}</button
+      >%{widget}
     </div>
   |}
 ;;
 ```
 
-```{=html}
-<iframe data-external="1" src="https://bonsai:8535#widget_using_diff_patch">
-```
-```{=html}
-</iframe>
-```
 Note that the patch counter only starts increasing when we click. That's
 because the widget's \[create\] doesn't update the Bonsai state, and
 we'll only redraw when our view has changed.
@@ -382,10 +360,9 @@ A few things to keep in mind:
 
 ## Bonsai Interop
 
-The `Bonsai_web_ui_low_level_vdom` library wraps the `virtual_dom` hook
-and widget APIs with a Bonsai layer, which gives you the ability to
-access the inputs and states of hooks / widgets through an `Effect.t`
-API.
+The `Bonsai_web_low_level_vdom` library wraps the `virtual_dom` hook and
+widget APIs with a Bonsai layer, which gives you the ability to access
+the inputs and states of hooks / widgets through an `Effect.t` API.
 
 ```{=html}
 ```

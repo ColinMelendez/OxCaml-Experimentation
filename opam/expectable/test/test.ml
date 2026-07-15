@@ -462,6 +462,179 @@ let%expect_test "list of records with different keys are vertically aligned corr
     |}]
 ;;
 
+module%test [@name "transpose"] _ = struct
+  let%expect_test "basic" =
+    let data = [ [%sexp { a = "foo"; b = "bar" }]; [%sexp { a = "baz"; b = "qux" }] ] in
+    print ~transpose:false data;
+    print ~transpose:true data;
+    [%expect
+      {|
+      ┌─────┬─────┐
+      │ a   │ b   │
+      ├─────┼─────┤
+      │ foo │ bar │
+      │ baz │ qux │
+      └─────┴─────┘
+
+      ┌┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┐
+      ├┴┴┴┼┴┴┴┴┴┼┴┴┴┴┴┤
+      │ a │ foo │ baz │
+      │ b │ bar │ qux │
+      └───┴─────┴─────┘
+      |}]
+  ;;
+
+  let%expect_test "nested keys" =
+    let data =
+      [ [%sexp { name = "alice"; stats = { score = 95; rank = 1 } }]
+      ; [%sexp { name = "bob"; stats = { score = 80; rank = 3 } }]
+      ]
+    in
+    print ~transpose:false data;
+    print ~transpose:true data;
+    [%expect
+      {|
+      ┌───────┬─────────────┬────────────┐
+      │ name  │ stats.score │ stats.rank │
+      ├───────┼─────────────┼────────────┤
+      │ alice │ 95          │ 1          │
+      │ bob   │ 80          │ 3          │
+      └───────┴─────────────┴────────────┘
+
+      ┌┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┐
+      ├┴┴┴┴┴┴┴┴┴┴┴┴┴┼┴┴┴┴┴┴┴┼┴┴┴┴┴┤
+      │ name        │ alice │ bob │
+      │ stats.score │ 95    │ 80  │
+      │ stats.rank  │ 1     │ 3   │
+      └─────────────┴───────┴─────┘
+      |}]
+  ;;
+
+  let%expect_test "heterogeneous types" =
+    let data = [ [%sexp { a = "foo"; b = "bar" }]; [%sexp { a = "baz"; c = "qux" }] ] in
+    print ~transpose:false data;
+    print ~transpose:true data;
+    [%expect
+      {|
+      ┌─────┬─────┬─────┐
+      │ a   │ b   │ c   │
+      ├─────┼─────┼─────┤
+      │ foo │ bar │     │
+      │ baz │     │ qux │
+      └─────┴─────┴─────┘
+
+      ┌┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┐
+      ├┴┴┴┼┴┴┴┴┴┼┴┴┴┴┴┤
+      │ a │ foo │ baz │
+      │ b │ bar │     │
+      │ c │     │ qux │
+      └───┴─────┴─────┘
+      |}]
+  ;;
+
+  let%expect_test "list of records" =
+    let data =
+      [ [%sexp { name = "first"; foo = [ { hi = 10; lo = 11 }; { hi = 9; lo = 12 } ] }]
+      ; [%sexp { name = "second"; foo = [ { hi = 5; lo = 6 } ] }]
+      ]
+    in
+    print ~transpose:false data;
+    print ~transpose:true data;
+    [%expect
+      {|
+      ┌────────┬────────┬────────┐
+      │ name   │ foo.hi │ foo.lo │
+      ├────────┼────────┼────────┤
+      │ first  │ 10     │ 11     │
+      │        │  9     │ 12     │
+      │ second │  5     │  6     │
+      └────────┴────────┴────────┘
+
+      ┌┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┐
+      ├┴┴┴┴┴┴┴┴┼┴┴┴┴┴┴┴┼┴┴┴┴┴┴┴┴┤
+      │ name   │ first │ second │
+      │ foo.hi │ 10    │ 5      │
+      │        │ 9     │        │
+      │ foo.lo │ 11    │ 6      │
+      │        │ 12    │        │
+      └────────┴───────┴────────┘
+      |}]
+  ;;
+
+  let%expect_test "print_alist" =
+    let data =
+      [ "top left", [%sexp { x = 5; y = 6 }]; "bottom right", [%sexp { x = 0; y = 1.2 }] ]
+    in
+    print_alist ~transpose:false Fn.id data;
+    print_alist ~transpose:true Fn.id data;
+    [%expect
+      {|
+      ┌──────────────┬───┬─────┐
+      │              │ x │ y   │
+      ├──────────────┼───┼─────┤
+      │ top left     │ 5 │ 6   │
+      │ bottom right │ 0 │ 1.2 │
+      └──────────────┴───┴─────┘
+
+      ┌───┬──────────┬──────────────┐
+      │   │ top left │ bottom right │
+      ├───┼──────────┼──────────────┤
+      │ x │ 5        │ 0            │
+      │ y │ 6        │ 1.2          │
+      └───┴──────────┴──────────────┘
+      |}]
+  ;;
+
+  let%expect_test "print_alist with nested values" =
+    let data =
+      [ "alice", [%sexp { stats = { score = 95; rank = 1 }; active = true }]
+      ; "bob", [%sexp { stats = { score = 80; rank = 3 }; active = false }]
+      ]
+    in
+    print_alist ~transpose:false Fn.id data;
+    print_alist ~transpose:true Fn.id data;
+    [%expect
+      {|
+      ┌───────┬─────────────┬────────────┬────────┐
+      │       │ stats.score │ stats.rank │ active │
+      ├───────┼─────────────┼────────────┼────────┤
+      │ alice │ 95          │ 1          │ true   │
+      │ bob   │ 80          │ 3          │ false  │
+      └───────┴─────────────┴────────────┴────────┘
+
+      ┌─────────────┬───────┬───────┐
+      │             │ alice │ bob   │
+      ├─────────────┼───────┼───────┤
+      │ stats.score │ 95    │ 80    │
+      │ stats.rank  │ 1     │ 3     │
+      │ active      │ true  │ false │
+      └─────────────┴───────┴───────┘
+      |}]
+  ;;
+
+  let%expect_test "print_record" =
+    let data = [%sexp { top_left = [ { x = 5; y = 6 } ]; bottom_right = [] }] in
+    print_record ~transpose:false data;
+    print_record ~transpose:true data;
+    [%expect
+      {|
+      ┌───┬──────────┬──────────────┐
+      │   │ top_left │ bottom_right │
+      ├───┼──────────┼──────────────┤
+      │ x │ 5        │              │
+      │ y │ 6        │              │
+      └───┴──────────┴──────────────┘
+
+      ┌──────────────┬───┬───┐
+      │              │ x │ y │
+      ├──────────────┼───┼───┤
+      │ top_left     │ 5 │ 6 │
+      │ bottom_right │   │   │
+      └──────────────┴───┴───┘
+      |}]
+  ;;
+end
+
 let%expect_test "print_alist" =
   [ "top left", [%sexp { x = 5; y = 6 }]; "bottom right", [%sexp { x = 0; y = 1.2 }] ]
   |> print_alist Fn.id;
@@ -506,17 +679,38 @@ let%expect_test "print_alist with nested optionals" =
     |}]
 ;;
 
-let%expect_test "print_record_transposed" =
-  [%sexp { top_left = [ { x = 5; y = 6 } ]; bottom_right = [] }]
-  |> print_record_transposed;
+let%expect_test "print_record" =
+  print_record [%sexp { top_left = { x = 5; y = 6 }; bottom_right = { x = 0; y = 1.2 } }];
   [%expect
     {|
-    ┌──────────────┬───┬───┐
-    │              │ x │ y │
-    ├──────────────┼───┼───┤
-    │ top_left     │ 5 │ 6 │
-    │ bottom_right │   │   │
-    └──────────────┴───┴───┘
+    ┌───┬──────────┬──────────────┐
+    │   │ top_left │ bottom_right │
+    ├───┼──────────┼──────────────┤
+    │ x │ 5        │ 0            │
+    │ y │ 6        │ 1.2          │
+    └───┴──────────┴──────────────┘
+    |}];
+  print_record
+    ~transpose:true
+    [%sexp { top_left = { x = 5; y = 6 }; bottom_right = { x = 0; y = 1.2 } }];
+  [%expect
+    {|
+    ┌──────────────┬───┬─────┐
+    │              │ x │ y   │
+    ├──────────────┼───┼─────┤
+    │ top_left     │ 5 │ 6   │
+    │ bottom_right │ 0 │ 1.2 │
+    └──────────────┴───┴─────┘
+    |}];
+  [%sexp { top_left = [ { x = 5; y = 6 } ]; bottom_right = [] }] |> print_record;
+  [%expect
+    {|
+    ┌───┬──────────┬──────────────┐
+    │   │ top_left │ bottom_right │
+    ├───┼──────────┼──────────────┤
+    │ x │ 5        │              │
+    │ y │ 6        │              │
+    └───┴──────────┴──────────────┘
     |}]
 ;;
 

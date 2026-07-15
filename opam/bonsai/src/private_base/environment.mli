@@ -4,9 +4,9 @@ open! Import
 type t
 
 val empty : t
-val add_exn : t -> key:'a Type_equal.Id.t -> data:'a Incr.t -> t
-val add_overwriting : t -> key:'a Type_equal.Id.t -> data:'a Incr.t -> t
-val find : t -> 'a Type_equal.Id.t -> 'a Incr.t option
+val add_exn : t -> key:'a Var_id.t -> data:'a Incr.t -> t
+val add_overwriting : t -> key:'a Var_id.t -> data:'a Incr.t -> t
+val find : t -> 'a Var_id.t -> 'a Incr.t option
 
 (** A [Recursive.t] is a mapping from [Fix_id.t] to a copy of the environment at the point
     where the [Fix_define] for that [Fix_id.t] was evaluated, as well as the resolved

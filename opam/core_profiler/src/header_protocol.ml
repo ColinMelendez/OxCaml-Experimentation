@@ -146,7 +146,7 @@ let[@inline] get_message_type buf =
 
 let[@inline] of_iobuf buf ~trusted:_ = Iobuf.no_seek buf
 
-let[@inline] of_iobuf_local (local_ buf) ~trusted:_ = exclave_
+let[@inline] of_iobuf_local (buf @ local) ~trusted:_ = exclave_
   (Iobuf.no_seek [@mode local]) buf
 ;;
 
@@ -157,7 +157,7 @@ let[@inline] of_iobuf_exn buf ty =
   else failwiths "unexpected message type" mt [%sexp_of: _ Message_type_and_errors.t]
 ;;
 
-let[@inline] of_iobuf_local_exn (local_ buf) ty = exclave_
+let[@inline] of_iobuf_local_exn (buf @ local) ty = exclave_
   let (Message_type_and_errors.T mt) = get_message_type buf in
   if Message_type_and_errors.to_index_exn mt = Message_type_and_errors.to_index_exn ty
   then of_iobuf_local buf ~trusted:ty
@@ -173,7 +173,7 @@ module New_single = struct
   let globalize t = Iobuf.globalize_shared t
   let of_iobuf_exn buf = of_iobuf_exn buf Message_type_and_errors.New_single
 
-  let of_iobuf_local_exn (local_ buf) = exclave_
+  let of_iobuf_local_exn (buf @ local) = exclave_
     of_iobuf_local_exn buf Message_type_and_errors.New_single
   ;;
 
@@ -198,29 +198,29 @@ module New_single = struct
     iobuf
   ;;
 
-  let[@inline] get_message_length (local_ buf) =
+  let[@inline] get_message_length (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint8 buf ~pos
   ;;
 
-  let[@inline] get_message_type (local_ buf) =
+  let[@inline] get_message_type (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.char buf ~pos:(pos + 1)
   ;;
 
-  let[@inline] get_id (local_ buf) =
+  let[@inline] get_id (buf @ local) =
     let pos = 0 in
     Probe_id.of_int_exn (Iobuf.Unsafe.Peek.uint16_le buf ~pos:(pos + 2))
   ;;
 
-  let[@inline] get_spec (local_ buf) =
+  let[@inline] get_spec (buf @ local) =
     let pos = 0 in
     Probe_type.of_char (Iobuf.Unsafe.Peek.char buf ~pos:(pos + 4))
   ;;
 
   let name_max_len = 64
 
-  let[@inline] get_name (local_ buf) =
+  let[@inline] get_name (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.tail_padded_fixed_string ~padding buf ~len:64 ~pos:(pos + 5)
   ;;
@@ -335,7 +335,7 @@ module New_single = struct
       ; spec : Probe_type.t
       ; name : string
       }
-    [@@deriving sexp]
+    [@@deriving sexp ~stackify]
 
     let num_bytes t = t.message_length + 0
 
@@ -374,7 +374,7 @@ module New_group = struct
   let globalize t = Iobuf.globalize_shared t
   let of_iobuf_exn buf = of_iobuf_exn buf Message_type_and_errors.New_group
 
-  let of_iobuf_local_exn (local_ buf) = exclave_
+  let of_iobuf_local_exn (buf @ local) = exclave_
     of_iobuf_local_exn buf Message_type_and_errors.New_group
   ;;
 
@@ -399,29 +399,29 @@ module New_group = struct
     iobuf
   ;;
 
-  let[@inline] get_message_length (local_ buf) =
+  let[@inline] get_message_length (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint8 buf ~pos
   ;;
 
-  let[@inline] get_message_type (local_ buf) =
+  let[@inline] get_message_type (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.char buf ~pos:(pos + 1)
   ;;
 
-  let[@inline] get_id (local_ buf) =
+  let[@inline] get_id (buf @ local) =
     let pos = 0 in
     Probe_id.of_int_exn (Iobuf.Unsafe.Peek.uint16_le buf ~pos:(pos + 2))
   ;;
 
-  let[@inline] get_spec (local_ buf) =
+  let[@inline] get_spec (buf @ local) =
     let pos = 0 in
     Probe_type.of_char (Iobuf.Unsafe.Peek.char buf ~pos:(pos + 4))
   ;;
 
   let name_max_len = 64
 
-  let[@inline] get_name (local_ buf) =
+  let[@inline] get_name (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.tail_padded_fixed_string ~padding buf ~len:64 ~pos:(pos + 5)
   ;;
@@ -536,7 +536,7 @@ module New_group = struct
       ; spec : Probe_type.t
       ; name : string
       }
-    [@@deriving sexp]
+    [@@deriving sexp ~stackify]
 
     let num_bytes t = t.message_length + 0
 
@@ -575,7 +575,7 @@ module New_group_point = struct
   let globalize t = Iobuf.globalize_shared t
   let of_iobuf_exn buf = of_iobuf_exn buf Message_type_and_errors.New_group_point
 
-  let of_iobuf_local_exn (local_ buf) = exclave_
+  let of_iobuf_local_exn (buf @ local) = exclave_
     of_iobuf_local_exn buf Message_type_and_errors.New_group_point
   ;;
 
@@ -604,29 +604,29 @@ module New_group_point = struct
     iobuf
   ;;
 
-  let[@inline] get_message_length (local_ buf) =
+  let[@inline] get_message_length (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint8 buf ~pos
   ;;
 
-  let[@inline] get_message_type (local_ buf) =
+  let[@inline] get_message_type (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.char buf ~pos:(pos + 1)
   ;;
 
-  let[@inline] get_group_id (local_ buf) =
+  let[@inline] get_group_id (buf @ local) =
     let pos = 0 in
     Probe_id.of_int_exn (Iobuf.Unsafe.Peek.uint16_le buf ~pos:(pos + 2))
   ;;
 
-  let[@inline] get_id (local_ buf) =
+  let[@inline] get_id (buf @ local) =
     let pos = 0 in
     Probe_id.of_int_exn (Iobuf.Unsafe.Peek.uint16_le buf ~pos:(pos + 4))
   ;;
 
   let name_max_len = 64
 
-  let[@inline] get_name (local_ buf) =
+  let[@inline] get_name (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.tail_padded_fixed_string ~padding buf ~len:64 ~pos:(pos + 6)
   ;;
@@ -685,7 +685,7 @@ module New_group_point = struct
     f buf ~safe_pos:pos ~safe_len:64
   ;;
 
-  let[@inline] get_sources_count (local_ buf) =
+  let[@inline] get_sources_count (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint16_le buf ~pos:(pos + 70)
   ;;
@@ -760,7 +760,7 @@ module New_group_point = struct
   ;;
 
   module Unpacked = struct
-    type t_sources = { source_id : Probe_id.t } [@@deriving sexp]
+    type t_sources = { source_id : Probe_id.t } [@@deriving sexp ~stackify]
 
     type t =
       { message_length : int
@@ -770,7 +770,7 @@ module New_group_point = struct
       ; name : string
       ; sources_grp : t_sources array
       }
-    [@@deriving sexp]
+    [@@deriving sexp ~stackify]
 
     let num_bytes t = t.message_length + 0
 
@@ -827,7 +827,7 @@ module End_of_header = struct
   let globalize t = Iobuf.globalize_shared t
   let of_iobuf_exn buf = of_iobuf_exn buf Message_type_and_errors.End_of_header
 
-  let of_iobuf_local_exn (local_ buf) = exclave_
+  let of_iobuf_local_exn (buf @ local) = exclave_
     of_iobuf_local_exn buf Message_type_and_errors.End_of_header
   ;;
 
@@ -848,12 +848,12 @@ module End_of_header = struct
     iobuf
   ;;
 
-  let[@inline] get_message_length (local_ buf) =
+  let[@inline] get_message_length (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint8 buf ~pos
   ;;
 
-  let[@inline] get_message_type (local_ buf) =
+  let[@inline] get_message_type (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.char buf ~pos:(pos + 1)
   ;;
@@ -869,7 +869,7 @@ module End_of_header = struct
       { message_length : int
       ; message_type : char
       }
-    [@@deriving sexp]
+    [@@deriving sexp ~stackify]
 
     let num_bytes t = t.message_length + 0
 
@@ -903,7 +903,7 @@ module Epoch = struct
   let globalize t = Iobuf.globalize_shared t
   let of_iobuf_exn buf = of_iobuf_exn buf Message_type_and_errors.Epoch
 
-  let of_iobuf_local_exn (local_ buf) = exclave_
+  let of_iobuf_local_exn (buf @ local) = exclave_
     of_iobuf_local_exn buf Message_type_and_errors.Epoch
   ;;
 
@@ -926,17 +926,17 @@ module Epoch = struct
     iobuf
   ;;
 
-  let[@inline] get_message_length (local_ buf) =
+  let[@inline] get_message_length (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.uint8 buf ~pos
   ;;
 
-  let[@inline] get_message_type (local_ buf) =
+  let[@inline] get_message_type (buf @ local) =
     let pos = 0 in
     Iobuf.Unsafe.Peek.char buf ~pos:(pos + 1)
   ;;
 
-  let[@inline] get_epoch (local_ buf) =
+  let[@inline] get_epoch (buf @ local) =
     let pos = 0 in
     Profiler_epoch.of_int (Iobuf.Unsafe.Peek.int64_le_exn buf ~pos:(pos + 2))
   ;;
@@ -959,7 +959,7 @@ module Epoch = struct
       ; message_type : char
       ; epoch : Profiler_epoch.t
       }
-    [@@deriving sexp]
+    [@@deriving sexp ~stackify]
 
     let num_bytes t = t.message_length + 0
 
@@ -994,7 +994,7 @@ module Unpacked = struct
     | New_group_point of New_group_point.Unpacked.t
     | End_of_header of End_of_header.Unpacked.t
     | Epoch of Epoch.Unpacked.t
-  [@@deriving sexp]
+  [@@deriving sexp ~stackify]
 
   let num_bytes = function
     | New_single m -> New_single.Unpacked.num_bytes m
@@ -1046,7 +1046,7 @@ let of_unpacked (u : Unpacked.t) =
   | Epoch msg -> Epoch.of_unpacked msg
 ;;
 
-let to_unpacked (local_ buf) =
+let to_unpacked (buf @ local) =
   let (Message_type_and_errors.T mt) = get_message_type buf in
   let m = of_iobuf_local buf ~trusted:mt in
   match mt with
@@ -1089,21 +1089,22 @@ let sexp_of_t _ _ t =
   | R.Ok (t, _) -> Unpacked.sexp_of_t t
 ;;
 
-let sexp_of_t_no_exn _ _ t =
-  let sexp_of_error error =
-    let len =
-      try num_bytes_in_message t with
-      | _ -> Iobuf.length t
-    in
-    let len = Int.min (Int.min (Iobuf.length t) len) 1000 in
-    let data = Iobuf.to_string t ~len in
-    [%sexp ("invalid message" : string), { error : Error.t; data : string }]
-  in
-  match to_unpacked t with
-  | exception exn -> sexp_of_error (Error.of_exn exn)
-  | R.Need_more_data -> sexp_of_error (Error.of_string "Need_more_data")
-  | R.Junk (exn, _) -> sexp_of_error (Error.of_exn exn)
-  | R.Ok (t, _) -> Unpacked.sexp_of_t t
+let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_t_no_exn _ _ (t @ m) =
+  (let sexp_of_error error =
+     let len =
+       try num_bytes_in_message t with
+       | _ -> Iobuf.length t
+     in
+     let len = Int.min (Int.min (Iobuf.length t) len) 1000 in
+     let data = Iobuf.to_string t ~len in
+     [%sexp ("invalid message" : string), { error : Error.t; data : string }]
+   in
+   match to_unpacked t with
+   | exception exn -> sexp_of_error (Error.of_exn exn)
+   | R.Need_more_data -> sexp_of_error (Error.of_string "Need_more_data")
+   | R.Junk (exn, _) -> sexp_of_error (Error.of_exn exn)
+   | R.Ok (t, _) -> (Unpacked.sexp_of_t [@alloc a]) t)
+  [@exclave_if_stack a]
 ;;
 
 let backing_iobuf t = t

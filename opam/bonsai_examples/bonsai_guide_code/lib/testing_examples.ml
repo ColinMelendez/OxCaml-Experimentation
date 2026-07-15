@@ -193,7 +193,7 @@ let%expect_test "shows hello to a specified user" =
             on_click=%{fun _ -> Effect.print_s [%message "Clicked!" (i : int)]}
             %{keyed_selector i |> Test_selector.attr}
           >
-            Button %{i#Int}
+            #{" Button "}%{i#Int}
           </button>
         |}
       in

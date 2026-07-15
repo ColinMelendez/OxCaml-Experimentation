@@ -29,7 +29,7 @@ module Stable = struct
 
     let failwithf = Printf.failwithf
 
-    let of_int_exn i : t =
+    let[@zero_alloc] of_int_exn i : t =
       match i with
       | 1 -> Jan
       | 2 -> Feb
@@ -128,7 +128,7 @@ include%template
 
 (* Replace the overriden sexp converters from [Comparable.Make_binable] with the ordinary
    symbolic converters. *)
-let sexp_of_t = T.sexp_of_t
+let%template[@alloc a = (heap, stack)] sexp_of_t = (T.sexp_of_t [@alloc a])
 let t_of_sexp = T.t_of_sexp
 let shift t i = of_int_exn (1 + Int.( % ) (to_int t - 1 + i) num_months)
 

@@ -226,9 +226,8 @@ let app (local_ graph) =
   {%html|
     <div>
       <button on_click=%{fun _ -> update_num_clicks (fun x -> x + 1)}>
-        Click me
-      </button>
-      %{widget}
+        #{" Click me "}</button
+      >%{widget}
     </div>
   |}
 ;;

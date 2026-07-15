@@ -16,21 +16,24 @@ module Impl : sig
     : ('a : value_or_null).
     int -> f:(int -> 'a @ contended portable) @ local -> 'a t
 
-  val length : ('a : value_or_null). 'a t @ local -> int
+  val length : ('a : value_or_null). 'a t @ local -> int [@@zero_alloc]
 
   val of_list
     : ('a : value_or_null).
     'a list @ contended portable -> 'a t @ contended portable
 
   val unsafe_get : ('a : value_or_null). 'a t @ local -> int -> 'a @ contended portable
+  [@@zero_alloc]
 
   val unsafe_set
     : ('a : value_or_null).
     'a t @ local -> int -> 'a @ contended portable -> unit
+  [@@zero_alloc]
 
   val unsafe_exchange
     : ('a : value_or_null).
     'a t @ local -> int -> 'a @ contended portable -> 'a @ contended portable
+  [@@zero_alloc]
 
   val unsafe_compare_and_set
     : ('a : value_or_null).
@@ -39,6 +42,7 @@ module Impl : sig
     -> if_phys_equal_to:'a @ contended
     -> replace_with:'a @ contended portable
     -> Compare_failed_or_set_here.t
+  [@@zero_alloc]
 
   val unsafe_compare_exchange
     : ('a : value_or_null).
@@ -47,13 +51,14 @@ module Impl : sig
     -> if_phys_equal_to:'a @ contended
     -> replace_with:'a @ contended portable
     -> 'a @ contended portable
+  [@@zero_alloc]
 
-  val unsafe_fetch_and_add : int t @ local -> int -> int -> int
-  val unsafe_add : int t @ local -> int -> int -> unit
-  val unsafe_sub : int t @ local -> int -> int -> unit
-  val unsafe_land : int t @ local -> int -> int -> unit
-  val unsafe_lor : int t @ local -> int -> int -> unit
-  val unsafe_lxor : int t @ local -> int -> int -> unit
+  val unsafe_fetch_and_add : int t @ local -> int -> int -> int [@@zero_alloc]
+  val unsafe_add : int t @ local -> int -> int -> unit [@@zero_alloc]
+  val unsafe_sub : int t @ local -> int -> int -> unit [@@zero_alloc]
+  val unsafe_land : int t @ local -> int -> int -> unit [@@zero_alloc]
+  val unsafe_lor : int t @ local -> int -> int -> unit [@@zero_alloc]
+  val unsafe_lxor : int t @ local -> int -> int -> unit [@@zero_alloc]
 end = struct
   type ('a : value_or_null) t : value mod contended portable =
     { arr : 'a portended Uniform_array.t }
@@ -73,25 +78,25 @@ end = struct
 
   external unsafe_get
     : ('a : value_or_null).
-    local_ 'a t -> int -> 'a @ contended portable
+    'a t @ local -> int -> 'a @ contended portable
     @@ portable
     = "%atomic_load_field"
 
   external unsafe_set
     : ('a : value_or_null).
-    local_ 'a t -> int -> 'a @ contended portable -> unit
+    'a t @ local -> int -> 'a @ contended portable -> unit
     @@ portable
     = "%atomic_set_field"
 
   external unsafe_exchange
     : ('a : value_or_null).
-    local_ 'a t -> int -> 'a @ contended portable -> 'a @ contended portable
+    'a t @ local -> int -> 'a @ contended portable -> 'a @ contended portable
     @@ portable
     = "%atomic_exchange_field"
 
   external unsafe_compare_and_set
     : ('a : value_or_null).
-    local_ 'a t
+    'a t @ local
     -> int
     -> if_phys_equal_to:'a @ contended
     -> replace_with:'a @ contended portable
@@ -101,7 +106,7 @@ end = struct
 
   external unsafe_compare_exchange
     : ('a : value_or_null).
-    local_ 'a t
+    'a t @ local
     -> int
     -> if_phys_equal_to:'a @ contended
     -> replace_with:'a @ contended portable
@@ -110,7 +115,7 @@ end = struct
     = "%atomic_compare_exchange_field"
 
   external unsafe_fetch_and_add
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> int
@@ -118,7 +123,7 @@ end = struct
     = "%atomic_fetch_add_field"
 
   external unsafe_add
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> unit
@@ -126,7 +131,7 @@ end = struct
     = "%atomic_add_field"
 
   external unsafe_sub
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> unit
@@ -134,7 +139,7 @@ end = struct
     = "%atomic_sub_field"
 
   external unsafe_land
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> unit
@@ -142,7 +147,7 @@ end = struct
     = "%atomic_land_field"
 
   external unsafe_lor
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> unit
@@ -150,15 +155,51 @@ end = struct
     = "%atomic_lor_field"
 
   external unsafe_lxor
-    :  local_ int t
+    :  int t @ local
     -> int
     -> int
     -> unit
     @@ portable
     = "%atomic_lxor_field"
+
+  let unsafe_get t i = unsafe_get t i [@@inline always]
+  let unsafe_set t i v = unsafe_set t i v [@@inline always]
+  let unsafe_exchange t i v = unsafe_exchange t i v [@@inline always]
+
+  let unsafe_compare_and_set t i ~if_phys_equal_to ~replace_with =
+    unsafe_compare_and_set t i ~if_phys_equal_to ~replace_with
+  [@@inline always]
+  ;;
+
+  let unsafe_compare_exchange t i ~if_phys_equal_to ~replace_with =
+    unsafe_compare_exchange t i ~if_phys_equal_to ~replace_with
+  [@@inline always]
+  ;;
+
+  let unsafe_fetch_and_add t i v = unsafe_fetch_and_add t i v [@@inline always]
+  let unsafe_add t i v = unsafe_add t i v [@@inline always]
+  let unsafe_sub t i v = unsafe_sub t i v [@@inline always]
+  let unsafe_land t i v = unsafe_land t i v [@@inline always]
+  let unsafe_lor t i v = unsafe_lor t i v [@@inline always]
+  let unsafe_lxor t i v = unsafe_lxor t i v [@@inline always]
 end
 
 include Impl
+
+let unsafe_get_and_update t index ~pure_f =
+  let[@inline] rec aux backoff =
+    let old = unsafe_get t index in
+    let new_ = pure_f old in
+    match unsafe_compare_and_set t index ~if_phys_equal_to:old ~replace_with:new_ with
+    | Set_here -> old
+    | Compare_failed -> aux (Basement.Backoff.once backoff)
+  in
+  aux Basement.Backoff.default [@nontail]
+;;
+
+let unsafe_update (type a : value_or_null) (t : a t) index ~pure_f =
+  Basement.Stdlib_shim.ignore_contended (unsafe_get_and_update t index ~pure_f)
+;;
 
 let[@inline] check_index t index function_name =
   if index < 0 || index >= length t
@@ -188,6 +229,16 @@ let compare_and_set t index ~if_phys_equal_to ~replace_with =
 let compare_exchange t index ~if_phys_equal_to ~replace_with =
   check_index t index "compare_exchange";
   unsafe_compare_exchange t index ~if_phys_equal_to ~replace_with
+;;
+
+let get_and_update t index ~pure_f =
+  check_index t index "get_and_update";
+  unsafe_get_and_update t index ~pure_f
+;;
+
+let update t index ~pure_f =
+  check_index t index "update";
+  unsafe_update t index ~pure_f
 ;;
 
 let fetch_and_add t index n =
@@ -284,14 +335,12 @@ let%template[@mode m = (global, local)] equal
 ;;
 
 let quickcheck_generator (type a : value_or_null mod portable) quickcheck_generator_a =
-  let open Base_quickcheck.Export in
-  [%quickcheck.generator: a list]
+  Base_quickcheck.Generator.list quickcheck_generator_a
   |> Base_quickcheck.Generator.map ~f:(fun (l : a list) -> of_list l)
 ;;
 
 let quickcheck_observer (type a : value_or_null mod contended) quickcheck_observer_a =
-  let open Base_quickcheck.Export in
-  [%quickcheck.observer: a list]
+  Base_quickcheck.Observer.list quickcheck_observer_a
   |> Base_quickcheck.Observer.unmap ~f:(fun (t : a t) -> to_list t)
 ;;
 
@@ -299,8 +348,7 @@ let quickcheck_shrinker
   (type a : value_or_null mod contended portable)
   quickcheck_shrinker_a
   =
-  let open Base_quickcheck.Export in
-  [%quickcheck.shrinker: a list]
+  Base_quickcheck.Shrinker.list quickcheck_shrinker_a
   |> Base_quickcheck.Shrinker.map
        ~f:(fun (l : a list) -> of_list l)
        ~f_inverse:(fun (t : a t) -> to_list t)

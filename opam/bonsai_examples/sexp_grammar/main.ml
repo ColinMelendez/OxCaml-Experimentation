@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-module Auto_generated = Bonsai_web_ui_auto_generated
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Auto_generated = Bonsai_web_auto_generated
+module Form = Bonsai_web_form.With_automatic_view
 
 let generation_count = 100
 
@@ -49,4 +49,4 @@ let component (local_ graph) =
     ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

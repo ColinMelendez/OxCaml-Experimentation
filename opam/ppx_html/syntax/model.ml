@@ -460,7 +460,7 @@ include struct
         ; interpolation_kind : interpolation_kind
         }
     | Element of element
-  [@@deriving traverse_map]
+  [@@deriving traverse_map, traverse_iter]
 end
 
 module Traverse = struct
@@ -476,5 +476,18 @@ module Traverse = struct
       method location : location -> location = Fn.id
     end
 
+  class iter' =
+    object
+      inherit iter
+      method list : 'a. ('a -> unit) -> 'a list -> unit = fun f -> List.iter ~f
+      method option : 'a. ('a -> unit) -> 'a option -> unit = fun f -> Option.iter ~f
+      method string : string -> unit = fun _ -> ()
+      method int : int -> unit = fun _ -> ()
+      method bool : bool -> unit = fun _ -> ()
+      method ocaml_expr : ocaml_expr -> unit = fun _ -> ()
+      method location : location -> unit = fun _ -> ()
+    end
+
   class map = map'
+  class iter = iter'
 end

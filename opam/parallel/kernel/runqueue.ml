@@ -77,9 +77,9 @@ let promotions queue ~(f : 'a. 'a promoter) =
 let promote queue ~(scheduler : Parallel_kernel0.Scheduler.t) =
   let promoted =
     promotions queue ~f:(fun job promise ~tokens ->
-      scheduler.#promote (Promise.try_fiber promise job ~scheduler ~tokens))
+      scheduler.#subtask (Promise.try_fiber promise job ~scheduler ~tokens))
   in
-  if promoted > 0 then scheduler.#wake ~n:promoted
+  if promoted > 0 then scheduler.#try_wake ~n:promoted
 ;;
 
 let[@inline] [@loop] rec node
@@ -137,16 +137,18 @@ let[@inline never] [@loop] rec await
   : type a l.
     (a * l) node @ local once
     -> Parallel_kernel1.t @ local
-    -> (a * l) Hlist.Gen(Result.Capsule).t @ forkable local portable unique
+    -> #((a * l) Hlist.Gen(Result.Capsule).t * tokens:int)
+       @ forkable local portable unique
   =
   fun node parallel -> exclave_
   match node with
   | Cons1 { job; promise; _ } ->
-    let a = Promise.await_or_run (value_exn promise) job parallel in
-    [ a ]
+    let #(a, ~tokens) = Promise.await_or_run (value_exn promise) job parallel in
+    #([ a ], ~tokens)
   | ConsN { job; promise; more } ->
-    let a = Promise.await_or_run (value_exn promise) job parallel in
-    a :: await more parallel
+    let #(a, ~tokens:a_tokens) = Promise.await_or_run (value_exn promise) job parallel in
+    let #(more, ~tokens:more_tokens) = await more parallel in
+    #(a :: more, ~tokens:(a_tokens + more_tokens))
 ;;
 
 let[@inline] [@loop] rec apply
@@ -185,7 +187,9 @@ let[@inline] [@loop] rec with_node
          exclave_
          (match node with
           | Cons1 { promise = This _; _ } | ConsN { promise = This _; _ } ->
-            { forkable = a, await node parallel }
+            let #(rest, ~tokens) = await node parallel in
+            if tokens <> 0 then add_tokens t tokens;
+            { forkable = a, rest }
           | Cons1 { promise = Null; _ } -> { forkable = a, apply rest parallel }
           | ConsN { promise = Null; more; _ } ->
             let (first :: rest) = rest in

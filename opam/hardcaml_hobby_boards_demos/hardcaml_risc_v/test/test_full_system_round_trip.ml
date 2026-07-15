@@ -156,7 +156,7 @@ let create_sim name : sim =
       (With_transmitter.create
          (Scope.create ~auto_label_hierarchical_ports:true ~flatten_design:true ()))
   in
-  let waveform, sim = Waveform.create sim in
+  let waveform, sim = Cyclesim.Waveform.create sim in
   { sim; waveform; name }
 ;;
 

@@ -30,9 +30,9 @@ multple children might reference the paths.
 - Balance long chains of Sub nodes to prevent stack overflows and suboptimal
 linear chains of incremental model values.
 
-- Added effects to lock and unlock focus in the `Bonsai_web_ui_partial_render_table`
+- Added effects to lock and unlock focus in the `Bonsai_web_partial_render_table`
 
-- `Bonsai_web_ui_form` and `Bonsai_web_ui_form2` were merged into `Bonsai_web_ui_form` under
+- `Bonsai_web_form` and `Bonsai_web_form2` were merged into `Bonsai_web_form` under
 submodules `With_automatic_view` and `With_manual_view`, respectively.
 
 - Added `always_update_when_focused` to text inputs to make the current behavior (text value can't be updated if the input is focused) optional.

@@ -2,7 +2,11 @@ open! Ppxlib
 
 (** [overwrite_output_kinds] will default to [How_to_vary_kinds.base_layouts]. *)
 type 'a create_binding =
-  location -> Context.t -> overwrite_output_kinds:expression option -> 'a
+  location
+  -> Context.t
+  -> Surface_type.t
+  -> overwrite_output_kinds:expression option
+  -> 'a
 
 module type S = sig
   val name : string

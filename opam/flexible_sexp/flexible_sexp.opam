@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/flexible_sexp/issues"
 dev-repo: "git+https://github.com/janestreet/flexible_sexp.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/flexible_sexp/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -17,7 +18,10 @@ depends: [
   "string_dict"
   "dune"        {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "A library for creating stable sexp serialization with forward compatibility."
 description: "
 flexible_sexp is a library that creates a stable sexp serialisation of types,

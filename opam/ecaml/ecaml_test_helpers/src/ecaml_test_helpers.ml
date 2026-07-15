@@ -102,7 +102,7 @@ let () =
        globally. *)
     ("ecaml-test-show-minibuffer" |> Symbol.intern)
     [%here]
-    ~docstring:"For testing."
+    ~docstring:"For testing.  If SHOW-CONTENTS is non-nil, show minibuffer contents."
     ~interactive:Raw_prefix
     (Returns Value.Type.unit)
     (let%map_open.Defun show_contents = required "SHOW-CONTENTS" bool in
@@ -120,7 +120,7 @@ let ecaml_test_passthrough_command_error_function =
   Defun.defun_func
     ("ecaml-test-passthrough-command-error-function" |> Symbol.intern)
     [%here]
-    ~docstring:"For testing."
+    ~docstring:"For testing.  Re-throw ERROR (ignoring CONTEXT and SIGNAL)."
     (Returns Value.Type.unit)
     (let%map_open.Defun () = return ()
      and error = required "error" value
@@ -215,6 +215,11 @@ let press_and_show_minibuffer ?(show_contents = true) key_sequence =
 let eval string =
   let%map value = Form.eval_string string in
   print_s [%sexp (value : Value.t)]
+;;
+
+let eval_i string =
+  let%map (_ : Value.t) = Form.eval_string string in
+  ()
 ;;
 
 let tmpdir_var = "TMPDIR"

@@ -3,4 +3,4 @@
  (public_name lsp_rpc.utf_offset_conv)
  (libraries core)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

@@ -320,6 +320,20 @@ Test
 |}]
 ;;
 
+(* Library_name: the necessary cookie is not available in the [.mlt] context, so we expect
+   it to error. See [library_name.ml]. *)
+
+let first = [%Library_name] in
+print_endline first
+
+[%%expect
+  {|
+Line _, characters _-_:
+Error: ppx_var_name: Unable to determine what [%Library_name] should resolve
+       to.
+|}]
+;;
+
 (* Optional prefix *)
 
 let first = [%var_name.var_name] in

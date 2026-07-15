@@ -11,13 +11,17 @@ open! Import
 
 [%%template:
 type ('a : k) t : mutable_data with 'a
-[@@deriving compare ~localize, equal ~localize, sexp_of] [@@kind k = base_non_value]
+[@@deriving compare ~localize, equal ~localize, sexp_of] [@@kind k = base]
 
-type 'a t [@@deriving compare ~localize, equal ~localize, quickcheck, sexp_of]
+(*_ Non-value [t]s don't support quickcheck *)
+[%%rederive: type nonrec 'a t = 'a t [@@deriving quickcheck]]
+
+(*_ Unmangled [t] is shadowed below, so define [t] with explicit mangling. *)
+type 'a t := 'a t [@@kind.explicit value]
 
 [@@@kind k = base]
 
-type ('a : k) t := ('a t[@kind k])
+type ('a : k) t := ('a t[@kind.explicit k])
 
 [@@@kind.default k]
 
@@ -32,8 +36,8 @@ val set_exn : 'a t -> here:[%call_pos] -> 'a -> unit
 (** [set_if_none t a] will do nothing if [is_some t], otherwise it will [set_exn t a]. *)
 val set_if_none : 'a t -> here:[%call_pos] -> 'a -> unit
 
-val get : 'a t -> ('a option[@kind k])
-val get_exn : here:[%call_pos] -> 'a t -> 'a
+val get : 'a t -> ('a option[@kind k]) [@@zero_alloc]
+val get_exn : here:[%call_pos] -> 'a t -> 'a [@@zero_alloc]
 
 (** Get the value. If it's not set, [f ()] will be called to initialize it. *)
 val get_or_set_thunk : here:[%call_pos] -> 'a t -> f:local_ (unit -> 'a) -> 'a
@@ -43,7 +47,10 @@ val is_some : _ t -> bool
 val iter : 'a t -> f:local_ ('a -> unit) -> unit
 
 module Optional_syntax :
-  Optional_syntax.S1 [@kind k] with type 'a t := 'a t with type 'a value := 'a identity]
+  Optional_syntax.S1_zero_alloc
+  [@kind k]
+  with type 'a t := 'a t
+  with type 'a value := 'a identity]
 
 module Unstable : sig
   type nonrec 'a t = 'a t

@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/patdiff/issues"
 dev-repo: "git+https://github.com/janestreet/patdiff.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/patdiff/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -16,15 +17,18 @@ depends: [
   "core_extended"
   "core_kernel"
   "core_unix"
-  "expect_test_helpers_core"
+  "expect_test_helpers_base"
   "patience_diff"
   "ppx_jane"
   "angstrom"                 {>= "0.15.0"}
   "dune"                     {>= "3.17.0"}
-  "re"                       {= "1.14.0+ox"}
+  "re"                       {>= "1.8.0"}
   "uucp"
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "File Diff using the Patience Diff algorithm"
 description: "
 "

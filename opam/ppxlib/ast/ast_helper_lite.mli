@@ -179,6 +179,10 @@ module Exp : sig
   val construct :
     ?loc:loc -> ?attrs:attrs -> lid -> expression option -> expression
 
+  val unboxed_unit : ?loc:loc -> ?attrs:attrs -> unit -> expression
+
+  val unboxed_bool : ?loc:loc -> ?attrs:attrs -> bool -> expression
+
   val variant :
     ?loc:loc -> ?attrs:attrs -> label -> expression option -> expression
 
@@ -294,6 +298,7 @@ module Exp : sig
   val quote : ?loc:loc -> ?attrs:attrs -> expression -> expression
   val splice : ?loc:loc -> ?attrs:attrs -> expression -> expression
   val hole : ?loc:loc -> ?attrs:attrs -> unit -> expression
+  val borrow : ?loc:loc -> ?attrs:attrs -> expression -> expression
 end
 
 (** Value declarations *)

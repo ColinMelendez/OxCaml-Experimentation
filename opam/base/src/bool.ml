@@ -6,7 +6,8 @@ let invalid_argf = Printf.invalid_argf
 
 module T = struct
   type t = bool
-  [@@deriving compare ~localize, enumerate, globalize, hash, sexp ~stackify, sexp_grammar]
+  [@@deriving
+    compare ~localize, enumerate, globalize, hash, sexp ~stackify ~unboxed, sexp_grammar]
 
   let hashable : t Hashable.t = { hash; compare; sexp_of_t }
 
@@ -64,6 +65,8 @@ module Non_short_circuiting = struct
   let ( || ) a b = unsafe_of_int (to_int a lor to_int b)
   let ( && ) a b = unsafe_of_int (to_int a land to_int b)
 end
+
+module Branch_free = Non_short_circuiting
 
 (* We do this as a direct assert on the theory that it's a cheap thing to test and a
    really core invariant that we never expect to break, and we should be happy for a

@@ -12,14 +12,7 @@ open! Import
 *)
 let assoc_max_input_size_to_fold = 20
 
-module Constants_in_scope =
-  Univ_map.Make
-    (Univ_map.Type_id_key)
-    (struct
-      include Value
-
-      let sexp_of_t _ = sexp_of_opaque
-    end)
+module Constants_in_scope = Var_id.Map.Make (Value)
 
 module Evaluated = struct
   type t =
@@ -98,18 +91,13 @@ include struct
     (type k v cmp)
     ~(here : Source_code_position.t)
     ~(key_comparator : (k, cmp) Comparator.Module.t)
-    ~(key_id : k Type_equal.Id.t)
-    ~(data_id : v Type_equal.Id.t)
+    ~(key_id : k Var_id.t)
+    ~(data_id : v Var_id.t)
     (map : (k, v, cmp) Map.t Value.t)
     by
     =
-    let module C = (val key_comparator) in
     let%map.Option by, may_contain =
-      Simplify.computation_to_function
-        by
-        ~key_compare:(Comparator.compare C.comparator)
-        ~key_id
-        ~data_id
+      Simplify.computation_to_function by ~key_id ~key_comparator ~data_id
     in
     Computation.Assoc_simpl { map; by; may_contain; here }
   ;;
@@ -523,7 +511,17 @@ module Constant_fold (Recurse : Fix_transform.Recurse with module Types := Types
            Recurse.on_computation { constants_in_scope; evaluated } () `Directly_on into
          in
          return (Computation.Sub { from; via; into; invert_lifecycles; here }))
-    | Leaf1 { input; input_id; model; dynamic_action; apply_action; reset; here } ->
+    | Leaf1
+        { input
+        ; input_id
+        ; model
+        ; dynamic_action
+        ; apply_action
+        ; reset
+        ; action_name
+        ; sexp_of_action
+        ; here
+        } ->
       let (), (), input =
         Recurse.on_value { constants_in_scope; evaluated } () `Directly_on input
       in
@@ -532,12 +530,30 @@ module Constant_fold (Recurse : Fix_transform.Recurse with module Types := Types
         | None ->
           return
             (Computation.Leaf1
-               { input; input_id; model; dynamic_action; apply_action; reset; here })
+               { input
+               ; input_id
+               ; model
+               ; dynamic_action
+               ; apply_action
+               ; reset
+               ; action_name
+               ; sexp_of_action
+               ; here
+               })
         | Some input ->
-          let apply_action ~inject = apply_action ~inject (Some (Lazy.force input)) in
+          let apply_action ~inject =
+            apply_action ~inject (Computation_status.Active (Lazy.force input))
+          in
           return
             (Computation.Leaf0
-               { model; static_action = dynamic_action; apply_action; reset; here }))
+               { model
+               ; static_action = dynamic_action
+               ; apply_action
+               ; reset
+               ; action_name
+               ; sexp_of_action
+               ; here
+               }))
     | Lazy { t; here } ->
       (match evaluated with
        | Unconditionally ->

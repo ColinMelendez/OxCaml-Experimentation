@@ -1,4 +1,5 @@
-type ('a : any mod separable) t = 'a array
+type nonrec ('a : any mod separable) array = 'a array
+type nonrec ('a : any mod separable) iarray = 'a iarray
 
 external length
   : ('a : any mod separable).
@@ -20,6 +21,22 @@ external%template unsafe_get
   @@ portable
   = "%array_unsafe_get"
 [@@mode m = (uncontended, shared)] [@@layout_poly]
+
+[%%template
+  external unsafe_to_array__promise_no_mutation
+    : ('a : any mod separable).
+    ('a iarray[@local_opt]) @ c -> ('a array[@local_opt]) @ c
+    @@ portable
+    = "%array_of_iarray"
+  [@@mode c = (uncontended, shared, contended)] [@@layout_poly]]
+
+[%%template
+  external unsafe_of_array__promise_no_mutation
+    : ('a : any mod separable).
+    ('a array[@local_opt]) @ c -> ('a iarray[@local_opt]) @ c
+    @@ portable
+    = "%array_to_iarray"
+  [@@mode c = (uncontended, shared, contended)] [@@layout_poly]]
 
 [%%template
   external create

@@ -98,7 +98,7 @@ let baseline
         info_from.apply_action
           ~inject:(wrap_sub_from inject)
           ~schedule_event
-          (Option.map input ~f:fst)
+          (Computation_status.map input ~f:fst)
           model_from
           action
       in
@@ -108,7 +108,7 @@ let baseline
         info_into.apply_action
           ~inject:(wrap_sub_into inject)
           ~schedule_event
-          (Option.map input ~f:snd)
+          (Computation_status.map input ~f:snd)
           model_into
           action
       in
@@ -349,7 +349,7 @@ module Chain = struct
     type t =
       | T :
           { bound : ('a, Environment.t option) Computation.packed_info
-          ; via : 'a Type_equal.Id.t
+          ; via : 'a Var_id.t
           ; here : Source_code_position.t
           }
           -> t

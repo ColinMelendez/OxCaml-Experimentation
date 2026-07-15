@@ -10,7 +10,7 @@ end = struct
 
   let create () = Queue.create ()
   let push v t = Queue.push (Unique.Once.make v) t
-  let pop t = Unique.Once.get_exn (Queue.pop t)
+  let pop t = Unique.Once.take_exn (Queue.pop t)
   let is_empty t = Queue.is_empty t
 end
 
@@ -96,7 +96,7 @@ let test h =
   "ok"
 ;;
 
-let%expect_test ("scheduler test" [@tags "runtime5-only"]) =
+let%expect_test "scheduler test" =
   let `Finished = run test in
   [%expect {| A+,+B.C,D,[]!E. |}]
 ;;

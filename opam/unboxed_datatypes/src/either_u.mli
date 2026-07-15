@@ -15,6 +15,12 @@ open Base
     , bits64
     , vec128
     , word
+    , value_or_null & value_or_null
+    , value_or_null & float64
+    , value_or_null & bits32
+    , value_or_null & bits64
+    , value_or_null & vec128
+    , value_or_null & word
     , value & value
     , value & float64
     , value & bits32
@@ -26,7 +32,9 @@ open Base
     , bits32 & bits32
     , bits64 & bits64
     , vec128 & vec128
-    , word & word )]
+    , word & word
+    , (_ : (_ : value_or_null & (value_or_null & value_or_null)))
+    , (_ : (_ : (value_or_null & value_or_null) & (value_or_null & value_or_null))) )]
 
 type ('a : k, 'b : k, 'c : k) tag =
   | First : (('a, 'b, 'a) tag[@kind k])
@@ -58,6 +66,12 @@ val to_either : ('a, 'b) t @ m -> ('a, 'b) Either.t @ m
     , bits64
     , vec128
     , word
+    , value_or_null & value_or_null
+    , value_or_null & float64
+    , value_or_null & bits32
+    , value_or_null & bits64
+    , value_or_null & vec128
+    , value_or_null & word
     , value & value
     , value & float64
     , value & bits32
@@ -69,7 +83,9 @@ val to_either : ('a, 'b) t @ m -> ('a, 'b) Either.t @ m
     , bits32 & bits32
     , bits64 & bits64
     , vec128 & vec128
-    , word & word )]
+    , word & word
+    , (_ : (_ : value_or_null & (value_or_null & value_or_null)))
+    , (_ : (_ : (value_or_null & value_or_null) & (value_or_null & value_or_null))) )]
 
 val is_first : ((_, _) t[@kind k]) @ local -> bool [@@zero_alloc]
 val is_second : ((_, _) t[@kind k]) @ local -> bool [@@zero_alloc]

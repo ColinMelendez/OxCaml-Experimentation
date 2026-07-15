@@ -4,6 +4,21 @@ open! Ast_builder.Default
 
 let ppx_name = "ppx_var_name"
 
+module Build_unit_cookie = struct
+  (*_ _ *)
+
+  let name = "dune-build-unit"
+  let value = ref None
+end
+
+let () =
+  Driver.Cookies.add_handler (fun cookies ->
+    Build_unit_cookie.value
+    := Driver.Cookies.get_res cookies Build_unit_cookie.name Ast_pattern.(estring __)
+       |> Result.ok
+       |> Option.join)
+;;
+
 let underscore_to_dashes_lowercase s =
   String.tr s ~target:'_' ~replacement:'-' |> String.lowercase
 ;;
@@ -63,6 +78,7 @@ let () =
     List.concat
       [ extensions "var" Code_path.enclosing_value
       ; extensions "module" (fun cp -> Some (Code_path.enclosing_module cp))
+      ; extensions "library" (fun (_ : Code_path.t) -> !Build_unit_cookie.value)
       ]
   in
   let rules = List.map ~f:Context_free.Rule.extension extensions in

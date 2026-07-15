@@ -6,11 +6,12 @@ module Stable = struct
     module V1 = struct
       type t = (Sexp.V1.t[@sexp_grammar.any "Flexible_sexp.Variant.Other.t"])
       [@@deriving
-        compare ~localize
+        bin_shape
+        , compare ~localize
         , equal ~localize
         , globalize
         , hash
-        , sexp
+        , sexp ~stackify
         , sexp_grammar
         , stable_witness]
 
@@ -43,6 +44,10 @@ module Stable = struct
 
       module Private__for_flexible_sexp_unit_tests_only = struct
         let of_sexp = Fn.id
+      end
+
+      module Private__for_ppx_flexible_sexp = struct
+        let eq = Type_equal.T
       end
     end
 
@@ -190,7 +195,7 @@ module Stable = struct
            open! Core
            open! Import
 
-           type t [@@deriving (compare [@mode m]), sexp]
+           type t [@@deriving (compare [@mode.explicit m]), sexp]
 
            module Variants : sig
              val descriptions : (string * int) list

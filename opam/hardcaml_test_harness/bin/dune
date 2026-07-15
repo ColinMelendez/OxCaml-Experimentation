@@ -1,0 +1,6 @@
+(executables
+ (modes byte exe)
+ (names simulate)
+ (libraries core_unix.command_unix core hardcaml_step_test_harness_test)
+ (preprocess
+  (pps ppx_jane)))

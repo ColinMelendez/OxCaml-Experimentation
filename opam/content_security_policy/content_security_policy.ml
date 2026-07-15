@@ -15,7 +15,7 @@ module Source = struct
   end
 
   include T
-  include Comparable.Make (T)
+  include Comparable.Make [@mode local] (T)
 
   let to_string = function
     | Self -> "'self'"
@@ -62,7 +62,7 @@ module Fetch_type = struct
   end
 
   include T
-  include Comparable.Make (T)
+  include Comparable.Make [@mode local] (T)
 
   let to_string = function
     | Connect -> "connect-src"

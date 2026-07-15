@@ -80,6 +80,7 @@ module Allowlisted = struct
         "ocaml.extension_constructor";
         "ocaml.immediate";
         "ocaml.immediate64";
+        "ocaml.implicit_kind";
         "ocaml.inline";
         "ocaml.inlined";
         "ocaml.local";
@@ -120,9 +121,15 @@ module Allowlisted = struct
         "ocaml.toplevel_printer" (*Interpreted by the toplevel/utop*);
         "toplevel_printer" (*Interpreted by the toplevel/utop*);
         "ocaml.unsafe_allow_any_mode_crossing";
+        "ocaml.or_null";
         "ocaml.or_null_reexport";
         "ocaml.atomic";
-        "ocaml.llvm_backend"
+        "ocaml.llvm_backend";
+        "ocaml.cold";
+        "ocaml.unpacked";
+        "ocaml.flatten_floats";
+        "ocaml.represent_as_float_array";
+        "ocaml.magic_staged_modes";
       ]
 
   (* Allow list the following extensions.

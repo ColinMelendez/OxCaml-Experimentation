@@ -1,6 +1,5 @@
 open Core
 open Hardcaml
-open Hardcaml_waveterm
 
 include struct
   open Hardcaml_hobby_boards_kernel
@@ -80,7 +79,7 @@ let test_rx_waves ?(with_data_gaps = false) () =
   let sim =
     Sim.create ~config:Cyclesim.Config.trace_all (Udp_packet_decoder.create scope)
   in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   let udp_packet_1 =

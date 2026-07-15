@@ -1,6 +1,6 @@
 open! Core
 open! Bonsai_web
-open! Bonsai_web_ui_common_components
+open! Bonsai_web_contrib_pills
 
 module Attr_merge_behavior = struct
   type t =
@@ -91,10 +91,10 @@ let input
            @ [ Vdom.Attr.type_ "text"
              ; Vdom.Attr.create "list" id
              ; Vdom.Attr.placeholder placeholder
-               (* Both Attr.value and Attr.string_property value must be set. The former
-                  only affects initial control state while the latter affects the control
-                  state whilst the form is being used. *)
-             ; Vdom.Attr.value value
+               (* Both Attr.value_attr and Attr.string_property value must be set. The
+                  former only affects initial control state while the latter affects the
+                  control state whilst the form is being used. *)
+             ; Vdom.Attr.value_attr value
              ; Vdom.Attr.on_focus (fun _ -> set_focused true)
              ; Vdom.Attr.on_blur (fun _ -> set_focused false)
              ; Vdom.Attr.string_property "value" value
@@ -129,7 +129,7 @@ let datalist ?filter_options_by ~id ~all_options ~to_string ~to_option_descripti
     (lazy
       (let option_of_t t =
          Vdom.Node.option
-           ~attrs:[ Vdom.Attr.value (to_string t) ]
+           ~attrs:[ Vdom.Attr.value_attr (to_string t) ]
            [ Vdom.Node.text (to_option_description t) ]
        in
        let all_options =
@@ -321,6 +321,7 @@ let create_multi_internal
   (type comparator_witness t)
   ?(extra_attrs = Bonsai.return [])
   ?(extra_pills_container_attrs = Bonsai.return [])
+  ?extra_pill_attr
   ?pills_tab_behavior
   ?(placeholder = Bonsai.return "")
   ?(on_set_change = Bonsai.return (const Ui_effect.Ignore))
@@ -400,12 +401,13 @@ let create_multi_internal
       graph
   in
   let pills =
-    Pills.of_set
+    Bonsai_web_contrib_pills.of_set
       ~extra_container_attr:
         (let%arr extra_pills_container_attrs in
          Vdom.Attr.many
-           (Vdom.Attr.(class_ "bonsai-web-ui-typeahead-pills")
+           (Vdom.Attr.(class_ "bonsai-web-contrib-typeahead-pills")
             :: extra_pills_container_attrs))
+      ?extra_pill_attr
       ?tab_behavior:pills_tab_behavior
       ~to_string
       ~inject_selected_options

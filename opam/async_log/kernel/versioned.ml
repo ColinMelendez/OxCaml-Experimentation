@@ -29,7 +29,7 @@ module Stable = struct
       else t
     ;;
 
-    type 'time t = 'time T.t
+    type 'time t = 'time T.t [@@deriving stable_witness]
 
     include
       Sexpable.Of_sexpable1.V1

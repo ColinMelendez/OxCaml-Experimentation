@@ -3,14 +3,15 @@
 type ('a : value_or_null) t =
   'a Stdlib_shim.Modes.Portable.t Atomic.t Stdlib_shim.Modes.Contended.t
 
-external make
+val make
   : ('a : value_or_null).
-  'a @ contended portable -> ('a t[@local_opt])
-  = "%makemutable"
+  ?padded:bool @ local -> 'a @ contended portable -> 'a t
+  @@ stateless
 
 external make_contended
   : ('a : value_or_null).
   'a @ contended portable -> ('a t[@local_opt])
+  @@ stateless
   = "caml_atomic_make_contended"
 
 external get

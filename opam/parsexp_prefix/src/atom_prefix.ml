@@ -7,7 +7,7 @@ type t =
   ; signifier_begin_offset : int
   ; signifier_end_offset : int
   }
-[@@deriving compare, sexp_of]
+[@@deriving compare ~localize, sexp_of]
 
 let offset_of_start_of_current_quoted_atom position_builder =
   match Positions.Builder.contents position_builder |> Positions.to_list |> List.rev with

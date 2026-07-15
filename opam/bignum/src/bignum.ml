@@ -59,22 +59,9 @@ module Q = struct
   ;;
 
   let globalize x = globalize x
-
-  (** Unlike [%compare.equal], which is what actually gets exposed as [equal] due to the
-      later [Comparable.Make_binable], this [equal] follows IEEE float semantics: [undef]
-      <> [undef]. *)
-  let equal_which_treats_nan_differently_from_the_exposed_equal = Zarith.Q.equal
-
-  let[@warning "-unused-value-declaration"] equal =
-    `This_gets_redefined_later_in_an_incompatible_way
-  ;;
-
-  let compare__local = compare__local
-
-  (* [equal__local] is defined this way to ensure it agrees with the [equal] in scope from
-     [Comparable.Make_binable], rather than the IEEE-float-style [equal] from [Zarith.Q].
-  *)
-  let equal__local = ([%compare.equal: t] [@mode local])
+  let equal = [%compare.equal: Zarith.Q.t]
+  let%template[@mode local] equal = equal
+  let%template[@mode local] compare = compare
 
   let t_sexp_grammar : t Sexplib.Sexp_grammar.t =
     let plus_character : Sexplib.Sexp_grammar.grammar =
@@ -363,24 +350,29 @@ module Q = struct
       else Rational_not_decimal)
   ;;
 
+  let%template[@alloc a = heap] maybe_globalize t = t
+  let%template[@alloc a = stack] maybe_globalize t = globalize t
+
   module Serialized_parts = struct
     type t =
       | Atom of string
       | List of string * string * string
 
-    let create t : t =
-      if Z.equal t.den Z.one (* Special case motivated by performance speedup. *)
-      then Atom (Z.to_string t.num)
-      else (
-        match kind t with
-        | Den_equals_zero -> Atom (to_string_when_den_is_zero ~num:t.num)
-        | Decimal { max_decimal_digits } ->
-          Atom (to_string_decimal_truncate ~max_decimal_digits t)
-        | Rational_not_decimal ->
-          let main = to_string_decimal_truncate ~max_decimal_digits:9 t in
-          let main_t = of_string_internal main in
-          let remaining = sub t main_t in
-          List (main, "+", to_rational_string remaining))
+    let%template[@alloc a = (heap, stack)] create t : t =
+      let t = (maybe_globalize [@alloc a]) t in
+      (if Z.equal t.den Z.one (* Special case motivated by performance speedup. *)
+       then Atom (Z.to_string t.num)
+       else (
+         match kind t with
+         | Den_equals_zero -> Atom (to_string_when_den_is_zero ~num:t.num)
+         | Decimal { max_decimal_digits } ->
+           Atom (to_string_decimal_truncate ~max_decimal_digits t)
+         | Rational_not_decimal ->
+           let main = to_string_decimal_truncate ~max_decimal_digits:9 t in
+           let main_t = of_string_internal main in
+           let remaining = sub t main_t in
+           List (main, "+", to_rational_string remaining)))
+      [@exclave_if_stack a]
     ;;
   end
 end
@@ -407,11 +399,10 @@ module Stable = struct
 
     let hash (t : t) = Hashtbl.hash t
     let hash_fold_t state t = hash_fold_int state (Hashtbl.hash t)
-    let equal = Q.equal_which_treats_nan_differently_from_the_exposed_equal
 
-    let sexp_of_t t =
+    let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_t (t @ m) =
       let open Core in
-      match Q.Serialized_parts.create t with
+      match[@exclave_if_stack a] (Q.Serialized_parts.create [@alloc a]) t with
       | Atom atom -> Sexp.Atom atom
       | List (a, b, c) -> Sexp.List [ Atom a; Atom b; Atom c ]
       | exception e -> Exn.reraise e "Bignum.sexp_of_t"
@@ -548,7 +539,7 @@ module Stable = struct
          but we want to be conservative with existing 32bits users who might not be able
          to read large ints. *)
       let to_binable t =
-        if Q.equal_which_treats_nan_differently_from_the_exposed_equal t Q.zero
+        if Q.equal t Q.zero
         then Bin_rep.Zero
         else (
           let num = t.num in
@@ -614,7 +605,6 @@ module Stable = struct
 
     let hash (t : t) = Hashtbl.hash t
     let hash_fold_t state t = hash_fold_int state (Hashtbl.hash t)
-    let equal = Q.equal_which_treats_nan_differently_from_the_exposed_equal
 
     include%template
       Binable.Of_binable.V1 [@modality portable] [@mode local] [@alert "-legacy"]
@@ -781,7 +771,7 @@ module Stable = struct
       let fits_int63 x = Z.leq int63_min_value x && Z.leq x int63_max_value
 
       let to_binable t =
-        if Q.equal_which_treats_nan_differently_from_the_exposed_equal t Q.zero
+        if Q.equal t Q.zero
         then Bin_rep.Zero
         else (
           let num = t.num in
@@ -858,7 +848,6 @@ module Stable = struct
 
     let hash (t : t) = Hashtbl.hash t
     let hash_fold_t state t = hash_fold_int state (Hashtbl.hash t)
-    let equal = Q.equal_which_treats_nan_differently_from_the_exposed_equal
 
     include%template
       Binable.Of_binable.V1 [@modality portable] [@mode local] [@alert "-legacy"]
@@ -868,7 +857,7 @@ module Stable = struct
     module For_testing = Bin_rep_conversion
 
     let t_of_sexp = V1.t_of_sexp
-    let sexp_of_t = V1.sexp_of_t
+    let%template[@alloc a = (heap, stack)] sexp_of_t = (V1.sexp_of_t [@alloc a])
     let t_sexp_grammar = V1.t_sexp_grammar
 
     let bin_read_t buf ~pos_ref =
@@ -970,10 +959,10 @@ end
 
 include Q
 
-include%template Comparable.Make_binable [@modality portable] (Unstable)
+include%template Comparable.Make_binable [@mode local] [@modality portable] (Unstable)
 
 let t_of_sexp = Unstable.t_of_sexp
-let sexp_of_t = Unstable.sexp_of_t
+let%template[@alloc a = (heap, stack)] sexp_of_t = (Unstable.sexp_of_t [@alloc a])
 
 let is_representable_as_decimal t =
   match kind t with

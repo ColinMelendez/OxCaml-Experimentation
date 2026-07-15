@@ -3,4 +3,4 @@
  (public_name heterogeneous_list)
  (libraries base)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

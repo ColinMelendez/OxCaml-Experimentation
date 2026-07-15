@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-module Vis = Bonsai_web_ui_visibility
+module Vis = Bonsai_web_visibility
 
 module Style =
   [%css
@@ -82,4 +82,4 @@ let component (local_ graph) =
   Vdom.Node.div [ boxes; debug ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

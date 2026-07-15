@@ -40,6 +40,17 @@ val create_handle_without_handler
 val set_dimensions : (_, _ Result_spec.incoming) Handle.t -> Dimensions.t -> unit
 val send_event : (_, _ Result_spec.incoming) Handle.t -> Event.t -> unit
 val do_actions : (_, 'incoming Result_spec.incoming) Handle.t -> 'incoming list -> unit
+val last_result : (('a, _) Result_spec.t, _) Handle.t -> 'a
+
+val last_view
+  :  (('a, 'incoming) Result_spec.t, 'incoming Result_spec.incoming) Handle.t
+  -> View.t
+
+val last_dimensions
+  :  (('a, 'incoming) Result_spec.t, 'incoming Result_spec.incoming) Handle.t
+  -> Dimensions.t
+
+val print_view : View.t -> unit
 
 module For_minimal_mocking_test_suite : sig
   val cap_to_notty_cap : Capability.t -> Notty.Cap.t

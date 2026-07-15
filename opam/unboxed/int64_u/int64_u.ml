@@ -1,3 +1,4 @@
+open! Base
 module I = Base.Int64
 
 type t = int64#
@@ -41,9 +42,27 @@ module Shared_derived = struct
   ;;
 
   let t_sexp_grammar = Sexplib0.Sexp_grammar.coerce I.t_sexp_grammar
+  let bin_shape_t = Bin_prot_unboxed_numbers.Int64_u.bin_shape_t
 
-  include Bin_prot_unboxed_numbers.Int64_u
+  [%%template
+  [@@@mode.default m = (global, local)]
 
+  let[@inline always] bin_size_t t =
+    (Bin_prot_unboxed_numbers.Int64_u.bin_size_t [@mode m] [@inlined]) t
+  ;;
+
+  let[@inline always] bin_write_t buf ~pos t =
+    (Bin_prot_unboxed_numbers.Int64_u.bin_write_t [@mode m] [@inlined]) buf ~pos t
+  ;;]
+
+  let[@inline always] bin_read_t buf ~pos_ref =
+    (Bin_prot_unboxed_numbers.Int64_u.bin_read_t [@inlined]) buf ~pos_ref
+  ;;
+
+  let __bin_read_t__ = Bin_prot_unboxed_numbers.Int64_u.__bin_read_t__
+  let bin_writer_t = Bin_prot_unboxed_numbers.Int64_u.bin_writer_t
+  let bin_reader_t = Bin_prot_unboxed_numbers.Int64_u.bin_reader_t
+  let bin_t = Bin_prot_unboxed_numbers.Int64_u.bin_t
   let[@inline] hash_fold_t state t = (I.hash_fold_t [@inlined hint]) state (to_int64 t)
   let[@inline] hash t = (I.hash [@inlined hint]) (to_int64 t)
   let typerep_of_t = Typerep_lib.Std.Typerep.Int64_u
@@ -61,7 +80,7 @@ end
 include Shared_derived
 
 module O = struct
-  let[@inline] zero () = of_int64 I.O.zero
+  let zero = of_int64 I.O.zero
   let[@inline] ( + ) t1 t2 = of_int64 (I.O.( + ) (to_int64 t1) (to_int64 t2))
   let[@inline] ( - ) t1 t2 = of_int64 (I.O.( - ) (to_int64 t1) (to_int64 t2))
   let[@inline] ( * ) t1 t2 = of_int64 (I.O.( * ) (to_int64 t1) (to_int64 t2))
@@ -151,9 +170,9 @@ let[@inline] to_string_hum ?delimiter t =
   (I.to_string_hum [@inlined hint]) ?delimiter (to_int64 t)
 ;;
 
-let[@inline] zero () = of_int64 I.zero
-let[@inline] one () = of_int64 I.one
-let[@inline] minus_one () = of_int64 I.minus_one
+let zero = of_int64 I.zero
+let one = of_int64 I.one
+let minus_one = of_int64 I.minus_one
 let[@inline] rem t1 t2 = of_int64 ((I.rem [@inlined hint]) (to_int64 t1) (to_int64 t2))
 
 let[@inline] round ?dir t ~to_multiple_of:t2 =
@@ -209,8 +228,8 @@ let[@inline] of_float_unchecked f =
 ;;
 
 let num_bits = I.num_bits
-let[@inline] max_value () = of_int64 I.max_value
-let[@inline] min_value () = of_int64 I.min_value
+let max_value = of_int64 I.max_value
+let min_value = of_int64 I.min_value
 let[@inline] ( lsr ) t x = of_int64 ((I.(( lsr )) [@inlined hint]) (to_int64 t) x)
 let[@inline] shift_right_logical t i = t lsr i
 let[@inline] ceil_pow2 t = of_int64 ((I.ceil_pow2 [@inlined hint]) (to_int64 t))
@@ -291,6 +310,22 @@ module Array_index = struct
     ('a array[@local_opt]) -> (t[@local_opt]) -> 'a -> unit
     @@ portable
     = "%array_unsafe_set_indexed_by_int64#"
+  [@@layout_poly]
+end
+
+module Iarray_index = struct
+  external get
+    : ('a : any mod separable).
+    ('a iarray[@local_opt]) -> (t[@local_opt]) -> 'a
+    @@ portable
+    = "%array_safe_get_indexed_by_int64#"
+  [@@layout_poly]
+
+  external unsafe_get
+    : ('a : any mod separable).
+    ('a iarray[@local_opt]) -> (t[@local_opt]) -> 'a
+    @@ portable
+    = "%array_unsafe_get_indexed_by_int64#"
   [@@layout_poly]
 end
 
@@ -375,7 +410,10 @@ module Array = struct
   let copy t = init (length t) ~f:(fun i -> unsafe_get t i) [@nontail]
 end
 
-let to_string n = Base.Exported_for_specific_uses.Integer_to_string.int64_u_to_string n
+let%template[@alloc a = (heap, stack)] to_string n =
+  (Base.Exported_for_specific_uses.Integer_to_string.int64_u_to_string [@alloc a])
+    n [@exclave_if_stack a]
+;;
 
 module Stable = struct
   module V1 = struct
@@ -469,6 +507,33 @@ module Hex_unsigned = struct
   module Sexp = Base.Sexp
   module String = Base.String
 
+  module To_string_config = struct
+    module Case = struct
+      type t =
+        | Lowercase
+        | Uppercase
+      [@@deriving equal ~localize, sexp_of]
+    end
+
+    type t =
+      { prefix_with_0x : bool
+      ; render_letters : Case.t
+      }
+    [@@deriving box, equal ~localize, sexp_of]
+
+    let default = { prefix_with_0x = true; render_letters = Lowercase }
+    let[@inline] starting_offset t = of_int (Bool.to_int t.#prefix_with_0x) * #2L
+
+    let[@inline] ascii_a t =
+      let a =
+        match t.#render_letters with
+        | Lowercase -> 'a'
+        | Uppercase -> 'A'
+      in
+      of_int (Char.to_int a)
+    ;;
+  end
+
   module Private = struct
     type digits_to_process = t
 
@@ -484,23 +549,31 @@ module Hex_unsigned = struct
     ;;
 
     (* 2 bytes for the "0x" prefix. plus one byte per 4-bit digit. *)
-    let[@inline] to_string_required_length ~digits_to_process =
+    let[@inline] to_string_required_length ~config ~digits_to_process =
       let open O in
-      to_int_trunc (#2L + digits_to_process)
+      to_int_trunc (To_string_config.starting_offset config + digits_to_process)
     ;;
 
-    let[@inline never] to_string_into t out ~digits_to_process =
+    let[@inline never] to_string_into
+      t
+      out
+      ~(config : To_string_config.t#)
+      ~digits_to_process
+      =
       let open O in
       let set = Bytes.unsafe_set in
-      set out 0 '0';
-      set out 1 'x';
+      if config.#prefix_with_0x
+      then (
+        set out 0 '0';
+        set out 1 'x');
+      let starting_offset = To_string_config.starting_offset config in
+      let ascii_a = To_string_config.ascii_a config in
       range_rev digits_to_process ~f:(fun i ->
         let digit = (t lsr to_int_trunc (i * #4L)) land #0xFL in
-        let output_index = #2L + digits_to_process - i - #1L in
-        let ascii_lowercase_a = of_int (Char.to_int 'a') in
+        let output_index = starting_offset + digits_to_process - i - #1L in
         let ascii_zero = of_int (Char.to_int '0') in
         let char_as_int =
-          select (digit >= #10L) (digit + ascii_lowercase_a - #10L) (digit + ascii_zero)
+          select (digit >= #10L) (digit + ascii_a - #10L) (digit + ascii_zero)
         in
         set
           out
@@ -580,13 +653,17 @@ module Hex_unsigned = struct
     let[@inline] of_string s = Private.of_string s ~max_digits:(max_digits ())
     let[@inline] t_of_sexp sexp = Private.t_of_sexp sexp ~max_digits:(max_digits ())
 
-    let[@inline never] to_string t = exclave_
+    let[@inline never] to_string_custom t ~config = exclave_
       let digits_to_process = Private.digits_to_process t ~max_digits:#16L in
       let bytes =
-        Bytes.create_local (Private.to_string_required_length ~digits_to_process)
+        Bytes.create_local (Private.to_string_required_length ~config ~digits_to_process)
       in
-      Private.to_string_into t bytes ~digits_to_process;
+      Private.to_string_into t bytes ~config ~digits_to_process;
       Bytes.unsafe_to_string ~no_mutation_while_string_reachable:bytes
+    ;;
+
+    let[@inline] to_string t = exclave_
+      to_string_custom t ~config:To_string_config.(unbox default)
     ;;
 
     let[@inline] sexp_of_t t : Sexp.t = exclave_ Atom (to_string t)
@@ -600,11 +677,17 @@ module Hex_unsigned = struct
   let[@inline] of_string s = Private.of_string s ~max_digits:(max_digits ())
   let[@inline] t_of_sexp sexp = Private.t_of_sexp sexp ~max_digits:(max_digits ())
 
-  let[@inline never] to_string t =
+  let[@inline never] to_string_custom t ~config =
     let digits_to_process = Private.digits_to_process t ~max_digits:#16L in
-    let bytes = Bytes.create (Private.to_string_required_length ~digits_to_process) in
-    Private.to_string_into t bytes ~digits_to_process;
+    let bytes =
+      Bytes.create (Private.to_string_required_length ~config ~digits_to_process)
+    in
+    Private.to_string_into t bytes ~config ~digits_to_process;
     Bytes.unsafe_to_string ~no_mutation_while_string_reachable:bytes [@nontail]
+  ;;
+
+  let[@inline] to_string t : string =
+    to_string_custom t ~config:To_string_config.(unbox default)
   ;;
 
   let[@inline] sexp_of_t t : Sexp.t = Atom (to_string t)
@@ -614,8 +697,8 @@ module Option = struct
   type nonrec t = t
   type value = t
 
-  let[@inline] none () = min_value ()
-  let[@inline] is_none t = t = none ()
+  let none = min_value
+  let[@inline] is_none t = t = none
   let[@inline] is_some t = not (is_none t)
 
   let[@inline] some t =
@@ -631,7 +714,7 @@ module Option = struct
 
   let[@inline] of_option t =
     match t with
-    | None -> none ()
+    | None -> none
     | Some t -> some (unbox t)
   ;;
 

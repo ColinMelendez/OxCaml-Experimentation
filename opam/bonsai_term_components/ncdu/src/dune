@@ -1,7 +1,7 @@
 (library
- (name bonsai_tui_ncdu)
+ (name bonsai_term_ncdu)
  (public_name bonsai_term_components.ncdu)
- (libraries bonsai.extra bonsai_term bonsai_tui_catppuccin
-   bonsai_tui_scroller core bonsai_concrete.ui_incr)
+ (libraries bonsai.extra bonsai_term bonsai_term_color_scheme
+   bonsai_term_scroller core bonsai_concrete.ui_incr)
  (preprocess
   (pps ppx_jane bonsai.ppx_bonsai)))

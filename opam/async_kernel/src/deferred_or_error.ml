@@ -4,16 +4,21 @@ module Deferred = Deferred1
 
 module Monitor = struct
   let try_with = Monitor.try_with
+  let try_with_local = Monitor.try_with_local
 end
 
 (* Copied to [eager_deferred_or_error.ml]. There should be no diffs below this line. *)
 
-include (Deferred_result : Monad.S2 with type ('a, 'b) t := ('a, 'b) Deferred_result.t)
+include (
+  Deferred_result :
+    Monad.S2
+    [@kind value_or_null mod maybe_null]
+    with type ('a : value_or_null, 'b) t := ('a, 'b) Deferred_result.t)
 
-type 'a t = 'a Or_error.t Deferred.t
+type ('a : value_or_null) t = 'a Or_error.t Deferred.t
 
-include Applicative.Make (struct
-    type nonrec 'a t = 'a t
+include Applicative.Make [@kind value_or_null mod maybe_null] (struct
+    type nonrec ('a : value_or_null) t = 'a t
 
     let return = return
 
@@ -85,10 +90,16 @@ let find_map_ok l ~f =
           | Ok result -> `Finished (Ok result)))
 ;;
 
-let ok_unit = return ()
+let ok_unit = Deferred_result.ok_unit
 
 let try_with ?extract_exn ?run ?rest ~(here : [%call_pos]) ?name f =
   Deferred.map (Monitor.try_with ?extract_exn ?run ?rest ~here ?name f) ~f:(function
+    | Error exn -> Error (Error.of_exn exn)
+    | Ok _ as ok -> ok)
+;;
+
+let try_with_local ?extract_exn ?rest ~(here : [%call_pos]) ?name f =
+  Deferred.map (Monitor.try_with_local ?extract_exn ?rest ~here ?name f) ~f:(function
     | Error exn -> Error (Error.of_exn exn)
     | Ok _ as ok -> ok)
 ;;

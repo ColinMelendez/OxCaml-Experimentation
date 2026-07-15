@@ -1,6 +1,6 @@
 open! Core
 module Unix = Core_unix
-include Filesystem_types
+include Filesystem_types_unix
 
 open struct
   let time_ns_to_float time_ns = Time_ns.Span.to_sec (Time_ns.to_span_since_epoch time_ns)
@@ -180,7 +180,7 @@ include struct
          suffix)
   ;;
 
-  let with_cleanup ~on_cleanup_error path ~(local_ f) ~(local_ cleanup) =
+  let with_cleanup ~on_cleanup_error path ~(f @ local) ~(cleanup @ local unyielding) =
     Exn.protectx ~f path ~finally:(fun path ->
       try cleanup path with
       | exn ->

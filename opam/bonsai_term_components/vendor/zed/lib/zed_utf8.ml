@@ -1,11 +1,11 @@
 (*
-   * zed_utf8.ml
+ * zed_utf8.ml
  * -----------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 type t = string
 
@@ -16,8 +16,7 @@ let fail str pos msg = raise (Invalid (Printf.sprintf "at position %d: %s" pos m
 let byte str i = Char.code (String.unsafe_get str i)
 let set_byte str i n = Bytes.unsafe_set str i (Char.unsafe_chr n)
 
-(* +-----------------------------------------------------------------+
-   | Validation                                                      |
+(* +-----------------------------------------------------------------+ | Validation |
    +-----------------------------------------------------------------+ *)
 
 let next_error s i =
@@ -92,9 +91,8 @@ let validate str =
   if ofs = String.length str then len else fail str ofs msg
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Unsafe UTF-8 manipulation                                       |
-   +-----------------------------------------------------------------+ *)
+(* +-----------------------------------------------------------------+ | Unsafe UTF-8
+   manipulation | +-----------------------------------------------------------------+ *)
 
 let unsafe_next str ofs =
   match String.unsafe_get str ofs with
@@ -261,8 +259,7 @@ let unsafe_sub str ofs len =
   Bytes.unsafe_to_string res
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Construction                                                    |
+(* +-----------------------------------------------------------------+ | Construction |
    +-----------------------------------------------------------------+ *)
 
 let singleton char =
@@ -294,8 +291,7 @@ let singleton char =
     set_byte s 3 (code land 0x3f lor 0x80);
     Bytes.unsafe_to_string s)
   else
-    (* Camomile allow characters with code-point greater than
-       0x10ffff *)
+    (* Camomile allow characters with code-point greater than 0x10ffff *)
     invalid_arg "Zed_utf8.singleton"
 ;;
 
@@ -327,8 +323,7 @@ let rev_init n f =
   Buffer.contents buf
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Informations                                                    |
+(* +-----------------------------------------------------------------+ | Informations |
    +-----------------------------------------------------------------+ *)
 
 let rec length_rec str ofs len =
@@ -337,8 +332,7 @@ let rec length_rec str ofs len =
 
 let length str = length_rec str 0 0
 
-(* +-----------------------------------------------------------------+
-   | Comparison                                                      |
+(* +-----------------------------------------------------------------+ | Comparison |
    +-----------------------------------------------------------------+ *)
 
 let rec compare_rec str1 ofs1 str2 ofs2 =
@@ -355,16 +349,14 @@ let rec compare_rec str1 ofs1 str2 ofs2 =
 
 let compare str1 str2 = compare_rec str1 0 str2 0
 
-(* +-----------------------------------------------------------------+
-   | Random access                                                   |
+(* +-----------------------------------------------------------------+ | Random access |
    +-----------------------------------------------------------------+ *)
 
 let get str idx =
   if idx < 0 then raise Out_of_bounds else unsafe_extract str (move_l str 0 idx)
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Manipulation                                                    |
+(* +-----------------------------------------------------------------+ | Manipulation |
    +-----------------------------------------------------------------+ *)
 
 let sub str idx len =
@@ -434,9 +426,8 @@ let replace str idx len repl =
     concat3 (unsafe_sub str 0 ofs1) repl (unsafe_sub str ofs2 (String.length str - ofs2)))
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Exploding and imploding                                         |
-   +-----------------------------------------------------------------+ *)
+(* +-----------------------------------------------------------------+ | Exploding and
+   imploding | +-----------------------------------------------------------------+ *)
 
 let rec rev_rec res str ofs_src ofs_dst =
   if ofs_src = String.length str
@@ -559,9 +550,8 @@ let rev_implode l =
   Bytes.to_string res
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Text transversal                                                |
-   +-----------------------------------------------------------------+ *)
+(* +-----------------------------------------------------------------+ | Text transversal
+   | +-----------------------------------------------------------------+ *)
 
 let rec iter_rec f str ofs =
   if ofs = String.length str
@@ -735,8 +725,7 @@ let rev_filter_map_concat f str =
   rev_filter_map_concat_rec (Buffer.create (String.length str)) f str (String.length str)
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Scanning                                                        |
+(* +-----------------------------------------------------------------+ | Scanning |
    +-----------------------------------------------------------------+ *)
 
 let rec for_all_rec f str ofs =
@@ -769,8 +758,7 @@ let rec count_rec f str ofs n =
 
 let count f str = count_rec f str 0 0
 
-(* +-----------------------------------------------------------------+
-   | Tests                                                           |
+(* +-----------------------------------------------------------------+ | Tests |
    +-----------------------------------------------------------------+ *)
 
 let rec unsafe_sub_equal str ofs sub ofs_sub =
@@ -800,8 +788,7 @@ let ends_with str suffix =
   if ofs < 0 then false else unsafe_sub_equal str ofs suffix 0
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Stripping                                                       |
+(* +-----------------------------------------------------------------+ | Stripping |
    +-----------------------------------------------------------------+ *)
 
 let rec lfind predicate str ofs =
@@ -850,8 +837,7 @@ let rchop = function
     unsafe_sub str 0 ofs
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Buffers                                                         |
+(* +-----------------------------------------------------------------+ | Buffers |
    +-----------------------------------------------------------------+ *)
 
 let add buf char =
@@ -903,8 +889,7 @@ let encode_to_bigstring buf char ~pos =
   else assert false
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Offset API                                                      |
+(* +-----------------------------------------------------------------+ | Offset API |
    +-----------------------------------------------------------------+ *)
 
 let extract str ofs =
@@ -933,8 +918,7 @@ let extract_prev str ofs =
   else unsafe_extract_prev str ofs
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Escaping                                                        |
+(* +-----------------------------------------------------------------+ | Escaping |
    +-----------------------------------------------------------------+ *)
 
 let escaped_char ch =
@@ -949,8 +933,7 @@ let escaped_char ch =
   | 27 -> "\\e"
   | 92 -> "\\\\"
   | code when code >= 32 && code <= 126 -> String.make 1 (Char.chr code)
-  (*    | _ when UCharTbl.Bool.get alphabetic ch ->
-        singleton ch*)
+  (* | _ when UCharTbl.Bool.get alphabetic ch -> singleton ch *)
   | code when code <= 127 -> Printf.sprintf "\\x%02x" code
   | code when code <= 0xffff -> Printf.sprintf "\\u%04x" code
   | code -> Printf.sprintf "\\U%06x" code
@@ -968,8 +951,7 @@ let add_escaped_char buf ch =
   | 27 -> Buffer.add_string buf "\\e"
   | 92 -> Buffer.add_string buf "\\\\"
   | code when code >= 32 && code <= 126 -> Buffer.add_char buf (Char.chr code)
-  (*    | _ when UCharTbl.Bool.get alphabetic ch ->
-        add buf ch*)
+  (* | _ when UCharTbl.Bool.get alphabetic ch -> add buf ch *)
   | code when code <= 127 -> Printf.bprintf buf "\\x%02x" code
   | code when code <= 0xffff -> Printf.bprintf buf "\\u%04x" code
   | code -> Printf.bprintf buf "\\U%06x" code

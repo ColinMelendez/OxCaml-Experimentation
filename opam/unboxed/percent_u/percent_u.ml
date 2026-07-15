@@ -14,7 +14,10 @@ let[@inline] box t = Float_u.to_float t |> Percent.of_mult
 let[@zero_alloc] unbox (local_ f) = Percent.to_mult f |> Float_u.of_float
 
 module Serializer_overrides = struct
-  let sexp_of_t t = box t |> Percent.sexp_of_t
+  let%template[@alloc a = (heap, stack)] sexp_of_t t =
+    (box t |> (Percent.sexp_of_t [@alloc a])) [@exclave_if_stack a]
+  ;;
+
   let t_of_sexp s = Percent.t_of_sexp s |> unbox
   let to_string t = box t |> Percent.to_string
   let of_string s = Percent.of_string s |> unbox
@@ -39,8 +42,8 @@ let[@zero_alloc] to_bp t = t * #10_000.
 let[@zero_alloc] of_bp_int i = of_bp (Float_u.of_int i)
 let[@zero_alloc] of_bp_int_approx i = of_bp_approx (Float_u.of_int i)
 let[@zero_alloc] to_bp_int t = Float_u.to_int (to_bp t)
-let[@zero_alloc] zero () = #0.
-let[@zero_alloc] one_hundred_percent () = #1.
+let zero = #0.
+let one_hundred_percent = #1.
 let[@zero_alloc] apply x y = x * y
 let[@zero_alloc] scale x y = x * y
 
@@ -56,10 +59,11 @@ module Option = struct
   ;;
 
   include UFO
-  module O = UFO.Infix
+  module O = UFO.O
   include O
 
   let box = box'
+  let none = none
   let[@zero_alloc] unbox (local_ t) = unbox' t
   let[@zero_alloc] of_mult f = f
   let[@zero_alloc] to_mult t = t
@@ -74,7 +78,10 @@ module Option = struct
   let[@zero_alloc] unchecked_some x = of_float_nan_as_none x
 
   module Serializer_overrides = struct
-    let sexp_of_t t = box t |> Percent.Stable.Option.V3.sexp_of_t
+    let%template[@alloc a = (heap, stack)] sexp_of_t t =
+      (box t |> Percent.Stable.Option.V3.sexp_of_t) [@exclave_if_stack a]
+    ;;
+
     let t_of_sexp t = Percent.Stable.Option.V3.t_of_sexp t |> unbox
 
     let bin_shape_t =
@@ -94,7 +101,7 @@ module Option = struct
       print_s [%sexp (x' : t)];
       assert (UFO.equal x x')
     in
-    roundtrip (UFO.none ());
+    roundtrip UFO.none;
     [%expect
       {|
       ()
@@ -142,14 +149,14 @@ module Option = struct
         assert (UFO.equal (to_ufo t) ufo);
         assert (UFO.equal (to_ufo approx) ufo))
     in
-    run_test (UFO.none ());
+    run_test UFO.none;
     [%expect
       {|
       of_mult: (). Approx: ()
       of_percentage: (). Approx: ()
       of_bp: (). Approx: ()
       |}];
-    run_test (UFO.one ());
+    run_test UFO.one;
     [%expect
       {|
       of_mult: (1x). Approx: (1x)

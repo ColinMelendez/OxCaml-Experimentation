@@ -39,6 +39,12 @@ val info
   -> ('a, unit, string, unit) format4
   -> 'a
 
+val warn
+  :  ?time:Time_float.t
+  -> ?tags:(string * string) list
+  -> ('a, unit, string, unit) format4
+  -> 'a
+
 val error
   :  ?time:Time_float.t
   -> ?tags:(string * string) list
@@ -60,6 +66,7 @@ val printf
 
 val raw_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
 val info_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
+val warn_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
 val error_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
 val debug_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
 

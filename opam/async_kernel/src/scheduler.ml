@@ -40,11 +40,11 @@ end = struct
   external magic_unwrap_capsule : ('a, 'k) Capsule.Data.t -> 'a @@ portable = "%identity"
 
   let external_jobs t =
-    Capsule.Expert.Data.inject { contended = (magic_unwrap_capsule t).external_jobs }
+    Capsule.Prim.Data.inject { contended = (magic_unwrap_capsule t).external_jobs }
   ;;
 
   let thread_safe_external_job_hook t =
-    Capsule.Expert.Data.inject (magic_unwrap_capsule t).thread_safe_external_job_hook
+    Capsule.Prim.Data.inject (magic_unwrap_capsule t).thread_safe_external_job_hook
   ;;
 end
 
@@ -164,14 +164,11 @@ let has_pending_external_jobs t =
 ;;
 
 let portable_enqueue_external_job t execution_context f a =
-  let external_jobs = t |> Project.external_jobs |> Capsule.Expert.Data.project in
+  let external_jobs = t |> Project.external_jobs |> Capsule.Prim.Data.project in
   let job = External_job.Encapsulated.create ~execution_context ~f ~a in
   Unique.Lockfree_single_consumer_queue.enqueue external_jobs.contended job;
   let thread_safe_external_job_hook =
-    t
-    |> Project.thread_safe_external_job_hook
-    |> Capsule.Expert.Data.project
-    |> Atomic.get
+    t |> Project.thread_safe_external_job_hook |> Capsule.Prim.Data.project |> Atomic.get
   in
   thread_safe_external_job_hook ()
 ;;
@@ -179,10 +176,9 @@ let portable_enqueue_external_job t execution_context f a =
 let[@inline] thread_safe_enqueue_external_job t execution_context f a =
   let execution_context = Capsule.Initial.Data.wrap execution_context in
   let f =
-    Capsule.Expert.(Data.wrap_once ~access:(Capsule.Access.unbox initial)) (fun #(_, a) ->
-      f a)
+    Capsule.Prim.Data.wrap_once ~access:Capsule.Initial.access (fun #(_, a) -> f a)
   in
-  let a = Capsule.Expert.(Data.wrap_unique ~access:(Capsule.Access.unbox initial)) a in
+  let a = Capsule.Prim.Data.wrap_unique ~access:Capsule.Initial.access a in
   portable_enqueue_external_job (Capsule.Initial.Data.wrap t) execution_context f a
 ;;
 
@@ -287,7 +283,7 @@ let advance_clock t ~now =
   Synchronous_time_source0.advance_internal t.time_source ~to_:now ~send_exn
 ;;
 
-let run_cycle t =
+let run_cycle ?(local_ additional_cycle_time = Time_ns.Span.zero) t =
   if debug then Debug.log "run_cycle starting" t [%sexp_of: t];
   let now = Time_ns.now () in
   t.cycle_count <- t.cycle_count + 1;
@@ -310,7 +306,10 @@ let run_cycle t =
       run_jobs t
   in
   run_jobs t;
-  let cycle_time = Time_ns.diff (Time_ns.now ()) t.cycle_start in
+  let cycle_time =
+    let cycle_time = Time_ns.diff (Time_ns.now ()) t.cycle_start in
+    Time_ns.Span.( + ) cycle_time additional_cycle_time
+  in
   t.last_cycle_time <- cycle_time;
   t.last_cycle_num_jobs <- num_jobs_run t - num_jobs_run_at_start_of_cycle;
   t.total_cycle_time <- Time_ns.Span.(t.total_cycle_time + cycle_time);

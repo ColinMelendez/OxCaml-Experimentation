@@ -13,16 +13,7 @@ open! Core
     which gets stored in [Environment.Recursive.t]. *)
 
 (** A set of [Fix_id.t] representing the recursive dependencies of a computation. *)
-module Dependencies : sig
-  module Item : sig
-    type t = private T : 'a Fix_id.t -> t
-  end
-
-  type t
-
-  val is_empty : t -> bool
-  val fold : t -> init:'a -> f:('a -> Item.t -> 'a) -> 'a
-end
+module Dependencies = Fix_id.Set
 
 type resolved = private Resolved [@@deriving sexp_of]
 type unresolved = private Unresolved [@@deriving sexp_of]

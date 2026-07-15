@@ -1,11 +1,11 @@
 (*
-   * zed_input.ml
+ * zed_input.ml
  * ------------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 module type S = sig
   type event

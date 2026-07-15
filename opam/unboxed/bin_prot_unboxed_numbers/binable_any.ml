@@ -24,11 +24,14 @@ struct
     [@@@mode.default m = (global, local)]
 
     let[@inline] bin_size_t t =
-      (Boxed.bin_size_t [@mode m]) ((box [@mode m]) t) [@nontail]
+      (Boxed.bin_size_t [@mode m] [@inlined hint]) ((box [@mode m]) t) [@nontail]
     ;;
 
     let[@inline] bin_write_t buf ~pos t =
-      (Boxed.bin_write_t [@mode m]) buf ~pos ((box [@mode m]) t) [@nontail]
+      (Boxed.bin_write_t [@mode m] [@inlined hint])
+        buf
+        ~pos
+        ((box [@mode m]) t) [@nontail]
     ;;
   end
 

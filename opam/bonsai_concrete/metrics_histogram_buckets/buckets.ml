@@ -159,7 +159,26 @@ let type_ (type a) (t : a t) : a Type.t =
   | Immediate { type_; boundaries = _ } -> Type.Not_float.widen type_
 ;;
 
-let validate : 'a. 'a t -> 'a t Or_error.t =
+let validate_non_negative : 'a. 'a t -> unit Or_error.t =
+  fun (type a) (t : a t) : unit Or_error.t ->
+  match t with
+  | Float { boundaries_excluding_infinity } ->
+    if Array.exists boundaries_excluding_infinity ~f:(fun x -> Float.(x < 0.))
+    then Or_error.error_string "Histogram bucket boundaries must be non-negative"
+    else Ok ()
+  | Immediate { type_; boundaries } ->
+    let (module M) = comparisons type_ in
+    let zero =
+      match type_ with
+      | Int -> (0 : a)
+      | Time_ns_span -> (Time_ns.Span.zero : a)
+    in
+    if Array.exists boundaries ~f:(fun x -> M.compare x zero < 0)
+    then Or_error.error_string "Histogram bucket boundaries must be non-negative"
+    else Ok ()
+;;
+
+let%template validate_allow_non_negative : 'a. 'a t -> 'a t Or_error.t =
   fun (type a) (t_maybe_infinite : a t) : a t Or_error.t ->
   let not_nan =
     match t_maybe_infinite with
@@ -172,7 +191,9 @@ let validate : 'a. 'a t -> 'a t Or_error.t =
   let increasing =
     if match t_maybe_infinite with
        | Float { boundaries_excluding_infinity } ->
-         Array.is_sorted_strictly ~compare:[%compare: float] boundaries_excluding_infinity
+         Array.is_sorted_strictly
+           ~compare:([%compare: float] [@mode local])
+           boundaries_excluding_infinity
        | Immediate { type_; boundaries } ->
          let (module M) = comparisons type_ in
          Array.is_sorted_strictly ~compare:M.compare boundaries
@@ -192,16 +213,28 @@ let validate : 'a. 'a t -> 'a t Or_error.t =
   t
 ;;
 
-let create_float ~boundaries =
-  Float { boundaries_excluding_infinity = boundaries } |> validate
+let validate : 'a. 'a t -> 'a t Or_error.t =
+  fun (type a) (t : a t) : a t Or_error.t ->
+  let%bind.Or_error () = validate_non_negative t in
+  validate_allow_non_negative t
 ;;
 
-let create_immediate ~boundaries ~type_ = Immediate { boundaries; type_ } |> validate
+let create_float ~allow_negative ~boundaries =
+  let t = Float { boundaries_excluding_infinity = boundaries } in
+  if allow_negative then validate_allow_non_negative t else validate t
+;;
 
-let create (type a) (type_ : a Type.t) ~(boundaries : a array) : a t Or_error.t =
+let create_immediate ~allow_negative ~boundaries ~type_ =
+  let t = Immediate { boundaries; type_ } in
+  if allow_negative then validate_allow_non_negative t else validate t
+;;
+
+let create (type a) ?(allow_negative = false) (type_ : a Type.t) ~(boundaries : a array)
+  : a t Or_error.t
+  =
   match Type.Not_float.find type_ with
-  | First type_ -> create_immediate ~boundaries ~type_
-  | Second T -> create_float ~boundaries
+  | First type_ -> create_immediate ~allow_negative ~boundaries ~type_
+  | Second T -> create_float ~allow_negative ~boundaries
 ;;
 
 module Buckets_helpers = struct
@@ -331,6 +364,11 @@ module Exponential = struct
 end
 
 module Expert = struct
+  let create_allow_deprecated_negative_boundaries_exn kind buckets =
+    create ~allow_negative:true kind ~boundaries:(Nonempty_list.to_array buckets)
+    |> ok_exn
+  ;;
+
   let create_of_array kind buckets = create kind ~boundaries:buckets
   let create kind buckets = create kind ~boundaries:(Nonempty_list.to_array buckets)
   let create_exn kind buckets = create kind buckets |> ok_exn

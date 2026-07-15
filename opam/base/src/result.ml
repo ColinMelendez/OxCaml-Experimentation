@@ -3,26 +3,37 @@ module Either = Either0
 include Result0
 
 [%%template
-let map x ~f : (_ t[@kind ko]) =
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null_with_imm)]
+
+[%%template
+[@@@mode.default m = (global, local)]
+[@@@kind ko = all_ks]
+
+let[@kind ko] return (x @ m) : (_ t[@kind ko]) @ m = Ok x [@exclave_if_local m]
+
+[@@@kind.default ki = all_ks, ko = ko]
+
+let bind (x @ m) ~f : (_ t[@kind ko]) @ m =
   match (x : (_ t[@kind ki])) with
-  | Error err -> Error err
-  | Ok x -> Ok (f x)
-[@@kind ki = base_or_null_with_imm, ko = base_or_null_with_imm]
+  | Error err -> Error err [@exclave_if_local m]
+  | Ok x -> f x [@exclave_if_local m]
 ;;
 
-include
+let map x ~f : (_ t[@kind ko]) =
+  match[@exclave_if_local m ~reasons:[ Will_return_unboxed ]] (x : (_ t[@kind ki])) with
+  | Error err -> Error err
+  | Ok x -> Ok (f x)
+;;]
+
+include%template
   Monad.Make2 [@kind value_or_null mod maybe_null] [@mode local] [@modality portable] (struct
     type nonrec ('a : value_or_null, 'b) t = ('a, 'b) t
 
-    let bind x ~f =
-      match x with
-      | Error _ as x -> x
-      | Ok x -> f x
-    ;;
-
+    let bind = bind
     let map = `Custom map
-    let return x = Ok x
-  end)]
+    let return = return
+  end)
 
 let invariant check_ok check_error t =
   match t with
@@ -33,10 +44,11 @@ let invariant check_ok check_error t =
 let fail x = Error x
 let failf format = Printf.ksprintf fail format
 
-let map_error t ~f =
-  match t with
+let%template map_error (type a : k) (t : ((a, _) t[@kind k])) ~f : ((a, _) t[@kind k]) =
+  match[@exclave_if_stack a] t with
   | Ok _ as x -> x
   | Error x -> Error (f x)
+[@@kind k = all_ks] [@@alloc a @ m = (heap_global, stack_local)]
 ;;
 
 module%template Error =
@@ -54,14 +66,14 @@ Monad.Make2 [@kind value_or_null mod maybe_null] [@mode local] [@modality portab
   end)
 
 [%%template
-[@@@kind.default k = base_or_null_with_imm]
+[@@@kind.default k = all_ks]
 
-let is_ok : (_ t[@kind k]) -> bool = function
+let is_ok : (_ t[@kind k]) @ local -> bool = function
   | Ok _ -> true
   | Error _ -> false
 ;;
 
-let is_error : (_ t[@kind k]) -> bool = function
+let is_error : (_ t[@kind k]) @ local -> bool = function
   | Ok _ -> false
   | Error _ -> true
 ;;]
@@ -71,15 +83,31 @@ let ok = function
   | Error _ -> None
 ;;
 
+let ok_or_null = function
+  | Ok x -> This x
+  | Error _ -> Null
+;;
+
 let error = function
   | Ok _ -> None
   | Error x -> Some x
+;;
+
+let error_or_null = function
+  | Ok _ -> Null
+  | Error x -> This x
 ;;
 
 let of_option opt ~error =
   match opt with
   | Some x -> Ok x
   | None -> Error error
+;;
+
+let of_or_null or_null ~error =
+  match or_null with
+  | This x -> Ok x
+  | Null -> Error error
 ;;
 
 let of_option_or_thunk opt ~error =
@@ -115,6 +143,14 @@ let of_either : _ Either.t @ m -> _ t @ m = function
 
 let ok_if_true bool ~error = if bool then Ok () else Error error
 
+let transpose_opt t =
+  match[@exclave_if_stack a] t with
+  | Ok None -> None
+  | Ok (Some v) -> Some (Ok v)
+  | Error e -> Some (Error e)
+[@@alloc a = (stack, heap)]
+;;
+
 let try_with f =
   try Ok (f ()) with
   | exn -> Error exn
@@ -136,7 +172,7 @@ module Export = struct
     | Error of 'err
 
   [%%template
-  [@@@kind.default k = base_or_null_with_imm]
+  [@@@kind.default k = all_ks]
 
   let is_error = (is_error [@kind k])
   let is_ok = (is_ok [@kind k])]
@@ -160,4 +196,4 @@ let combine_errors l =
   [@exclave_if_stack a]
 ;;]
 
-let combine_errors_unit l = map (combine_errors l) ~f:(fun (_ : unit list) -> ())
+let combine_errors_unit l = map (combine_errors l) ~f:(fun (_ : unit list) -> ())]

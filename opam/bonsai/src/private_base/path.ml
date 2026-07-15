@@ -2,7 +2,7 @@ open! Core
 open! Import
 
 module Elem = struct
-  let keyed ~compare id = stage (fun key -> Keyed.create ~key ~id ~compare)
+  let keyed ~comparator id = stage (fun key -> Keyed.create ~key ~id ~comparator)
 
   type t =
     | Subst_into_invert_lifecycles
@@ -113,19 +113,19 @@ end
 
 type t =
   { items_rev : Elem.t Reversed_list.t
-  ; mutable items_for_testing : Elem.t list Uopt.t
+  ; mutable items_for_testing : Elem.t list or_null
   ; mutable string_repr : t A.t
-  ; mutable run_length_encoded_items : Run_length_encoding.t Uopt.t
+  ; mutable run_length_encoded_items : Run_length_encoding.t or_null
   }
 
 let run_length_encoding t =
-  match Uopt.to_option t.run_length_encoded_items with
+  match Or_null.to_option t.run_length_encoded_items with
   | Some items -> items
   | None ->
     let run_length_encoded_items =
       Run_length_encoding.of_elem_list (Reversed_list.rev t.items_rev)
     in
-    t.run_length_encoded_items <- Uopt.some run_length_encoded_items;
+    t.run_length_encoded_items <- This run_length_encoded_items;
     run_length_encoded_items
 ;;
 
@@ -138,18 +138,18 @@ let compare a b =
 ;;
 
 let empty =
-  { items_for_testing = Uopt.some []
+  { items_for_testing = This []
   ; items_rev = []
   ; string_repr = Stringified "bonsai_path"
-  ; run_length_encoded_items = Uopt.some []
+  ; run_length_encoded_items = This []
   }
 ;;
 
 let append t ele =
   let items_rev = Reversed_list.(ele :: t.items_rev) in
-  let items_for_testing = Uopt.none in
+  let items_for_testing = Null in
   let string_repr = A.Parts { parent = t; ele } in
-  let run_length_encoded_items = Uopt.none in
+  let run_length_encoded_items = Null in
   { items_rev; items_for_testing; string_repr; run_length_encoded_items }
 ;;
 
@@ -177,11 +177,11 @@ let raise_duplicate path =
 
 module For_testing = struct
   let items t =
-    match Uopt.to_option t.items_for_testing with
+    match Or_null.to_option t.items_for_testing with
     | Some items -> items
     | None ->
       let items = Reversed_list.rev t.items_rev in
-      t.items_for_testing <- Uopt.some items;
+      t.items_for_testing <- This items;
       items
   ;;
 

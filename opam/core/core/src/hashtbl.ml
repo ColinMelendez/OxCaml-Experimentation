@@ -131,9 +131,9 @@ module Poly = struct
         let t = create ~size:len () in
         for _i = 0 to len - 1 do
           let key, data = next () in
-          match find t key with
-          | None -> set t ~key ~data
-          | Some _ -> failwith "Core_hashtbl.bin_read_t_: duplicate key"
+          match add t ~key ~data with
+          | `Ok -> ()
+          | `Duplicate -> failwith "Core_hashtbl.bin_read_t_: duplicate key"
         done;
         t
       ;;
@@ -184,9 +184,10 @@ Bin_prot.Utils.Make_iterable_binable1 [@inlined hint] [@modality p] (struct
       let t = create ~size:len (module Key) in
       for _i = 0 to len - 1 do
         let key, data = next () in
-        match find t key with
-        | None -> set t ~key ~data
-        | Some _ -> failwiths "Hashtbl.bin_read_t: duplicate key" key [%sexp_of: Key.t]
+        match add t ~key ~data with
+        | `Ok -> ()
+        | `Duplicate ->
+          failwiths "Hashtbl.bin_read_t: duplicate key" key [%sexp_of: Key.t]
       done;
       t
     ;;
@@ -194,7 +195,11 @@ Bin_prot.Utils.Make_iterable_binable1 [@inlined hint] [@modality p] (struct
 
 module%template.portable
   [@modality p] Make_plain_with_hashable (T : sig
-    module Key : Key_plain
+    module Key : sig
+      type t
+
+      include Key_plain with type t := t
+    end
 
     val hashable : Key.t Hashable.t
   end) =
@@ -276,7 +281,12 @@ struct
   include Provide_stable_witness (T.Key)
 end
 
-module%template.portable [@modality p] Make_plain (Key : Key_plain) =
+module%template.portable
+  [@modality p] Make_plain (Key : sig
+    type t
+
+    include Key_plain with type t := t
+  end) =
 Make_plain_with_hashable [@modality p] (struct
     module Key = Key
 

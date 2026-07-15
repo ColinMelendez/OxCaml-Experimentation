@@ -642,8 +642,8 @@ end
  * module Assume = struct .. end
  * module Equiv = struct .. end *)
 
-let reg_spec ?clock_edge ?reset ?reset_edge ~clock () =
-  Reg_spec.create ~clock ?clock_edge ?reset ?reset_edge ()
+let reg_spec ?clock_edge ?reset ?reset_level ~clock () =
+  Reg_spec.create ~clock ?clock_edge ?reset ?reset_level ()
 ;;
 
 (* module Sr = struct end *)
@@ -722,6 +722,43 @@ module Dffe = struct
   let dffe = "$dffe", dffe
   let cells = [ dffe ] |> List.map ~f:W.cell_implementation
   let _get_input_width p = I.{ clk = 1; en = 1; d = p.P.width }
+  let _get_output_width p = O.{ q = p.P.width }
+end
+
+module Dlatch = struct
+  module P = struct
+    type 'a t =
+      { width : 'a [@rtlname "WIDTH"]
+      ; en_polarity : 'a [@rtlname "EN_POLARITY"]
+      }
+    [@@deriving hardcaml]
+  end
+
+  module I = struct
+    type 'a t =
+      { en : 'a [@rtlname "EN"]
+      ; d : 'a [@rtlname "D"]
+      }
+    [@@deriving hardcaml]
+  end
+
+  module O = struct
+    type 'a t = { q : 'a [@rtlname "Q"] } [@@deriving hardcaml]
+  end
+
+  module W = Implement_cell (P) (I) (O)
+
+  let dlatch _ p i =
+    let p = P.map ~f:pint p in
+    assert (width i.I.d = p.P.width);
+    let enable = if p.P.en_polarity = 1 then i.en else ~:(i.en) in
+    let spec = reg_spec ~clock:gnd () in
+    O.{ q = mux2 enable i.d (reg spec ~enable i.d) }
+  ;;
+
+  let dlatch = "$dlatch", dlatch
+  let cells = [ dlatch ] |> List.map ~f:W.cell_implementation
+  let _get_input_width p = I.{ en = 1; d = p.P.width }
   let _get_output_width p = O.{ q = p.P.width }
 end
 
@@ -819,12 +856,12 @@ module Adff = struct
     in
     assert (width i.d = p.P.width);
     let clock_edge : Edge.t = if p.P.clk_polarity = 1 then Rising else Falling in
-    let reset_edge : Edge.t = if p.P.arst_polarity = 1 then Rising else Falling in
+    let reset_level : Level.t = if p.P.arst_polarity = 1 then High else Low in
     let rv = arst_value in
     O.
       { q =
           Signal.Expert.reg__with_signal_reset
-            (reg_spec ~clock:i.clk ~clock_edge ~reset:i.arst ~reset_edge ())
+            (reg_spec ~clock:i.clk ~clock_edge ~reset:i.arst ~reset_level ())
             ~reset_to:rv
             i.d
       }
@@ -1147,6 +1184,7 @@ let cells =
     ; Lut.cells
     ; Dff.cells
     ; Dffe.cells
+    ; Dlatch.cells
     ; Dffsr.cells
     ; Adff.cells
     ; Concat.cells (* (Memwr.cells) (Memrd.cells) *)
@@ -1166,7 +1204,6 @@ let blackboxes =
   ; "assume"
   ; "equiv"
   ; "sr"
-  ; "dlatch"
   ; "dlatchsr"
   ; "memrd"
   ; "memwr"

@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Form = Bonsai_web_ui_form.With_automatic_view
-module Table = Bonsai_web_ui_partial_render_table.Basic
+module Form = Bonsai_web_form.With_automatic_view
+module Table = Bonsai_web_partial_render_table.Basic
 module C = Table.Columns.Dynamic_columns
 
 let header text = Vdom.Node.text text
@@ -79,14 +79,14 @@ let table_form
       Effect.Many
         [ set_map (Map.set map ~key:(Key.t_of_sexp (Sexp.of_string text)) ~data:())
         ; set_text ""
-        ; Vdom.Effect.Prevent_default
+        ; Vdom.(Effect.Prevent_default [@alert "-deprecated"])
         ]
     in
     let textbox =
       Vdom.Node.input
         ~attrs:
           [ Style.key_input_textbox
-          ; Vdom.Attr.value_prop text
+          ; Vdom.Attr.value text
           ; Vdom.Attr.placeholder "key for new row"
           ; Vdom.Attr.on_input (fun _ s -> set_text s)
           ; Vdom.Attr.on_keydown (fun evt ->

@@ -8,25 +8,49 @@ module Stable = struct
   open Core.Core_stable
 
   module T1 = struct
-    module V2 = struct
+    module V3 = struct
       module T = struct
+        module Optional_level = struct
+          type t = Level.Stable.V2.t option [@@deriving bin_io, sexp, stable_witness]
+
+          (* There may be yet new log levels we don't know of yet. This just parses them
+             as [None] for now. *)
+          let t_of_sexp sexp =
+            try [%of_sexp: Level.Stable.V2.t option] sexp with
+            | (_ : exn) -> None
+          ;;
+        end
+
         type 'time t =
           { time : 'time
-          ; level : Level.Stable.V1.t option
+          ; level : Optional_level.t
           ; message : Sexp_or_string.Stable.V1.t
           ; tags : (string * string) list
           }
-        [@@deriving bin_io, sexp]
+        [@@deriving bin_io, sexp, stable_witness] [@@sexp.allow_extra_fields]
       end
 
       include Versioned.Stable.Make (struct
-          type 'time t = 'time T.t [@@deriving bin_io, sexp]
+          type 'time t = 'time T.t [@@deriving bin_io, sexp, stable_witness]
 
-          let%expect_test "bin_digest Message.V2" =
+          let%expect_test "bin_digest Message.V3" =
             print_endline [%bin_digest: unit t];
-            [%expect {| 26b02919ac3971aaace97169310e9d15 |}]
+            [%expect {| 32d41e3e7a82b39e6f0b47a7202451e6 |}]
           ;;
 
+          (* Every async log message is serialized with a [version] tag to allow for
+             format changes where the type is non-backwards compatible; in this case, you
+             can bump the version tag.
+
+             There are other changes that may be backwards compatible (e.g., adding a new
+             field or variant), which may necessitate bumping the number in the stable
+             module name, but not require all log messages to also use a new tag. As such,
+             the [version] tag may differ from the version of the stable module.
+
+             (Breadcrumbs: in the case of [Message.V3] and [Message.V2], we just added a
+             warning level. Being a new level, all existing messages written with the [V3]
+             serializer would've still been readable by [V2], and bumping the tag would be
+             very disruptive, so we didn't bump the tag.) *)
           let version = Versioned.Stable.Version.V2
         end)
 
@@ -41,6 +65,52 @@ module Stable = struct
           Core.failwithf !"Log.Message.t_of_sexp: malformed sexp: %{Core.Sexp}" sexp ()
       ;;
     end
+
+    module V2 = struct
+      module T = struct
+        type 'time t =
+          { time : 'time
+          ; level : Level.Stable.V1.t option
+          ; message : Sexp_or_string.Stable.V1.t
+          ; tags : (string * string) list
+          }
+        [@@deriving bin_io, sexp, stable_witness]
+
+        let of_v3 { V3.T.time; level; message; tags } =
+          let message : Sexp_or_string.t =
+            match level with
+            | None | Some (`Info | `Debug | `Error) -> message
+            | Some `Warn ->
+              (match message with
+               | `String msg -> `String ("(WARN) " ^ msg)
+               | `Sexp msg -> `Sexp (List [ List [ Atom "WARN" ]; msg ]))
+          in
+          let level = Core.Option.map level ~f:Level.Stable.V1.of_v2 in
+          { time; level; message; tags }
+        ;;
+
+        let to_v3 ({ time; level; message; tags } : _ t) =
+          { V3.T.time
+          ; level = Core.Option.map level ~f:Level.Stable.V1.to_v2
+          ; message
+          ; tags
+          }
+        ;;
+      end
+
+      include T
+
+      include Versioned.Stable.Make (struct
+          type 'time t = 'time T.t [@@deriving bin_io, sexp, stable_witness]
+
+          let%expect_test "bin_digest Message.V2" =
+            print_endline [%bin_digest: unit t];
+            [%expect {| 26b02919ac3971aaace97169310e9d15 |}]
+          ;;
+
+          let version = Versioned.Stable.Version.V2
+        end)
+    end
   end
 end
 
@@ -49,7 +119,7 @@ open! Async_kernel
 open! Import
 
 module T1 = struct
-  type 'time t = 'time Stable.T1.V2.t [@@deriving sexp_of]
+  type 'time t = 'time Stable.T1.V3.t [@@deriving sexp_of]
 end
 
 type t = Time_float.t T1.t

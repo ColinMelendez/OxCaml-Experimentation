@@ -2,10 +2,11 @@ open! Import
 module Via_thunk = Shrinker.Via_thunk
 
 module Example = struct
-  let natural_number_shrinker =
-    Shrinker.create (function
-      | 0 -> Sequence.empty
+  let%template natural_number_shrinker =
+    (Shrinker.create [@mode p]) (function
+      | 0 -> Sequence.get_empty ()
       | n -> Sequence.singleton (n - 1))
+  [@@mode p = (portable, nonportable)]
   ;;
 end
 
@@ -497,6 +498,43 @@ let%expect_test "array" =
     |}]
 ;;
 
+let%template iarray = (Shrinker.iarray [@mode p]) [@@mode p = (portable, nonportable)]
+
+let%expect_test "iarray" =
+  test_shrinker (Shrinker.iarray natural_number_shrinker) (m_iarray (m_nat ~up_to:4));
+  [%expect
+    {|
+    (shrinker
+     (((0) => ())
+      ((1) => ())
+      ((1) => (0))
+      ((2) => ())
+      ((2) => (1))
+      ((3) => ())
+      ((3) => (2))
+      ((4) => ())
+      ((4) => (3))
+      ((0 4) => (4))
+      ((0 4) => (0))
+      ((0 4) => (0 3))
+      ((1 3) => (3))
+      ((1 3) => (0 3))
+      ((1 3) => (1))
+      ((1 3) => (1 2))
+      ((2 2) => (2))
+      ((2 2) => (1 2))
+      ((2 2) => (2))
+      ((2 2) => (2 1))
+      ((3 1) => (1))
+      ((3 1) => (2 1))
+      ((3 1) => (3))
+      ((3 1) => (3 0))
+      ((4 0) => (0))
+      ((4 0) => (3 0))
+      ((4 0) => (4))))
+    |}]
+;;
+
 let%template ref = (Shrinker.ref [@mode p]) [@@mode p = (portable, nonportable)]
 
 let%expect_test "ref" =
@@ -551,15 +589,17 @@ let%expect_test "result" =
     |}]
 ;;
 
-let%template map_t = (Shrinker.map_t [@mode p]) [@@mode p = (portable, nonportable)]
+[%%template
+[@@@mode.default p = (nonportable, portable)]
 
-let%template map_tree_using_comparator = (Shrinker.map_tree_using_comparator [@mode p])
-[@@mode p = (portable, nonportable)]
-;;
+let map_t = (Shrinker.map_t [@mode p])
+let map_tree_using_comparator = (Shrinker.map_tree_using_comparator [@mode p])
 
 let%expect_test "map_t" =
   test_shrinker
-    (Shrinker.map_t natural_number_shrinker natural_number_shrinker)
+    ((Shrinker.map_t [@mode p])
+       (natural_number_shrinker [@mode p])
+       (natural_number_shrinker [@mode p]))
     (m_map (module Int) (m_nat ~up_to:2) (m_nat ~up_to:2));
   [%expect
     {|
@@ -580,14 +620,17 @@ let%expect_test "map_t" =
       (((0 2) (1 2) (2 2)) => ((0 2) (1 2)))
       (((0 2) (1 2) (2 2)) => ((0 2) (1 2) (2 1)))))
     |}]
-;;
+;;]
 
-let set_t = Shrinker.set_t
-let set_tree_using_comparator = Shrinker.set_tree_using_comparator
+[%%template
+[@@@mode.default p = (nonportable, portable)]
+
+let set_t = (Shrinker.set_t [@mode p])
+let set_tree_using_comparator = (Shrinker.set_tree_using_comparator [@mode p])
 
 let%expect_test "set_t" =
   test_shrinker
-    (Shrinker.set_t natural_number_shrinker)
+    ((Shrinker.set_t [@mode p]) (natural_number_shrinker [@mode p]))
     (m_set (module Int) (m_nat ~up_to:5));
   [%expect
     {|
@@ -614,7 +657,7 @@ let%expect_test "set_t" =
       ((2 3) => (1 3))
       ((2 3) => (2))))
     |}]
-;;
+;;]
 
 let of_lazy = Shrinker.of_lazy
 

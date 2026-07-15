@@ -27,9 +27,27 @@ module Stable = struct
     ;;
 
     let[@inline] t_of_sexp sexp : t = of_float32 ((F.t_of_sexp [@inlined hint]) sexp)
+    let bin_shape_t = Bin_prot_unboxed_numbers.Float32_u.bin_shape_t
 
-    include Bin_prot_unboxed_numbers.Float32_u
+    [%%template
+    [@@@mode.default m = (global, local)]
 
+    let[@inline always] bin_size_t t =
+      (Bin_prot_unboxed_numbers.Float32_u.bin_size_t [@mode m] [@inlined]) t
+    ;;
+
+    let[@inline always] bin_write_t buf ~pos t =
+      (Bin_prot_unboxed_numbers.Float32_u.bin_write_t [@mode m] [@inlined]) buf ~pos t
+    ;;]
+
+    let[@inline always] bin_read_t buf ~pos_ref =
+      (Bin_prot_unboxed_numbers.Float32_u.bin_read_t [@inlined]) buf ~pos_ref
+    ;;
+
+    let __bin_read_t__ = Bin_prot_unboxed_numbers.Float32_u.__bin_read_t__
+    let bin_writer_t = Bin_prot_unboxed_numbers.Float32_u.bin_writer_t
+    let bin_reader_t = Bin_prot_unboxed_numbers.Float32_u.bin_reader_t
+    let bin_t = Bin_prot_unboxed_numbers.Float32_u.bin_t
     let[@inline] to_string t : string = (F.to_string [@inlined hint]) (to_float32 t)
     let[@inline] of_string s : t = of_float32 ((F.of_string [@inlined hint]) s)
 
@@ -72,26 +90,22 @@ let[@inline] clamp_exn t ~min ~max : t =
 
 let[@inline] pp ppf t : unit = (F.pp [@inlined hint]) ppf (to_float32 t)
 let[@inline] invariant t : unit = (F.invariant [@inlined hint]) (to_float32 t)
-let[@inline] nan () : t = of_float32 F.nan
-let[@inline] infinity () : t = of_float32 F.infinity
-let[@inline] neg_infinity () : t = of_float32 F.neg_infinity
-let[@inline] max_value () : t = of_float32 F.max_value
-let[@inline] min_value () : t = of_float32 F.min_value
-let[@inline] zero () : t = of_float32 F.zero
-let[@inline] one () : t = of_float32 F.one
-let[@inline] minus_one () : t = of_float32 F.minus_one
-let[@inline] pi () : t = of_float32 F.pi
-let[@inline] sqrt_pi () : t = of_float32 F.sqrt_pi
-let[@inline] sqrt_2pi () : t = of_float32 F.sqrt_2pi
-let[@inline] euler_gamma_constant () : t = of_float32 F.euler_gamma_constant
-let[@inline] epsilon_float () : t = of_float32 F.epsilon_float
-let[@inline] max_finite_value () : t = of_float32 F.max_finite_value
-
-let[@inline] min_positive_subnormal_value () : t =
-  of_float32 F.min_positive_subnormal_value
-;;
-
-let[@inline] min_positive_normal_value () : t = of_float32 F.min_positive_normal_value
+let nan : t = of_float32 F.nan
+let infinity : t = of_float32 F.infinity
+let neg_infinity : t = of_float32 F.neg_infinity
+let max_value : t = of_float32 F.max_value
+let min_value : t = of_float32 F.min_value
+let zero : t = of_float32 F.zero
+let one : t = of_float32 F.one
+let minus_one : t = of_float32 F.minus_one
+let pi : t = of_float32 F.pi
+let sqrt_pi : t = of_float32 F.sqrt_pi
+let sqrt_2pi : t = of_float32 F.sqrt_2pi
+let euler_gamma_constant : t = of_float32 F.euler_gamma_constant
+let epsilon_float : t = of_float32 F.epsilon_float
+let max_finite_value : t = of_float32 F.max_finite_value
+let min_positive_subnormal_value : t = of_float32 F.min_positive_subnormal_value
+let min_positive_normal_value : t = of_float32 F.min_positive_normal_value
 
 let[@inline] to_int32_preserve_order t : int32 option =
   (F.to_int32_preserve_order [@inlined hint]) (to_float32 t)
@@ -177,8 +191,8 @@ let[@inline] iround_nearest_half_to_even t : int64 =
   (F.iround_nearest_half_to_even [@inlined hint]) (to_float32 t)
 ;;
 
-let[@inline] iround_lbound () = of_float32 F.iround_lbound
-let[@inline] iround_ubound () = of_float32 F.iround_ubound
+let iround_lbound = of_float32 F.iround_lbound
+let iround_ubound = of_float32 F.iround_ubound
 let[@inline] is_nan t : bool = (F.is_nan [@inlined hint]) (to_float32 t)
 let[@inline] is_inf t : bool = (F.is_inf [@inlined hint]) (to_float32 t)
 let[@inline] is_finite t : bool = (F.is_finite [@inlined hint]) (to_float32 t)

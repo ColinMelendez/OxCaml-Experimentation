@@ -41,8 +41,8 @@ type int_pair = (int * int) [@@deriving of_yojson]
 #+end_src
 
 Note that Yojson-converters for primitive types like =int= need to be brought
-into scope in order for the ppx to use them, for example by adding =open
-Ppx_yojson_conv_lib.Yojson_conv.Primitives= at the beginning of the file.
+into scope in order for the ppx to use them, for example by adding
+=open Ppx_yojson_conv_lib.Yojson_conv.Primitives= at the beginning of the file.
 
 It's also possible to construct converters based on type expressions,
 /i.e./:
@@ -210,6 +210,8 @@ are several ways to specify the equality function:
       c : u [@default u0] [@yojson_drop_default.equal]; (* uses [%equal: u] *)
       d : u [@default u0] [@yojson_drop_default.yojson]; (* compares yojson representations *)
       e : u [@default u0] [@yojson_drop_default]; (* deprecated. uses polymorphic equality. *)
+      f : u [@default u0] [@yojson_drop_default.compare.local]; (* uses [%compare.equal__local: u] *)
+      g : u [@default u0] [@yojson_drop_default.equal.local]; (* uses [%equal__local: u] *)
     } [@@deriving yojson]
 #+end_src
 

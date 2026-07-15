@@ -19,7 +19,7 @@ module Attribute = struct
   let name_plural = "attributes"
 end
 
-module Widget = Bonsai_web_ui_multi_select.Multi_factor.Make (String) (Attribute)
+module Widget = Bonsai_web_contrib_multi_select.Multi_factor.Make (String) (Attribute)
 
 let subwidgets =
   Attribute.all
@@ -59,4 +59,4 @@ let bonsai (local_ graph) =
     ]
 ;;
 
-let () = Bonsai_web.Start.start bonsai ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start bonsai

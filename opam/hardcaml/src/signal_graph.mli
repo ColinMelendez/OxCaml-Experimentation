@@ -73,7 +73,7 @@ val rewrite
   :  t
   -> f:(Signal.t -> Signal.t)
   -> f_upto:(Signal.t -> Signal.t)
-  -> t * Signal.t Map.M(Signal.Type.Uid).t
+  -> t * Signal.t Signal.Type.Uid.Map.t
 
 (** [normalize_uids t] creates a copy of [t] that is identical to [t] except the uids are
     numbered starting at 1. *)
@@ -85,11 +85,11 @@ val compute_normalized_uids : t -> (Normalized_signal_uid.t * Signal.t) list
 
 (** Fan-out of each signal in the signal graph. The fan-out of a signal is the set of
     signals it drives. *)
-val fan_out_map : t -> Signal.Type.Uid_set.t Map.M(Signal.Type.Uid).t
+val fan_out_map : t -> Signal.Type.Uid.Set.t Signal.Type.Uid.Map.t
 
 (** Fan-in of each signal in the signal graph. The fan-in of a signal is the set of
     signals that drive it. *)
-val fan_in_map : t -> Signal.Type.Uid_set.t Map.M(Signal.Type.Uid).t
+val fan_in_map : t -> Signal.Type.Uid.Set.t Signal.Type.Uid.Map.t
 
 (** [topological_sort t] sorts the signals in [t] so that all the signals in [deps s]
     occur before [s]. *)
@@ -102,7 +102,7 @@ val topological_sort_exn : deps:(module Signal.Type.Deps) -> t -> Signal.t list
 
 (** Map all clock signals to their driving input signals. This mapping can be used to
     identify clock domains of Registers and Memories. *)
-val resolve_clock_domains : t -> Signal.t Map.M(Signal.Type.Uid).t
+val resolve_clock_domains : t -> Signal.t option Signal.Type.Map.t
 
 (** For rtl generation the case matches are written explicitly and do not need to be
     tracked. *)
@@ -119,3 +119,17 @@ module Deps_for_loop_checking : Signal.Type.Deps
 (** Final layer of combinational nodes which sit on the path between the outputs and any
     driving register or memory. *)
 val last_layer_of_nodes : is_input:(Signal.t -> bool) -> t -> Signal.Type.Uid.t List.t
+
+(** [count_regs_between ~from ~to_] counts the number of register nodes on the path from
+    [from] to [to_], traversing backwards through signal dependencies starting from [to_].
+    This measures the latency between signals - [to_] is counted if it's a register, but
+    [from] is not counted even if it's a register. For example:
+    - [input -> reg]: returns 1 (the reg is counted)
+    - [reg1 -> reg2]: returns 1 (reg2 is counted, reg1 is not)
+    - [input -> reg1 -> reg2]: returns 2 (both regs counted)
+
+    Raises if:
+    - There is no path from [to_] back to [from]
+    - Multiple paths exist with different numbers of registers
+    - An instantiation is encountered on the path *)
+val count_regs_between : from:Signal.t -> to_:Signal.t -> int

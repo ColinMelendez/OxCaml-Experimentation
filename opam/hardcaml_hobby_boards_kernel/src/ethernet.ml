@@ -253,6 +253,7 @@ module Tx = struct
       in
       let data_fifo =
         Fifo.create
+          ~scope
           ~capacity:(max_packets * average_packet_words)
           ~clock:clocking.clock
           ~clear:clocking.clear

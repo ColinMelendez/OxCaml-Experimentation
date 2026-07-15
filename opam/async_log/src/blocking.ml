@@ -72,6 +72,7 @@ let printf ?level ?time ?tags k = gen ?level ?time ?tags k
 let raw ?time ?tags k = gen ?time ?tags k
 let debug ?time ?tags k = gen ~level:`Debug ?time ?tags k
 let info ?time ?tags k = gen ~level:`Info ?time ?tags k
+let warn ?time ?tags k = gen ~level:`Warn ?time ?tags k
 let error ?time ?tags k = gen ~level:`Error ?time ?tags k
 
 let sexp ?level ?time ?tags sexp =
@@ -81,4 +82,5 @@ let sexp ?level ?time ?tags sexp =
 let raw_s ?time ?tags the_sexp = sexp ?time ?tags the_sexp
 let debug_s ?time ?tags the_sexp = sexp ~level:`Debug ?time ?tags the_sexp
 let info_s ?time ?tags the_sexp = sexp ~level:`Info ?time ?tags the_sexp
+let warn_s ?time ?tags the_sexp = sexp ~level:`Warn ?time ?tags the_sexp
 let error_s ?time ?tags the_sexp = sexp ~level:`Error ?time ?tags the_sexp

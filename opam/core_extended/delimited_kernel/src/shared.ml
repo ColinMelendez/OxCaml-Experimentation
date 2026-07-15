@@ -94,7 +94,14 @@ let make_emit_row current_row row_queue header ~lineno =
         | `Filter_map f -> Queue.to_list current_row |> f |> set_headers header_index
         | `Yes ->
           Queue.to_list current_row |> List.map ~f:Option.some |> set_headers header_index)
-      else Queue.enqueue row_queue (Row.create header_index (Queue.to_array current_row));
+      else
+        Queue.enqueue
+          row_queue
+          (Row.create
+             header_index
+             ((* Safe: [Queue.to_array] always returns a new array. *)
+              Iarray.unsafe_of_array__promise_no_mutation
+                (Queue.to_array current_row)));
       lineno := !lineno + 1;
       Queue.clear current_row )
 ;;

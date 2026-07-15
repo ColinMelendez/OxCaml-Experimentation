@@ -7,8 +7,19 @@ open Bigarray
 open Common
 include Read_intf.Definitions
 
-external unsafe_get : buf @ local -> int -> char @@ portable = "%caml_ba_unsafe_ref_1"
-external unsafe_get8 : buf @ local -> int -> int @@ portable = "%caml_ba_unsafe_ref_1"
+external unsafe_get
+  :  buf @ local read
+  -> int
+  -> char
+  @@ portable
+  = "%caml_ba_unsafe_ref_1"
+
+external unsafe_get8
+  :  buf @ local read
+  -> int
+  -> int
+  @@ portable
+  = "%caml_ba_unsafe_ref_1"
 
 let unsafe_get8_signed buf pos =
   let c = unsafe_get8 buf pos in
@@ -24,17 +35,22 @@ let min_int_int32 = if arch_sixtyfour then Int32.min_int else Int32.of_int min_i
 let max_int_int64 = Int64.of_int max_int
 let min_int_int64 = Int64.of_int min_int
 
-external unsafe_get16 : buf @ local -> int -> int @@ portable = "%caml_bigstring_get16u"
+external unsafe_get16
+  :  buf @ local read
+  -> int
+  -> int
+  @@ portable
+  = "%caml_bigstring_get16u"
 
 external unsafe_get32
-  :  local_ buf
+  :  buf @ local read
   -> int
   -> (int32#[@unboxed])
   @@ portable
   = "%caml_bigstring_get32u#"
 
 external unsafe_get64
-  :  local_ buf
+  :  buf @ local read
   -> int
   -> (int64#[@unboxed])
   @@ portable
@@ -533,7 +549,7 @@ let bin_read_option bin_read_el buf ~pos_ref =
 
 let bin_read_or_null bin_read_el buf ~pos_ref =
   (bin_read_option_like [@alloc a])
-    ~none:Base.Or_null.Null
+    ~none:Null
     ~some:(Base.Or_null.this [@mode m])
     ~read_error:Or_null_code
     bin_read_el
@@ -915,17 +931,17 @@ let%template[@alloc a = (heap, stack)] bin_read_network64_int64 buf ~pos_ref =
 [%%if ocaml_version < (4, 07, 0)]
 
 external unsafe_bytes_set32
-  :  bytes
+  :  bytes @ local write
   -> int
-  -> int32
+  -> int32 @ local
   -> unit
   @@ portable
   = "%caml_string_set32u"
 
 external unsafe_bytes_set64
-  :  bytes
+  :  bytes @ local write
   -> int
-  -> int64
+  -> int64 @ local
   -> unit
   @@ portable
   = "%caml_string_set64u"
@@ -933,7 +949,7 @@ external unsafe_bytes_set64
 [%%else]
 
 external unsafe_bytes_set32
-  :  local_ bytes
+  :  bytes @ local write
   -> int
   -> (int32#[@unboxed])
   -> unit
@@ -941,7 +957,7 @@ external unsafe_bytes_set32
   = "%caml_bytes_set32u#"
 
 external unsafe_bytes_set64
-  :  local_ bytes
+  :  bytes @ local write
   -> int
   -> (int64#[@unboxed])
   -> unit
@@ -977,6 +993,7 @@ let unsafe_bin_read_md5 buf pos =
    (Md5_lib.unsafe_of_binary [@mode m])
      (Base.Bytes.unsafe_to_string ~no_mutation_while_string_reachable:res))
   [@exclave_if_stack a]
+[@@zero_alloc_if_stack a opt]
 ;;
 
 let bin_read_md5 buf ~pos_ref =
@@ -986,6 +1003,7 @@ let bin_read_md5 buf ~pos_ref =
   check_next buf next;
   pos_ref := next;
   (unsafe_bin_read_md5 [@alloc a]) buf pos [@exclave_if_stack a]
+[@@zero_alloc_if_stack a opt]
 ;;]
 
 (* Local readers *)

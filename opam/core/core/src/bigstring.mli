@@ -9,7 +9,7 @@ open Bigarray
 
 (** Type of bigstrings *)
 type t = (char, int8_unsigned_elt, c_layout) Array1.t
-[@@deriving compare ~localize, quickcheck, sexp_of]
+[@@deriving compare ~localize, quickcheck, sexp_of ~stackify]
 
 (** Type of bigstrings which support hashing. Note that mutation invalidates previous
     hashes. *)
@@ -22,7 +22,7 @@ include Hexdump.S with type t := t
 
 (** [create length]
     @return a new bigstring having [length]. Content is undefined. *)
-val create : int -> t
+val create : int -> t @ unique
 
 (** [sub_shared ?pos ?len bstr]
 

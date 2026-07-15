@@ -5,15 +5,22 @@ open! Import
 module type S = Global_intf.S
 
 module Make () = struct
+  let published_log = Atomic.make None
+  let current_published_log () = Atomic.get published_log
+
   let log =
     lazy
-      (Log.create
-         ?time_source:None
-         ?transform:None
-         ()
-         ~level:`Info
-         ~output:[ force Output.stderr ]
-         ~on_error:On_error.send_to_top_level_monitor)
+      (let log =
+         Log.create
+           ?time_source:None
+           ?transform:None
+           ()
+           ~level:`Info
+           ~output:[ force Output.stderr ]
+           ~on_error:On_error.send_to_top_level_monitor
+       in
+       Atomic.set published_log (Some log);
+       log)
   ;;
 
   let level () = Log.level (Lazy.force log)
@@ -50,6 +57,7 @@ module Make () = struct
   let would_log level = Log.would_log (Lazy.force log) level
   let raw ?time ?tags k = Log.raw ?time ?tags (Lazy.force log) k
   let info ?time ?tags k = Log.info ?time ?tags (Lazy.force log) k
+  let warn ?time ?tags k = Log.warn ?time ?tags (Lazy.force log) k
   let error ?time ?tags k = Log.error ?time ?tags (Lazy.force log) k
 
   module For_async_shutdown = struct
@@ -83,6 +91,10 @@ module Make () = struct
     Log.sexp ~level:`Info ?time ?tags (Lazy.force log) the_sexp
   ;;
 
+  let warn_s ?time ?tags the_sexp =
+    Log.sexp ~level:`Warn ?time ?tags (Lazy.force log) the_sexp
+  ;;
+
   let error_s ?time ?tags the_sexp =
     Log.sexp ~level:`Error ?time ?tags (Lazy.force log) the_sexp
   ;;
@@ -98,6 +110,30 @@ module Make () = struct
     Log.structured_message ?level ?time ?tags (Lazy.force log)
   ;;
 
+  let structured_message_wrapped = Capsule.Initial.Data.wrap structured_message
+
+  let execution_context =
+    Async_kernel_scheduler.current_execution_context () |> Capsule.Initial.Data.wrap
+  ;;
+
+  let enqueue_structured_message ?level ?time ?tags data source =
+    match current_published_log () with
+    | None ->
+      (* Before the lazy global log is forced: enqueue work that forces the log and
+         applies the real [would_log] check in the async scheduler. *)
+      Async_kernel_scheduler.portable_enqueue_job
+        execution_context
+        (Capsule.Data.create (fun () #(access, ()) ->
+           let structured_message =
+             Capsule.Data.unwrap ~access structured_message_wrapped
+           in
+           structured_message ?level ?time ?tags data source))
+        (Capsule.Data.return ())
+    | Some log ->
+      (* [Log.enqueue_structured_message] checks [would_log] before enqueueing. *)
+      Log.enqueue_structured_message ?level ?time ?tags log data source
+  ;;
+
   let surround_s ~on_subsequent_errors ?level ?time ?tags msg f =
     Log.surround_s ~on_subsequent_errors ?level ?time ?tags (Lazy.force log) msg f
   ;;
@@ -107,6 +143,10 @@ module Make () = struct
   ;;
 
   let set_level_via_param ?default () = Log.Private.set_level_via_param_lazy ~default log
+
+  module Private = struct
+    let current_published_log = current_published_log
+  end
 
   module For_testing = struct
     let use_test_output

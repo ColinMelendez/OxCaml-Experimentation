@@ -47,17 +47,20 @@ let draw
   match cols with
   | [] -> None
   | _ :: _ ->
-    Some
-      (Grid.create
-         ~spacing
-         ~display
-         ~max_width:limit_width_to
-         ~header_attr
-         cols
-         data
-         ~display_empty_rows
-         ~prefer_split_on_spaces
-       |> Grid.to_screen ~prefer_split_on_spaces)
+    let grid =
+      Grid.create
+        ~spacing
+        ~display
+        ~max_width:limit_width_to
+        ~header_attr
+        cols
+        data
+        ~display_empty_rows
+        ~prefer_split_on_spaces
+    in
+    if Grid.is_empty grid
+    then None
+    else Some (Grid.to_screen grid ~prefer_split_on_spaces)
 ;;
 
 let to_string_noattr
@@ -84,7 +87,13 @@ let to_string_noattr
   |> Option.value ~default:""
 ;;
 
-let cols_and_data_of_strings ?(index = false) ?(max_col_width = 90) cols data =
+let cols_and_data_of_strings
+  ?(index = false)
+  ?min_col_width
+  ?(max_col_width = 90)
+  cols
+  data
+  =
   let cols, data =
     if index
     then "#" :: cols, List.mapi data ~f:(fun i row -> Int.to_string (i + 1) :: row)
@@ -97,7 +106,12 @@ let cols_and_data_of_strings ?(index = false) ?(max_col_width = 90) cols data =
         | None -> col, Align.Right
         | Some col -> col, Align.Left
       in
-      Column.create ~max_width:max_col_width col (fun ls -> List.nth_exn ls i) ~align)
+      Column.create
+        ?min_width:min_col_width
+        ~max_width:max_col_width
+        col
+        (fun ls -> List.nth_exn ls i)
+        ~align)
   in
   cols, data
 ;;

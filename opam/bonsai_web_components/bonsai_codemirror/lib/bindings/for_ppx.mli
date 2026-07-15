@@ -124,6 +124,7 @@ module State : sig
     val value : t -> 'a [@@js.get]
     val is : t -> type_:'a State_effect_type.t -> bool [@@js.call]
     val define : unit -> 'a State_effect_type.t [@@js.global]
+    val append_config : Extension.t State_effect_type.t [@@js.global "appendConfig"]
     val reconfigure : Extension.t State_effect_type.t [@@js.global]
   end
   [@@js.scope "StateEffect"]
@@ -282,6 +283,8 @@ module State : sig
   module Transaction : sig
     type t
 
+    val t_of_js : Ojs.t -> t
+    val t_to_js : t -> Ojs.t
     val start_state : t -> editor_state [@@js.get]
     val changes : t -> Change_set.t [@@js.get]
     val selection : t -> Editor_selection.t option [@@js.get]
@@ -653,12 +656,19 @@ module View : sig
     type t
     type handler = Dom_event.t -> editor_view -> unit
 
-    val create : ?paste:handler -> ?drop:handler -> unit -> t [@@js.builder]
+    (** Like [handler], but returns [true] to indicate that the event was handled and
+        CodeMirror should suppress its default behavior. *)
+    type bool_handler = Dom_event.t -> editor_view -> bool
+
+    val create : ?paste:handler -> ?drop:handler -> ?mousedown:bool_handler -> unit -> t
+    [@@js.builder]
   end
 
   module Editor_view : sig
     type t = editor_view
 
+    val t_of_js : Ojs.t -> t
+    val t_to_js : t -> Ojs.t
     val create : Config.t -> t [@@js.create]
     val dom : t -> Dom_html_element.t [@@js.get]
     val content_dom : t -> Dom_html_element.t [@@js.get "contentDOM"]
@@ -674,6 +684,14 @@ module View : sig
     val state : t -> State.Editor_state.t [@@js.get]
     val focus : t -> unit [@@js.call]
     val has_focus : t -> bool [@@js.get]
+
+    module Coords : sig
+      type t
+
+      val create : x:float -> y:float -> unit -> t [@@js.builder]
+    end
+
+    val pos_at_coords : t -> Coords.t -> int option [@@js.call]
     val destroy : t -> unit [@@js.call]
     val line_wrapping : State.Extension.t [@@js.global]
     val dom_event_handlers : Dom_event_handlers.t -> State.Extension.t [@@js.global]
@@ -721,6 +739,16 @@ module View : sig
     [@@js.global]
 
     val find_from_dom : Dom_html_element.t -> t option [@@js.global "findFromDOM"]
+
+    val input_handler
+      : (view:t
+         -> from:int
+         -> to_:int
+         -> text:string
+         -> insert:(unit -> State.Transaction.t)
+         -> bool)
+          State.Facet.multi_out
+    [@@js.global]
   end
   [@@js.scope "EditorView"]
 
@@ -885,6 +913,14 @@ module View : sig
   [@@js.global]
 
   val show_tooltip : Tooltip.t option State.Facet.multi_out [@@js.global]
+
+  module Tooltip_config : sig
+    type t
+
+    val create : ?parent:Dom_html_element.t -> unit -> t [@@js.builder]
+  end
+
+  val tooltips : Tooltip_config.t -> State.Extension.t [@@js.global]
 
   module Layer_marker : sig
     type t
@@ -1057,6 +1093,8 @@ module Autocomplete : sig
   [@@js.global]
 
   val completion_keymap : View.Key_binding.t list [@@js.global]
+  val close_brackets : unit -> State.Extension.t [@@js.global]
+  val close_brackets_keymap : View.Key_binding.t list [@@js.global]
 end
 
 module Lint : sig
@@ -1161,6 +1199,7 @@ module Commands : sig
   val delete_line : View.Command.t [@@js.global]
   val cursor_matching_bracket : View.Command.t [@@js.global]
   val toggle_comment : View.Command.t [@@js.global]
+  val toggle_block_comment : View.Command.t [@@js.global]
 end
 
 module Gutter : sig
@@ -1253,6 +1292,25 @@ module Search : sig
   end
 
   val search : Config.t -> State.Extension.t [@@js.global]
+
+  module Highlight_selection_matches_config : sig
+    type t
+
+    val create
+      :  ?min_selection_length:int
+      -> ?max_matches:int
+      -> ?whole_words:bool
+      -> unit
+      -> t
+    [@@js.builder]
+  end
+
+  val highlight_selection_matches
+    :  ?config:Highlight_selection_matches_config.t
+    -> unit
+    -> State.Extension.t
+  [@@js.global]
+
   val find_next : View.Command.t [@@js.global]
   val find_previous : View.Command.t [@@js.global]
   val select_matches : View.Command.t [@@js.global]
@@ -1496,6 +1554,8 @@ module Folding : sig
   [@@js.global]
 
   val fold_gutter : unit -> State.Extension.t [@@js.global]
+  val fold_effect : Fold.t State.State_effect_type.t [@@js.global "foldEffect"]
+  val fold_all : View.Command.t [@@js.global "foldAll"]
 end
 
 module Matchbrackets : sig

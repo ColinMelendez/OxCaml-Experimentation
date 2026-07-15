@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/username_kernel/issues"
 dev-repo: "git+https://github.com/janestreet/username_kernel.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/username_kernel/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -15,7 +16,10 @@ depends: [
   "ppx_template"
   "dune"         {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "An identifier for a user"
 description: "
 A string representation for a user, typically a UNIX username

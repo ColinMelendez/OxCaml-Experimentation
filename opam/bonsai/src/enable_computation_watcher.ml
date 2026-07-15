@@ -7,7 +7,7 @@ module Types = struct
   module Down = struct
     type t =
       { source_code_positions : Source_code_positions.pending Source_code_positions.t
-      ; visited_stores : Type_equal.Id.Uid.Set.t
+      ; visited_stores : Var_id.Packed.Set.t
       ; watcher_queue : Output_queue.t
       ; config : Computation_watcher.Config.t
       ; enable_watcher : bool
@@ -22,10 +22,10 @@ module Types = struct
   module Acc = Unit
 
   module Up = struct
-    type t = Computation_watcher.Type_id_location_map.t
+    type t = Computation_watcher.Var_id_location_map.t
 
-    let empty = Computation_watcher.Type_id_location_map.empty
-    let combine = Computation_watcher.Type_id_location_map.merge
+    let empty = Computation_watcher.Var_id_location_map.empty
+    let combine = Computation_watcher.Var_id_location_map.merge
     let empty_for_lazy = empty
   end
 end
@@ -60,7 +60,7 @@ let rewrite_resetter
 
 let apply_action_wrapper
   ~model
-  ~action
+  ~sexp_of_action
   ~(down : Types.Down.t)
   ~apply_action_model
   ~apply_action_action
@@ -82,7 +82,7 @@ let apply_action_wrapper
          ; model_after = new_model
          ; sexp_of_model = model.Meta.Model.sexp_of
          ; action = Some apply_action_action
-         ; sexp_of_action = Some (Type_equal.Id.to_sexp action)
+         ; sexp_of_action
          ; kind
          });
   new_model
@@ -91,7 +91,7 @@ let apply_action_wrapper
 let rewrite_apply_action_leaf1
   ~apply_action
   ~model
-  ~action
+  ~sexp_of_action
   ~down
   ~(kind : [> `Wrap | `State_machine1 ])
   ~watcher_queue
@@ -108,7 +108,7 @@ let rewrite_apply_action_leaf1
     apply_action ~inject ~schedule_event ~time_source apply_action_input
     |> apply_action_wrapper
          ~model
-         ~action
+         ~sexp_of_action
          ~down
          ~apply_action_model
          ~apply_action_action
@@ -122,7 +122,7 @@ let rewrite_apply_action_leaf1
 let rewrite_apply_action_leaf0
   ~apply_action
   ~model
-  ~action
+  ~sexp_of_action
   ~down
   ~watcher_queue
   ~source_code_positions
@@ -137,7 +137,7 @@ let rewrite_apply_action_leaf0
     apply_action ~inject ~schedule_event ~time_source
     |> apply_action_wrapper
          ~model
-         ~action
+         ~sexp_of_action
          ~down
          ~apply_action_model
          ~apply_action_action
@@ -172,7 +172,7 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
       (match value with
        | Named (_, id) ->
          ( ()
-         , Computation_watcher.Type_id_location_map.singleton
+         , Computation_watcher.Var_id_location_map.singleton
              id
              (Source_code_positions.add_dependency_definition source_code_positions here)
          , v )
@@ -201,7 +201,7 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
              { Value.value = Incr new_incr; here }
            | `Already_set -> v
          in
-         (), Computation_watcher.Type_id_location_map.empty, value_node
+         (), Computation_watcher.Var_id_location_map.empty, value_node
        | Map _ | Map2 _ | Map3 _ | Map4 _ | Map5 _ | Map6 _ | Map7 _ ->
          Recurse.on_value
            { down with
@@ -233,22 +233,20 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
     | Sub { via; from = _; into = _; here = _; invert_lifecycles = _ } ->
       let%bind (), free_vars, c = Recurse.on_computation down () `Skipping_over t in
       (* the values bound in a sub are no longer free, so remove them *)
-      return ((), Computation_watcher.Type_id_location_map.remove free_vars via, c)
+      return ((), Computation_watcher.Var_id_location_map.remove free_vars via, c)
     | Fix_define { fix_id = _; initial_input = _; input_id; result = _; here = _ } ->
       let%bind (), free_vars, c = Recurse.on_computation down () `Skipping_over t in
       (* input_id is no longer free, remove it. Fix_define is the top-level node for
          Fix_recurse *)
-      return ((), Computation_watcher.Type_id_location_map.remove free_vars input_id, c)
+      return ((), Computation_watcher.Var_id_location_map.remove free_vars input_id, c)
     | Assoc { map = _; key_comparator = _; key_id; cmp_id = _; data_id; by = _; here = _ }
       ->
       let%bind (), free_vars, c = Recurse.on_computation down () `Skipping_over t in
       (* Assoc_like_key and Assoc_like_data are both Named values, must remove both as
          they are no longer free *)
-      let removed_key =
-        Computation_watcher.Type_id_location_map.remove free_vars key_id
-      in
+      let removed_key = Computation_watcher.Var_id_location_map.remove free_vars key_id in
       let removed_key_and_data =
-        Computation_watcher.Type_id_location_map.remove removed_key data_id
+        Computation_watcher.Var_id_location_map.remove removed_key data_id
       in
       return ((), removed_key_and_data, c)
     | Assoc_on
@@ -271,18 +269,20 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
          The key that is added to [Environment] is [io_key_id]
       *)
       let removed_key =
-        Computation_watcher.Type_id_location_map.remove free_vars io_key_id
+        Computation_watcher.Var_id_location_map.remove free_vars io_key_id
       in
       let removed_key_and_data =
-        Computation_watcher.Type_id_location_map.remove removed_key data_id
+        Computation_watcher.Var_id_location_map.remove removed_key data_id
       in
       return ((), removed_key_and_data, c)
-    | Leaf0 { model; static_action; apply_action; reset; here } when enable_watcher ->
+    | Leaf0
+        { model; static_action; apply_action; reset; action_name; sexp_of_action; here }
+      when enable_watcher ->
       let apply_action =
         rewrite_apply_action_leaf0
           ~apply_action
           ~model
-          ~action:static_action
+          ~sexp_of_action
           ~watcher_queue
           ~down
           ~source_code_positions:
@@ -305,14 +305,32 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
       return
         ( ()
         , Types.Up.empty
-        , Computation.Leaf0 { model; static_action; apply_action; reset; here } )
-    | Leaf1 { model; input_id; dynamic_action; apply_action; input; reset; here }
+        , Computation.Leaf0
+            { model
+            ; static_action
+            ; apply_action
+            ; reset
+            ; action_name
+            ; sexp_of_action
+            ; here
+            } )
+    | Leaf1
+        { model
+        ; input_id
+        ; dynamic_action
+        ; apply_action
+        ; input
+        ; reset
+        ; action_name
+        ; sexp_of_action
+        ; here
+        }
       when enable_watcher ->
       let (), free_vars, input = transform_v down () input in
       let apply_action =
         rewrite_apply_action_leaf1
           ~model
-          ~action:dynamic_action
+          ~sexp_of_action
           ~apply_action
           ~down
           ~source_code_positions:
@@ -338,7 +356,16 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
         ( ()
         , free_vars
         , Computation.Leaf1
-            { model; input_id; dynamic_action; apply_action; input; reset; here } )
+            { model
+            ; input_id
+            ; dynamic_action
+            ; apply_action
+            ; input
+            ; reset
+            ; action_name
+            ; sexp_of_action
+            ; here
+            } )
     | Wrap
         { wrapper_model
         ; result_id
@@ -356,10 +383,10 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
          longer free.
       *)
       let removed_model =
-        Computation_watcher.Type_id_location_map.remove free_vars model_id
+        Computation_watcher.Var_id_location_map.remove free_vars model_id
       in
       let free_vars =
-        Computation_watcher.Type_id_location_map.remove removed_model inject_id
+        Computation_watcher.Var_id_location_map.remove removed_model inject_id
       in
       let dynamic_apply_action, reset =
         match enable_watcher with
@@ -367,7 +394,8 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
           let dynamic_apply_action =
             rewrite_apply_action_leaf1
               ~model:wrapper_model
-              ~action:action_id
+                (* [Wrap] currently doesn't take a [sexp_of_action] argument. *)
+              ~sexp_of_action:None
               ~apply_action:dynamic_apply_action
               ~kind:`Wrap
               ~watcher_queue
@@ -410,7 +438,7 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
       let%bind (), free_vars, inner = Recurse.on_computation down () `Directly_on inner in
       return
         ( ()
-        , Computation_watcher.Type_id_location_map.remove free_vars reset_id
+        , Computation_watcher.Var_id_location_map.remove free_vars reset_id
         , Computation.With_model_resetter { inner; reset_id; here } )
     | Computation_watcher
         { inner
@@ -462,28 +490,28 @@ module F (Recurse : Fix_transform.Recurse with module Types := Types) = struct
     | Store { id; value; inner; here } ->
       let%bind (), free_vars, c =
         Recurse.on_computation
-          { down with visited_stores = Set.add visited_stores (Type_equal.Id.uid id) }
+          { down with visited_stores = Set.add visited_stores (Var_id.pack id) }
           ()
           `Directly_on
           inner
       in
       return
         ( ()
-        , Computation_watcher.Type_id_location_map.remove free_vars id
+        , Computation_watcher.Var_id_location_map.remove free_vars id
         , Computation.Store { id; value; inner = c; here } )
     | Fetch ({ id; default = _; for_some = _; here } as t) ->
       let source_code_positions =
         match
           Set.exists visited_stores ~f:(fun store_id ->
-            Type_equal.Id.Uid.equal (Type_equal.Id.uid id) store_id)
+            Var_id.Packed.equal (Var_id.pack id) store_id)
         with
         | true ->
-          Computation_watcher.Type_id_location_map.singleton
+          Computation_watcher.Var_id_location_map.singleton
             id
             (Computation_watcher.Source_code_positions.add_dependency_definition
                source_code_positions
                here)
-        | false -> Computation_watcher.Type_id_location_map.empty
+        | false -> Computation_watcher.Var_id_location_map.empty
       in
       return ((), source_code_positions, Computation.Fetch t)
     | _ -> Recurse.on_computation down () `Skipping_over t
@@ -520,7 +548,7 @@ let run ~watcher_queue c =
              (* This flag lets us know that we should set [enable_watcher] once we've
                 reached any [Computation_watcher] node *)
          ; should_run_computation_watcher = true
-         ; visited_stores = Type_equal.Id.Uid.Set.empty
+         ; visited_stores = Var_id.Packed.Set.empty
          ; value_id_observation_definition_positions =
              Computation_watcher.Id_location_hashmap.create ()
          }

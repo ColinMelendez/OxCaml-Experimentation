@@ -18,24 +18,25 @@ type%template ('a : k) t = { modal : 'a @@ c g m p }
 [@@modality
   g = (local, global)
   , p = (nonportable, portable)
-  , c = (uncontended, shared, contended)
+  , c = (uncontended, shared, contended, read, immutable)
   , m = (once, many)]
-[@@kind k = base_or_null]
+[@@kind k = (base_or_null, (value_or_null & bits64) & word)]
 
 module Global = struct
   include Modes_intf.Definitions.Global
 
-  type ('a : value_or_null) t : value_or_null mod global = { global : 'a @@ global }
+  type ('a : value_or_null) t : value_or_null mod global = 'a Basement.Modes.global =
+    { global : 'a @@ global }
   [@@unboxed]
 
-  let compare__local compare a b = compare a.global b.global
-  let compare compare a b = compare__local compare a b
-  let equal__local equal a b = equal a.global b.global
-  let equal equal a b = equal__local equal a b
+  let%template[@mode local] compare compare a b = compare a.global b.global
+  let%template compare compare a b = (compare [@mode local]) compare a b
+  let%template[@mode local] equal equal a b = equal a.global b.global
+  let%template equal equal a b = (equal [@mode local]) equal a b
   let hash_fold_t hash state t = hash state t.global
   let t_of_sexp of_sexp sexp = { global = of_sexp sexp }
   let sexp_of_t sexp_of t = sexp_of t.global
-  let sexp_of_t__stack sexp_of t = exclave_ sexp_of t.global
+  let%template[@alloc stack] sexp_of_t sexp_of t = exclave_ sexp_of t.global
 
   let t_sexp_grammar : 'a. 'a Sexplib0.Sexp_grammar.t -> 'a t Sexplib0.Sexp_grammar.t =
     Sexplib0.Sexp_grammar.coerce
@@ -225,7 +226,8 @@ end
 module Portable = struct
   include Modes_intf.Definitions.Portable
 
-  type ('a : value_or_null) t : value_or_null mod portable = { portable : 'a @@ portable }
+  type ('a : value_or_null) t : value_or_null mod portable = 'a Basement.Modes.portable =
+    { portable : 'a @@ portable }
   [@@unboxed] [@@deriving compare ~localize, equal ~localize, hash]
 
   let%template sexp_of_t sexp_of_a { portable } = sexp_of_a portable [@exclave_if_stack a]
@@ -331,11 +333,12 @@ module Portable = struct
     @@ portable
     = "%identity"
 
-  external unwrap_first__portable
+  external%template unwrap_first
     :  (('a t, 'b) Either0.t[@local_opt]) @ portable
     -> (('a, 'b) Either0.t[@local_opt]) @ portable
     @@ portable
     = "%identity"
+  [@@mode portable]
 
   external wrap_second
     :  (('a, 'b) Either0.t[@local_opt]) @ portable
@@ -349,11 +352,12 @@ module Portable = struct
     @@ portable
     = "%identity"
 
-  external unwrap_second__portable
+  external%template unwrap_second
     :  (('a, 'b t) Either0.t[@local_opt]) @ portable
     -> (('a, 'b) Either0.t[@local_opt]) @ portable
     @@ portable
     = "%identity"
+  [@@mode portable]
 
   external wrap_result
     :  (('a, 'b) Result.t[@local_opt]) @ portable
@@ -391,11 +395,12 @@ module Portable = struct
     @@ portable
     = "%identity"
 
-  external unwrap_ok__portable
+  external%template unwrap_ok
     :  (('a t, 'b) Result.t[@local_opt]) @ portable
     -> (('a, 'b) Result.t[@local_opt]) @ portable
     @@ portable
     = "%identity"
+  [@@mode portable]
 
   external wrap_error
     :  (('a, 'b) Result.t[@local_opt]) @ portable
@@ -409,11 +414,12 @@ module Portable = struct
     @@ portable
     = "%identity"
 
-  external unwrap_error__portable
+  external%template unwrap_error
     :  (('a, 'b t) Result.t[@local_opt]) @ portable
     -> (('a, 'b) Result.t[@local_opt]) @ portable
     @@ portable
     = "%identity"
+  [@@mode portable]
 
   external wrap_tuple2
     :  ('a * 'b[@local_opt]) @ portable
@@ -456,6 +462,7 @@ end
 
 module Contended = struct
   type ('a : value_or_null) t : value_or_null mod contended =
+        'a Basement.Modes.contended =
     { contended : 'a @@ contended }
   [@@unboxed]
 
@@ -466,44 +473,56 @@ module Contended = struct
     'a @ contended -> 'a
     @@ portable
     = "%identity"
+
+  external wrap_list : 'a list @ contended -> 'a t list @@ portable = "%identity"
 end
 
 module Shared = struct
-  type ('a : value_or_null) t = { shared : 'a @@ shared } [@@unboxed]
+  type ('a : value_or_null) t = 'a Basement.Modes.shared = { shared : 'a @@ shared }
+  [@@unboxed]
 
   let t_of_sexp of_sexp sexp = { shared = of_sexp sexp }
 end
 
 module Portended = struct
   type ('a : value_or_null) t : value_or_null mod contended portable =
+        'a Basement.Modes.portended =
     { portended : 'a @@ contended portable }
   [@@unboxed]
 end
 
 module Many = struct
-  type ('a : value_or_null) t : value_or_null mod many = { many : 'a @@ many }
+  type ('a : value_or_null) t : value_or_null mod many = 'a Basement.Modes.many =
+    { many : 'a @@ many }
   [@@unboxed]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
 end
 
 module Aliased = struct
-  type ('a : value_or_null) t : value_or_null mod aliased = { aliased : 'a @@ aliased }
+  type ('a : value_or_null) t : value_or_null mod aliased = 'a Basement.Modes.aliased =
+    { aliased : 'a @@ aliased }
   [@@unboxed]
+
+  let wrap aliased = { aliased }
+  let unwrap { aliased } = aliased
 end
 
 module Aliased_many = struct
   type ('a : value_or_null) t : value_or_null mod aliased many =
+        'a Basement.Modes.aliased_many =
     { aliased_many : 'a @@ aliased many }
   [@@unboxed]
 end
 
 module Forkable = struct
-  type ('a : value_or_null) t : value_or_null mod forkable = { forkable : 'a @@ forkable }
+  type ('a : value_or_null) t : value_or_null mod forkable = 'a Basement.Modes.forkable =
+    { forkable : 'a @@ forkable }
   [@@unboxed]
 end
 
 module Unyielding = struct
   type ('a : value_or_null) t : value_or_null mod unyielding =
+        'a Basement.Modes.unyielding =
     { unyielding : 'a @@ unyielding }
   [@@unboxed]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
@@ -513,26 +532,29 @@ end
 
 module Stateless = struct
   type ('a : value_or_null) t : value_or_null mod stateless =
+        'a Basement.Modes.stateless =
     { stateless : 'a @@ stateless }
   [@@unboxed]
 end
 
-module Observing = struct
-  type ('a : value_or_null) t = { observing : 'a @@ observing } [@@unboxed]
+module Reading = struct
+  type ('a : value_or_null) t = 'a Basement.Modes.reading = { reading : 'a @@ reading }
+  [@@unboxed]
 end
 
 module Immutable = struct
   type ('a : value_or_null) t : value_or_null mod immutable =
+        'a Basement.Modes.immutable =
     { immutable : 'a @@ immutable }
   [@@unboxed]
 end
 
 module Read = struct
-  type ('a : value_or_null) t = { read : 'a @@ read } [@@unboxed]
+  type ('a : value_or_null) t = 'a Basement.Modes.read = { read : 'a @@ read } [@@unboxed]
 end
 
 module Immutable_data = struct
-  type ('a : value mod non_float) t : immutable_data =
+  type ('a : value mod non_float) t : immutable_data = 'a Basement.Modes.immutable_data =
     { immutable_data : 'a @@ forkable immutable many stateless unyielding }
   [@@unboxed]
 end
@@ -548,18 +570,21 @@ module At_locality = struct
     value mod aliased contended external_ forkable many non_null portable unyielding
 
   type global : immediate = [ `global ]
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving
+    compare ~localize, equal ~localize, hash, sexp_of ~localize ~stackify, sexp_grammar]
 
   type local =
     [ `global
     | `local of (actually_local[@compare.ignore] [@equal.ignore] [@sexp.opaque])
     ]
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving
+    compare ~localize, equal ~localize, hash, sexp_of ~localize ~stackify, sexp_grammar]
 
   type (+'a
        , +'locality)
        t :
-       immediate
+       value
+       mod everything
        with 'a @@ global
        with 'locality @@ aliased contended forkable many portable unyielding
 
@@ -581,9 +606,12 @@ module At_locality = struct
   let globalize_global t = wrap (unwrap_global t)
   let equal equal_a _ x y = equal_a (unwrap x) (unwrap y)
   let compare compare_a _ x y = compare_a (unwrap x) (unwrap y)
-  let equal__local equal_a _ x y = equal_a (unwrap_local x) (unwrap_local y) [@nontail]
 
-  let compare__local compare_a _ x y =
+  let%template[@mode local] equal equal_a _ x y =
+    equal_a (unwrap_local x) (unwrap_local y) [@nontail]
+  ;;
+
+  let%template[@mode local] compare compare_a _ x y =
     compare_a (unwrap_local x) (unwrap_local y) [@nontail]
   ;;
 
@@ -605,9 +633,11 @@ module At_portability = struct
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
 
   (* We only need [hash_fold] and local comparisons. *)
-  let _ = [%compare: nonportable_]
-  let _ = [%equal: nonportable_]
-  let _ = [%hash: nonportable_]
+
+  [%%template
+  let _ = [%compare: nonportable_] [@mode.explicit global]
+  let _ = [%equal: nonportable_] [@mode.explicit global]
+  let _ = [%hash: nonportable_]]
 
   type portable : immediate = [ `portable ]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
@@ -621,7 +651,8 @@ module At_portability = struct
   type (+!'a
        , +'portability)
        t :
-       immediate
+       value
+       mod everything
        with 'a @@ portable
        with 'portability @@ aliased contended forkable global many unyielding
   [@@allow_redundant_modalities
@@ -828,7 +859,7 @@ module Export = struct
     { stateless : 'a @@ stateless }
   [@@unboxed]
 
-  type ('a : value_or_null) observing = 'a Observing.t = { observing : 'a @@ observing }
+  type ('a : value_or_null) reading = 'a Reading.t = { reading : 'a @@ reading }
   [@@unboxed]
 
   type ('a : value_or_null) immutable : value_or_null mod immutable = 'a Immutable.t =

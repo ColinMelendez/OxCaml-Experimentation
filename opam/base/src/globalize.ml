@@ -3,7 +3,10 @@
    anything special. However, [globalize_int] cannot be written this way, so we resort to
    using an [external]. *)
 
-[@@@warning "-incompatible-with-upstream"]
+open Basement.Or_null_shim.Export
+
+let%template[@alloc stack] [@inline] maybe_globalize _ value = value
+let%template[@alloc heap] [@inline] maybe_globalize globalize value = globalize value
 
 let globalize_bool = function
   | (true | false) as b -> b
@@ -18,8 +21,8 @@ external globalize_int : local_ int -> int @@ portable = "%identity"
 external globalize_int32 : local_ int32 -> int32 @@ portable = "%obj_dup"
 external globalize_int64 : local_ int64 -> int64 @@ portable = "%obj_dup"
 external globalize_nativeint : local_ nativeint -> nativeint @@ portable = "%obj_dup"
-external globalize_bytes : local_ bytes -> bytes @@ portable = "%obj_dup"
-external globalize_string : local_ string -> string @@ portable = "%obj_dup"
+external globalize_bytes : local_ bytes -> bytes @ unique @@ portable = "%obj_dup"
+external globalize_string : local_ string -> string @ unique @@ portable = "%obj_dup"
 
 let globalize_unit (() as u) = u
 
@@ -34,7 +37,11 @@ external globalize_array'
 
 let globalize_array _ a = globalize_array' a [@@kind k]]
 
-external globalize_floatarray : local_ floatarray -> floatarray @@ portable = "%obj_dup"
+external globalize_floatarray
+  :  local_ floatarray
+  -> floatarray @ unique
+  @@ portable
+  = "%obj_dup"
 
 let[@tail_mod_cons] rec globalize_list f = function
   | [] -> []
@@ -47,7 +54,7 @@ let globalize_option f = function
 ;;
 
 let globalize_or_null f = function
-  | Basement.Or_null_shim.Null -> Basement.Or_null_shim.Null
+  | Null -> Null
   | This x -> This (f x)
 ;;
 

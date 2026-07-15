@@ -8,10 +8,10 @@ module Stable = struct
   module Tag = struct
     module V1 = struct
       type t =
-        { ns : string [@default ""] [@sexp_drop_default.equal]
+        { ns : string [@default ""] [@sexp_drop_default.equal.local]
         ; tag : string
         }
-      [@@deriving sexp, bin_io, hash, compare, stable_witness]
+      [@@deriving sexp, bin_io, hash, compare ~localize, stable_witness]
 
       let%expect_test "stability" =
         print_endline [%bin_digest: t];
@@ -23,11 +23,11 @@ module Stable = struct
   module Attribute = struct
     module V1 = struct
       type t =
-        { ns : string [@default ""] [@sexp_drop_default.equal]
+        { ns : string [@default ""] [@sexp_drop_default.equal.local]
         ; key : string
         ; value : string
         }
-      [@@deriving sexp, bin_io, hash, compare, stable_witness]
+      [@@deriving sexp, bin_io, hash, compare ~localize, stable_witness]
 
       let%expect_test "stability" =
         print_endline [%bin_digest: t];
@@ -46,7 +46,7 @@ module Stable = struct
     and t =
       | Element of element
       | Text of string
-    [@@deriving sexp, bin_io, hash, compare, stable_witness]
+    [@@deriving sexp, bin_io, hash, compare ~localize, stable_witness]
 
     let%expect_test "stability" =
       print_endline [%bin_digest: element];
@@ -90,7 +90,7 @@ module Stable = struct
     end
 
     module Element = struct
-      type t = V2.element [@@deriving compare, hash]
+      type t = V2.element [@@deriving compare ~localize, hash]
 
       include
         Sexpable.Of_sexpable.V1
@@ -118,8 +118,8 @@ module Stable = struct
       [@alert "-legacy"]
     end
 
-    type t = V2.t [@@deriving compare, hash]
-    type element = Element.t [@@deriving compare, hash, sexp, bin_io]
+    type t = V2.t [@@deriving compare ~localize, hash]
+    type element = Element.t [@@deriving compare ~localize, hash, sexp, bin_io]
 
     let stable_witness =
       Stable_witness.of_serializable Serde.stable_witness Serde.to_v2 Serde.of_v2
@@ -168,7 +168,8 @@ end
 (** See test/valid_characters.ml for an explanation of these restrictions. *)
 module Printable_string = struct
   type t = string
-  [@@deriving quickcheck ~shrinker ~observer, sexp_of, compare, equal, hash]
+  [@@deriving
+    quickcheck ~shrinker ~observer, sexp_of, compare ~localize, equal ~localize, hash]
 
   let quickcheck_generator = String.gen' Char.gen_print
 
@@ -180,7 +181,8 @@ end
 (** See test/valid_characters.ml for an explanation of these restrictions. *)
 module Name = struct
   type t = string
-  [@@deriving quickcheck ~shrinker ~observer, sexp_of, compare, equal, hash]
+  [@@deriving
+    quickcheck ~shrinker ~observer, sexp_of, compare ~localize, equal ~localize, hash]
 
   let quickcheck_generator =
     Quickcheck.Generator.filter
@@ -210,21 +212,21 @@ end
 
 module Tag = struct
   type t = Stable.Tag.V1.t =
-    { ns : Printable_string.t [@default ""] [@sexp_drop_default.equal]
+    { ns : Printable_string.t [@default ""] [@sexp_drop_default.equal.local]
     ; tag : Name.t
     }
-  [@@deriving sexp_of, compare, equal, hash, quickcheck]
+  [@@deriving sexp_of, compare ~localize, equal ~localize, hash, quickcheck]
 
   let of_tuple (ns, tag) = { ns; tag }
 end
 
 module Attribute = struct
   type t = Stable.Attribute.V1.t =
-    { ns : Printable_string.t [@default ""] [@sexp_drop_default.equal]
+    { ns : Printable_string.t [@default ""] [@sexp_drop_default.equal.local]
     ; key : Name.t
     ; value : Printable_string.t
     }
-  [@@deriving sexp_of, compare, equal, hash, quickcheck]
+  [@@deriving sexp_of, compare ~localize, equal ~localize, hash, quickcheck]
 
   let of_tuple ((ns, key), value) = { ns; key; value }
 end
@@ -238,7 +240,8 @@ type element = Stable.V2.element =
 and t = Stable.V2.t =
   | Element of element
   | Text of Printable_string.t
-[@@deriving sexp_of, compare, equal, hash, quickcheck ~shrinker ~observer]
+[@@deriving
+  sexp_of, compare ~localize, equal ~localize, hash, quickcheck ~shrinker ~observer]
 
 (* When generating an entire XML element, it needs to be internally consistent. All
    namespaces used should be declared at some point, so we need to do some extra work to

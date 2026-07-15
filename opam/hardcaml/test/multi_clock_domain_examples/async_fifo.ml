@@ -19,7 +19,6 @@ let fifo () =
 module _ = struct
   open Hardcaml_event_driven_sim.Two_state_simulator
   module Process = Simulator.Process
-  module Waveform = Waveterm.Waveform
 
   let ( <-- ) = Simulator.( <-- )
   let ( !& ) = Simulator.( !& )
@@ -67,27 +66,43 @@ module _ = struct
              ])
       in
       Simulator.run ~time_limit:100 simulator;
-      Waveform.expect waves ~wave_width:(-1) ~display_width:82;
+      Hardcaml_waveterm.Waveform.expect waves ~wave_width:(-1) ~display_width:82;
       [%expect
         {|
         ┌Signals───────────┐┌Waves───────────────────────────────────────────────────────┐
-        │almost_empty      ││────────────────────────────────────────────────────────────│
-        │                  ││                                                            │
-        │clock_read        ││   ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──│
-        │                  ││───┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  │
         │clock_write       ││     ┌────┐    ┌────┐    ┌────┐    ┌────┐    ┌────┐    ┌────│
         │                  ││─────┘    └────┘    └────┘    └────┘    └────┘    └────┘    │
+        │clock_read        ││   ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──│
+        │                  ││───┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  │
+        │reset_write       ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
+        │reset_read        ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
         │                  ││───────────────┬───────────────────┬────────────────────────│
         │data_in           ││ 0             │A                  │B                       │
         │                  ││───────────────┴───────────────────┴────────────────────────│
+        │write_enable      ││               ┌─────────┐         ┌─────────┐              │
+        │                  ││───────────────┘         └─────────┘         └──────────────│
+        │read_enable       ││                                       ┌─────┐              │
+        │                  ││───────────────────────────────────────┘     └──────────────│
+        │full              ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
+        │almost_full       ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
+        │prog_full         ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
         │                  ││───────────────────────────┬─────────────────┬─────┬────────│
         │data_out          ││ 0                         │A                │0    │B       │
         │                  ││───────────────────────────┴─────────────────┴─────┴────────│
+        │valid             ││                                 ┌───────────┐           ┌──│
+        │                  ││─────────────────────────────────┘           └───────────┘  │
+        │almost_empty      ││────────────────────────────────────────────────────────────│
+        │                  ││                                                            │
+        │prog_empty        ││                                                            │
+        │                  ││────────────────────────────────────────────────────────────│
         │                  ││───────────────────────────┬─────────────────┬─────┬────────│
         │data_out_0        ││ 0                         │A                │0    │B       │
         │                  ││───────────────────────────┴─────────────────┴─────┴────────│
-        │full              ││                                                            │
-        │                  ││────────────────────────────────────────────────────────────│
         │gnd               ││                                                            │
         │                  ││────────────────────────────────────────────────────────────│
         │                  ││─────────────────────────────────────────────┬──────────────│
@@ -102,14 +117,6 @@ module _ = struct
         │                  ││────────────────────────────────────────────────────────────│
         │ram               ││ 0                                                          │
         │                  ││────────────────────────────────────────────────────────────│
-        │read_enable       ││                                       ┌─────┐              │
-        │                  ││───────────────────────────────────────┘     └──────────────│
-        │reset_read        ││                                                            │
-        │                  ││────────────────────────────────────────────────────────────│
-        │reset_write       ││                                                            │
-        │                  ││────────────────────────────────────────────────────────────│
-        │valid             ││                                 ┌───────────┐           ┌──│
-        │                  ││─────────────────────────────────┘           └───────────┘  │
         │                  ││─────────────────────────────────┬───────────────────────┬──│
         │waddr_rd          ││ 0                               │1                      │3 │
         │                  ││─────────────────────────────────┴───────────────────────┴──│
@@ -119,16 +126,14 @@ module _ = struct
         │                  ││─────────────────────────┬───────────────────┬──────────────│
         │waddr_wd          ││ 0                       │1                  │3             │
         │                  ││─────────────────────────┴───────────────────┴──────────────│
-        │write_enable      ││               ┌─────────┐         ┌─────────┐              │
-        │                  ││───────────────┘         └─────────┘         └──────────────│
         └──────────────────┘└────────────────────────────────────────────────────────────┘
-        9d45c59d907202ea2c276ef7fb9afc29
+        d48ac445081ca5ba7cf65df33edcea3b
         |}])
   ;;
 end
 
-module%test [@tags "runtime5-only"] Cyclesim_tests = struct
-  open Hardcaml_waveterm.For_cyclesim
+module%test Cyclesim_tests = struct
+  open Hardcaml_waveterm
   module Fifo_sim = Cyclesim.With_interface (Fifo.I) (Fifo.O)
 
   let sim () =
@@ -147,7 +152,7 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
 
     let%expect_test "" =
       let sim = sim () in
-      let waves, sim = Waveform.create sim in
+      let waves, sim = Cyclesim.Waveform.create sim in
       let inputs = Cyclesim.inputs sim in
       let open Bits in
       let update_write ~cycle =
@@ -175,30 +180,36 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
       [%expect
         {|
         ┌Signals───────────┐┌Waves───────────────────────────────────────────────────────────────┐
-        │clock_read        ││───┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌─│
-        │                  ││   └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘ │
         │clock_write       ││─────┐    ┌────┐    ┌────┐    ┌────┐    ┌────┐    ┌────┐    ┌────┐  │
         │                  ││     └────┘    └────┘    └────┘    └────┘    └────┘    └────┘    └──│
+        │clock_read        ││───┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌─│
+        │                  ││   └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘ │
+        │reset_write       ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
+        │reset_read        ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
         │                  ││────────────────────┬───────────────────┬───────────────────────────│
         │data_in           ││ 0                  │A                  │B                          │
         │                  ││────────────────────┴───────────────────┴───────────────────────────│
-        │read_enable       ││                                          ┌─────┐                   │
-        │                  ││──────────────────────────────────────────┘     └───────────────────│
-        │reset_read        ││                                                                    │
-        │                  ││────────────────────────────────────────────────────────────────────│
-        │reset_write       ││                                                                    │
-        │                  ││────────────────────────────────────────────────────────────────────│
         │write_enable      ││                    ┌─────────┐         ┌─────────┐                 │
         │                  ││────────────────────┘         └─────────┘         └─────────────────│
-        │almost_empty      ││────────────────────────────────────────────────────────────────────│
-        │                  ││                                                                    │
+        │read_enable       ││                                          ┌─────┐                   │
+        │                  ││──────────────────────────────────────────┘     └───────────────────│
+        │full              ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
+        │almost_full       ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
+        │prog_full         ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
         │                  ││────────────────────────────────────┬───────────┬─────┬─────────────│
         │data_out          ││ 0                                  │A          │0    │B            │
         │                  ││────────────────────────────────────┴───────────┴─────┴─────────────│
-        │full              ││                                                                    │
-        │                  ││────────────────────────────────────────────────────────────────────│
         │valid             ││                                          ┌─────┐           ┌───────│
         │                  ││──────────────────────────────────────────┘     └───────────┘       │
+        │almost_empty      ││────────────────────────────────────────────────────────────────────│
+        │                  ││                                                                    │
+        │prog_empty        ││                                                                    │
+        │                  ││────────────────────────────────────────────────────────────────────│
         │                  ││────────────────────────────────────┬───────────┬─────┬─────────────│
         │data_out_0        ││ 0                                  │A          │0    │B            │
         │                  ││────────────────────────────────────┴───────────┴─────┴─────────────│
@@ -237,14 +248,13 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
     ;;
 
     module Functional = struct
-      module Step =
-        Hardcaml_step_testbench_effectful.Functional.Cyclesim.Make (Fifo.I) (Fifo.O)
+      module Step = Hardcaml_step_testbench.Functional.Cyclesim.Make (Fifo.I) (Fifo.O)
 
       type finished_event = (unit, Step.I_data.t) Step.finished_event
 
       let run_test testbench ~count ~print_waves =
         let simulator = sim () in
-        let waves, simulator = Waveform.create simulator in
+        let waves, simulator = Cyclesim.Waveform.create simulator in
         let f () = Step.run_until_finished () ~show_steps:true ~simulator ~testbench in
         run f ~count;
         if print_waves then Waveform.print waves ~wave_width:(-1)
@@ -254,7 +264,6 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
         let write_one handler _ =
           print_s [%message "start write"];
           Step.delay
-            ~num_cycles:1
             handler
             { Step.input_hold with
               data_in = Bits.of_int_trunc ~width:4 5
@@ -262,7 +271,6 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
             };
           print_s [%message "end write"];
           Step.delay
-            ~num_cycles:1
             handler
             { Step.input_hold with data_in = Bits.zero 4; write_enable = Bits.gnd }
         in
@@ -276,7 +284,7 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
           do
             o := Step.cycle handler Step.input_hold
           done;
-          Step.delay ~num_cycles:1 handler { Step.input_hold with read_enable = Bits.gnd };
+          Step.delay handler { Step.input_hold with read_enable = Bits.gnd };
           !o.before_edge.data_out
         in
         run_test ~count ~print_waves (fun handler _ ->
@@ -287,13 +295,13 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
     end
 
     module Imperative = struct
-      module Step = Hardcaml_step_testbench_effectful.Imperative.Cyclesim
+      module Step = Hardcaml_step_testbench.Imperative.Cyclesim
 
       type finished_event = (unit, Step.I_data.t) Step.finished_event
 
       let run_test testbench ~count ~print_waves =
         let simulator = sim () in
-        let waves, simulator = Waveform.create simulator in
+        let waves, simulator = Cyclesim.Waveform.create simulator in
         let inputs = Cyclesim.inputs simulator in
         let outputs = Cyclesim.outputs ~clock_edge:Before simulator in
         let f () =
@@ -308,29 +316,29 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
       ;;
 
       let read_write_test ~count ~print_waves =
-        let write_one handler ~(inputs : _ Fifo.I.t) ~outputs:_ () =
+        let write_one handler ~(inputs : _ Fifo.I.t) ~outputs:_ =
           print_s [%message "start write"];
           inputs.data_in := Bits.of_int_trunc ~width:4 5;
           inputs.write_enable := Bits.vdd;
-          Step.cycle handler ();
+          Step.cycle handler;
           print_s [%message "end write"];
           inputs.write_enable := Bits.gnd;
           inputs.data_in := Bits.zero 4;
-          Step.cycle handler ()
+          Step.cycle handler
         in
-        let read_one (local_ handler) ~(inputs : _ Fifo.I.t) ~(outputs : _ Fifo.O.t) () =
+        let read_one (local_ handler) ~(inputs : _ Fifo.I.t) ~(outputs : _ Fifo.O.t) =
           inputs.read_enable := Bits.vdd;
-          Step.cycle handler ();
+          Step.cycle handler;
           let rec loop () =
             print_s [%message "check read"];
             if Bits.to_bool !(outputs.valid)
             then (
               let data_out = !(outputs.data_out) in
               inputs.read_enable := Bits.gnd;
-              Step.cycle handler ();
+              Step.cycle handler;
               data_out)
             else (
-              Step.cycle handler ();
+              Step.cycle handler;
               loop ())
           in
           loop () [@nontail]
@@ -400,30 +408,36 @@ module%test [@tags "runtime5-only"] Cyclesim_tests = struct
            ---> 0101
 
           ┌Signals────────┐┌Waves──────────────────────────────────────────────┐
-          │clock_read     ││───┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──│
-          │               ││   └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  │
           │clock_write    ││─────┐    ┌────┐    ┌────┐    ┌────┐    ┌────┐    ┌│
           │               ││     └────┘    └────┘    └────┘    └────┘    └────┘│
+          │clock_read     ││───┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──│
+          │               ││   └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  └──┘  │
+          │reset_write    ││                                                   │
+          │               ││───────────────────────────────────────────────────│
+          │reset_read     ││                                                   │
+          │               ││───────────────────────────────────────────────────│
           │               ││──────────┬────────────────────────────────────────│
           │data_in        ││ 5        │0                                       │
           │               ││──────────┴────────────────────────────────────────│
-          │read_enable    ││────────────────────────┐                          │
-          │               ││                        └──────────────────────────│
-          │reset_read     ││                                                   │
-          │               ││───────────────────────────────────────────────────│
-          │reset_write    ││                                                   │
-          │               ││───────────────────────────────────────────────────│
           │write_enable   ││──────────┐                                        │
           │               ││          └────────────────────────────────────────│
-          │almost_empty   ││───────────────────────────────────────────────────│
-          │               ││                                                   │
+          │read_enable    ││────────────────────────┐                          │
+          │               ││                        └──────────────────────────│
+          │full           ││                                                   │
+          │               ││───────────────────────────────────────────────────│
+          │almost_full    ││                                                   │
+          │               ││───────────────────────────────────────────────────│
+          │prog_full      ││                                                   │
+          │               ││───────────────────────────────────────────────────│
           │               ││────────────┬───────────┬──────────────────────────│
           │data_out       ││ 0          │5          │0                         │
           │               ││────────────┴───────────┴──────────────────────────│
-          │full           ││                                                   │
-          │               ││───────────────────────────────────────────────────│
           │valid          ││                  ┌─────┐                          │
           │               ││──────────────────┘     └──────────────────────────│
+          │almost_empty   ││───────────────────────────────────────────────────│
+          │               ││                                                   │
+          │prog_empty     ││                                                   │
+          │               ││───────────────────────────────────────────────────│
           │               ││────────────┬───────────┬──────────────────────────│
           │data_out_0     ││ 0          │5          │0                         │
           │               ││────────────┴───────────┴──────────────────────────│

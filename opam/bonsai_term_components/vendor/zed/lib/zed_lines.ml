@@ -1,30 +1,27 @@
 (*
-   * zed_lines.ml
+ * zed_lines.ml
  * ------------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 exception Out_of_bounds
 
-(* +-----------------------------------------------------------------+
-   | Representation                                                  |
+(* +-----------------------------------------------------------------+ | Representation |
    +-----------------------------------------------------------------+ *)
 
 (* Sets are represented by ropes. *)
 
 type t =
   | String of int
-    (* [String len] is a string of length [len] without newline
-         character. *)
+    (* [String len] is a string of length [len] without newline character. *)
   | Return (* A newline character. *)
   | Concat of t * t * int * int * int
 (* [Concat(t1, t2, len, count, depth)] *)
 
-(* +-----------------------------------------------------------------+
-   | Basic functions                                                 |
+(* +-----------------------------------------------------------------+ | Basic functions |
    +-----------------------------------------------------------------+ *)
 
 let length = function
@@ -46,9 +43,8 @@ let depth = function
 
 let empty = String 0
 
-(* +-----------------------------------------------------------------+
-   | Offset/line resolution                                          |
-   +-----------------------------------------------------------------+ *)
+(* +-----------------------------------------------------------------+ | Offset/line
+   resolution | +-----------------------------------------------------------------+ *)
 
 let rec line_index_rec set ofs acc =
   match set with
@@ -86,9 +82,8 @@ let line_stop set idx =
 
 let line_length set idx = line_stop set idx - line_start set idx
 
-(* +-----------------------------------------------------------------+
-   | Operations on sets                                              |
-   +-----------------------------------------------------------------+ *)
+(* +-----------------------------------------------------------------+ | Operations on
+   sets | +-----------------------------------------------------------------+ *)
 
 let concat set1 set2 =
   Concat
@@ -180,8 +175,7 @@ let replace set ofs len repl =
   append (sub set 0 ofs) (append repl (sub set (ofs + len) (length set - ofs - len)))
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Sets from ropes                                                 |
+(* +-----------------------------------------------------------------+ | Sets from ropes |
    +-----------------------------------------------------------------+ *)
 
 let of_rope rope =

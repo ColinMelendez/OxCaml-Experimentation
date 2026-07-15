@@ -586,7 +586,7 @@ module Make (Graph : Graph) = struct
       Node_svg.g ~attrs:[ Attr.class_ "flame-graph-icicles" ] icicle_graph_views
     in
     let on_size_change =
-      Bonsai_web_ui_element_size_hooks.Size_tracker.on_change
+      Bonsai_web_element_size_hooks.Size_tracker.on_change
         (fun { border_box = { width; height = _ }; content_box = _ } -> set_width width)
     in
     Node.div
@@ -735,7 +735,10 @@ module Make (Graph : Graph) = struct
       let new_selection = move ~graph ~dir selection in
       match new_selection with
       | Some new_selection ->
-        Vdom.Effect.Many [ Vdom.Effect.Prevent_default; navigate_to new_selection ]
+        Vdom.Effect.Many
+          [ Vdom.(Effect.Prevent_default [@alert "-deprecated"])
+          ; navigate_to new_selection
+          ]
       | None -> Vdom.Effect.Ignore
     ;;
 

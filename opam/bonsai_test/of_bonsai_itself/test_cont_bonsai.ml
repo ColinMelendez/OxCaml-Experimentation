@@ -10082,98 +10082,6 @@ module%test [@name "regression"] _ = struct
   ;;
 end
 
-let%expect_test "value_with_override" =
-  let default_var = Bonsai.Expert.Var.create "First Model Value" in
-  let value = Bonsai.Expert.Var.value default_var in
-  let component graph =
-    let value, override =
-      Bonsai_extra.Value_utilities.value_with_override
-        ~equal:[%equal: String.t]
-        value
-        graph
-    in
-    Bonsai.both value override
-  in
-  let handle =
-    Handle.create
-      (module struct
-        type t = string * (string -> unit Effect.t)
-        type incoming = string
-
-        let view (s, _) = s
-        let incoming (_, s) = s
-      end)
-      component
-  in
-  Handle.show handle;
-  [%expect {| First Model Value |}];
-  Bonsai.Expert.Var.set default_var "Second Model Value";
-  Handle.show handle;
-  [%expect {| Second Model Value |}];
-  Handle.do_actions handle [ "First Override" ];
-  Handle.show handle;
-  [%expect {| First Override |}];
-  Bonsai.Expert.Var.set default_var "Third Model Value";
-  Handle.show handle;
-  (* Changes to the variable don't matter, now that we have an override. *)
-  [%expect {| First Override |}];
-  Handle.do_actions handle [ "Second Override" ];
-  Handle.show handle;
-  [%expect {| Second Override |}]
-;;
-
-let%expect_test "value_with_override in resetter" =
-  let default_var = Bonsai.Expert.Var.create "First Model Value" in
-  let handle =
-    let value = Bonsai.Expert.Var.value default_var in
-    let component graph =
-      let (state, override), reset_effect =
-        Bonsai.with_model_resetter_n ~n:Two graph ~f:(fun graph ->
-          Bonsai_extra.Value_utilities.value_with_override value graph)
-      in
-      Bonsai.both (Bonsai.both state override) reset_effect
-    in
-    Handle.create
-      (module struct
-        type t = (string * (string -> unit Effect.t)) * unit Effect.t
-
-        type incoming =
-          [ `Override of string
-          | `Reset
-          ]
-
-        let view ((s, _), _) = s
-
-        let incoming ((_, override), reset) action =
-          match action with
-          | `Override s -> override s
-          | `Reset -> reset
-        ;;
-      end)
-      component
-  in
-  Handle.show handle;
-  [%expect {| First Model Value |}];
-  Bonsai.Expert.Var.set default_var "Second Model Value";
-  Handle.show handle;
-  [%expect {| Second Model Value |}];
-  Handle.do_actions handle [ `Override "First Override" ];
-  Handle.show handle;
-  [%expect {| First Override |}];
-  Bonsai.Expert.Var.set default_var "Third Model Value";
-  Handle.show handle;
-  (* Changes to the variable don't matter, now that we have an override. *)
-  [%expect {| First Override |}];
-  Handle.do_actions handle [ `Reset ];
-  Handle.show handle;
-  (* Now, the change to the variable becomes visible. *)
-  [%expect {| Third Model Value |}];
-  (* But we can still override *)
-  Handle.do_actions handle [ `Override "Second Override" ];
-  Handle.show handle;
-  [%expect {| Second Override |}]
-;;
-
 let%expect_test "ordering behavior of skeleton traversal" =
   (* NOTE: This test just showcases current traversal order behavior in case it were to
      change/matter in the future. *)
@@ -10992,6 +10900,27 @@ let%expect_test "Bonsai.all does not reorder inputs" =
     List.iteri result ~f:(fun i value -> assert (Int.equal i value));
     [%expect {| |}]
   done
+;;
+
+let%expect_test "Bonsai.all correctness for lengths 1 through 100" =
+  for n = 1 to 100 do
+    let vars = List.init n ~f:(fun i -> Bonsai.Expert.Var.create (i + 1)) in
+    let values = List.map vars ~f:Bonsai.Expert.Var.value in
+    let component _graph = Bonsai.all values in
+    let handle = Handle.create Result_spec.invisible component in
+    Handle.recompute_view handle;
+    let result = Handle.last_result handle in
+    assert (List.equal Int.equal result (List.init n ~f:(fun i -> i + 1)));
+    Bonsai.Expert.Var.set (List.last_exn vars) 999;
+    Handle.recompute_view handle;
+    let result = Handle.last_result handle in
+    assert (
+      List.equal
+        Int.equal
+        result
+        (List.init n ~f:(fun i -> if i = n - 1 then 999 else i + 1)))
+  done;
+  [%expect {| |}]
 ;;
 
 module%test [@name "computational shape"] _ = struct

@@ -5,8 +5,6 @@
 open! Import
 include Info0
 
-[@@@warning "-incompatible-with-upstream"]
-
 let t_sexp_grammar : t Sexplib0.Sexp_grammar.t = { untyped = Any "Error.t" }
 
 [%%template
@@ -25,8 +23,11 @@ let[@cold] raise_s (type a : k) sexp : a = (raise [@kind k]) (create_s sexp)
 let[@inline always] raise (type a : k) t : a = (raise [@kind k]) t [@nontail]
 let[@inline always] raise_s (type a : k) sexp : a = (raise_s [@kind k]) sexp [@nontail]]
 
+[%%template
+[@@@mode.default p = (portable, nonportable)]
+
 let to_info t = t
-let of_info t = t
+let of_info t = t]
 
 let reraise_uncaught t ~f =
   try f () with

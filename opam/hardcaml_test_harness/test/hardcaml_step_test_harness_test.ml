@@ -1,1 +1,1 @@
-(* Nothing to export. *)
+module Test_interactive = Test_interactive

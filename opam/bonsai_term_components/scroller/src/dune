@@ -1,5 +1,5 @@
 (library
- (name bonsai_tui_scroller)
+ (name bonsai_term_scroller)
  (public_name bonsai_term_components.scroller)
  (libraries bonsai bonsai_term core bonsai_concrete.ui_incr)
  (preprocess

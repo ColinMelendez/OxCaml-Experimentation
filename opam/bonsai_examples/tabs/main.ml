@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Tabs = Bonsai_web_ui_tabs
+module Tabs = Bonsai_web_contrib_tabs
 
 module T = struct
   type t =
@@ -41,4 +41,4 @@ let component (local_ graph) =
   Tabs.Result.combine_trivially contents
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

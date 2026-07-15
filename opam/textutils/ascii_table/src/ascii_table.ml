@@ -119,12 +119,15 @@ let to_string
     ~string_with_attr:Console.Ansi.string_with_attr
 ;;
 
+let default_max_col_width = 90
+
 let simple_list_table_internal
   ?index
   ?(display = Ascii_table_kernel.Display.line)
   ?spacing
   ?(limit_width_to = 160)
-  ?(max_col_width = 90)
+  ?min_col_width
+  ?(max_col_width = default_max_col_width)
   ?header_attr
   ?bars
   ?display_empty_rows
@@ -137,7 +140,7 @@ let simple_list_table_internal
     let cols_and_data_of_strings =
       Ascii_table_kernel.cols_and_data_of_strings [@alert "-ascii_table_kernel_internal"]
     in
-    cols_and_data_of_strings ?index ~max_col_width cols data
+    cols_and_data_of_strings ?index ?min_col_width ~max_col_width cols data
   in
   f
     ~display
@@ -157,6 +160,7 @@ let simple_list_table
   ?display
   ?spacing
   ?limit_width_to
+  ?min_col_width
   ?max_col_width
   ?header_attr
   ?bars
@@ -170,6 +174,7 @@ let simple_list_table
     ?display
     ?spacing
     ?limit_width_to
+    ?min_col_width
     ?max_col_width
     ?header_attr
     ?bars
@@ -185,6 +190,7 @@ let simple_list_table_string
   ?display
   ?spacing
   ?limit_width_to
+  ?min_col_width
   ?max_col_width
   ?header_attr
   ?bars
@@ -198,6 +204,7 @@ let simple_list_table_string
     ?display
     ?spacing
     ?limit_width_to
+    ?min_col_width
     ?max_col_width
     ?header_attr
     ?bars

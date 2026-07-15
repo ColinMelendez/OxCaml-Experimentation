@@ -138,6 +138,15 @@ module type Cyclesim = sig
     val coerce : t_port_list -> t
   end
 
+  module Sim_bits : sig
+    include Comb.S with type t = Bits.t ref
+
+    val ( <-- ) : t -> t -> unit
+    val ( <--. ) : t -> int -> unit
+    val ( <-:. ) : t -> int -> unit
+    val ( <-+. ) : t -> int -> unit
+  end
+
   module Private : sig
     include
       Cyclesim0.Private
@@ -152,5 +161,13 @@ module type Cyclesim = sig
        and type memory = Memory.t
 
     module Traced_nodes : module type of Cyclesim0.Traced_nodes
+  end
+
+  module Waveform : sig
+    (** Create a waveform from the given simulator *)
+    val create : ('i, 'o) t -> Wave_data.t * ('i, 'o) t
+
+    (** Create a waveform if [enabled] is true. Otherwise waves are not traced. *)
+    val create_if : enabled:bool -> ('i, 'o) t -> Wave_data.t option * ('i, 'o) t
   end
 end

@@ -7,7 +7,7 @@ include Comparable_intf.Definitions
 
 module With_zero (T : sig
   @@ p
-    type t : value mod c [@@deriving compare [@mode m]]
+    type t : value mod c [@@deriving compare [@mode.explicit m]]
 
     val zero : t
   end) =
@@ -87,7 +87,7 @@ let max cmp t t' =
 [@@@mode.default m = (local, global)]
 
 module%template.portable Infix (T : sig
-    type t [@@deriving compare [@mode m]]
+    type t [@@deriving compare [@mode.explicit m]]
   end) : Infix with type t := T.t = struct
   let ( > ) a b = gt T.compare a b
   let ( < ) a b = lt T.compare a b
@@ -98,9 +98,22 @@ module%template.portable Infix (T : sig
 end
 [@@inline always]
 
+module%template.portable Infix_with_zero_alloc (T : sig
+    type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+  end) : Infix_with_zero_alloc with type t := T.t = struct
+  let _ : _ = T.compare [@mode m]
+  let ( > ) a b = T.compare a b > 0
+  let ( < ) a b = T.compare a b < 0
+  let ( >= ) a b = T.compare a b >= 0
+  let ( <= ) a b = T.compare a b <= 0
+  let ( = ) a b = T.compare a b = 0
+  let ( <> ) a b = T.compare a b <> 0
+end
+[@@inline always]
+
 module%template.portable
   [@modality p] Comparisons (T : sig
-    type t [@@deriving compare [@mode m]]
+    type t [@@deriving compare [@mode.explicit m]]
   end) : Comparisons [@mode m] with type t := T.t = struct
   include Infix [@mode m] [@modality p] (T)
 
@@ -110,6 +123,19 @@ module%template.portable
     (equal [@mode m]) (T.compare [@mode m]) x y
   ;;
 
+  let min t t' = min compare t t'
+  let max t t' = max compare t t'
+end
+[@@inline always]
+
+module%template.portable
+  [@modality p] Comparisons_with_zero_alloc (T : sig
+    type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+  end) : Comparisons_with_zero_alloc [@mode m] with type t := T.t = struct
+  include Infix_with_zero_alloc [@mode m] [@modality p] (T)
+
+  let[@mode m = (global, m)] compare x y = (T.compare [@mode m]) x y
+  let[@mode m = (global, m)] [@inline] equal x y = equal_int ((T.compare [@mode m]) x y) 0
   let min t t' = min compare t t'
   let max t t' = max compare t t'
 end
@@ -156,7 +182,7 @@ end
 
 module%template.portable
   [@modality p] Make (T : sig
-    type t [@@deriving (compare [@mode m]), sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end) =
 Make_using_comparator [@inlined hint] [@modality p] [@mode m] (struct
     include T
@@ -166,7 +192,7 @@ Make_using_comparator [@inlined hint] [@modality p] [@mode m] (struct
 module%template.portable
   [@modality p] Inherit
     (C : sig
-       type t [@@deriving compare [@mode m]]
+       type t [@@deriving compare [@mode.explicit m]]
      end)
     (T : sig
        type t [@@deriving sexp_of]

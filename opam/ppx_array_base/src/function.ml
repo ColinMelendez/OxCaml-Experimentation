@@ -51,13 +51,15 @@ let maybe_overwrite_output_kinds ({ ptyp_attributes; ptyp_loc; _ } as type_) =
          (immediate, float64)]"
 ;;
 
-let rule t ~implementation ~interface =
+let rule t surface_type ~implementation ~interface =
   let (module F : Function_types.S) = module_ t in
-  let name = "@array." ^ F.name in
+  let name =
+    String.concat ~sep:"" [ "@"; Surface_type.extension_prefix surface_type; "."; F.name ]
+  in
   [ implementation ~name ~f:F.implementation; interface ~name ~f:F.interface ]
 ;;
 
-let extensions t =
+let extensions t surface_type =
   let implementation ~name ~f =
     Extension.declare_inline
       name
@@ -68,6 +70,7 @@ let extensions t =
         f
           (Ppx_helpers.ghoster#location loc)
           (Context.Deriving (Ppx_helpers.ghoster#core_type type_))
+          surface_type
           ~overwrite_output_kinds)
     |> Context_free.Rule.extension
   in
@@ -81,13 +84,14 @@ let extensions t =
         f
           (Ppx_helpers.ghoster#location loc)
           (Context.Deriving (Ppx_helpers.ghoster#core_type type_))
+          surface_type
           ~overwrite_output_kinds)
     |> Context_free.Rule.extension
   in
-  rule t ~implementation ~interface
+  rule t surface_type ~implementation ~interface
 ;;
 
-let attributes t =
+let attributes t surface_type =
   let implementation ~name ~f =
     Context_free.Rule.attr_str_floating_expect
       (Attribute.Floating.declare
@@ -96,7 +100,7 @@ let attributes t =
          (let open Ast_pattern in
           pstr __)
          (fun x -> x))
-      (fun ~ctxt:_ _ -> f none Context.Base ~overwrite_output_kinds:None)
+      (fun ~ctxt:_ _ -> f none Context.Base surface_type ~overwrite_output_kinds:None)
   in
   let interface ~name ~f =
     Context_free.Rule.attr_sig_floating_expect
@@ -106,9 +110,9 @@ let attributes t =
          (let open Ast_pattern in
           pstr __)
          (fun x -> x))
-      (fun ~ctxt:_ _ -> [ f none Context.Base ~overwrite_output_kinds:None ])
+      (fun ~ctxt:_ _ -> [ f none Context.Base surface_type ~overwrite_output_kinds:None ])
   in
-  rule t ~implementation ~interface
+  rule t surface_type ~implementation ~interface
 ;;
 
 module For_deriving = struct
@@ -137,9 +141,12 @@ module For_deriving = struct
     Deriving.Args.arg S.name pattern
   ;;
 
-  let extensions { function_ = t; overwrite_output_kinds } loc type_ ~creator =
+  let extensions { function_ = t; overwrite_output_kinds } surface_type loc type_ ~creator
+    =
     let (module S : Function_types.S) = module_ t in
-    let name = "array." ^ S.name in
+    let name =
+      String.concat ~sep:"" [ Surface_type.extension_prefix surface_type; "."; S.name ]
+    in
     let attributes =
       match overwrite_output_kinds with
       | None -> type_.ptyp_attributes
@@ -157,6 +164,6 @@ module For_deriving = struct
     ]
   ;;
 
-  let structure_extensions t loc type_ = extensions t loc type_ ~creator:pstr_extension
-  let signature_extensions t loc type_ = extensions t loc type_ ~creator:psig_extension
+  let structure_extensions = extensions ~creator:pstr_extension
+  let signature_extensions = extensions ~creator:psig_extension
 end

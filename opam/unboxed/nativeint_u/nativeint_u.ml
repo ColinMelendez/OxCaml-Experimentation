@@ -41,7 +41,27 @@ module Shared_derived = struct
     (I.sexp_of_t [@alloc a] [@inlined hint]) (to_nativeint t) [@exclave_if_stack a]
   ;;
 
-  include Bin_prot_unboxed_numbers.Nativeint_u
+  let bin_shape_t = Bin_prot_unboxed_numbers.Nativeint_u.bin_shape_t
+
+  [%%template
+  [@@@mode.default m = (global, local)]
+
+  let[@inline always] bin_size_t t =
+    (Bin_prot_unboxed_numbers.Nativeint_u.bin_size_t [@mode m] [@inlined]) t
+  ;;
+
+  let[@inline always] bin_write_t buf ~pos t =
+    (Bin_prot_unboxed_numbers.Nativeint_u.bin_write_t [@mode m] [@inlined]) buf ~pos t
+  ;;]
+
+  let[@inline always] bin_read_t buf ~pos_ref =
+    (Bin_prot_unboxed_numbers.Nativeint_u.bin_read_t [@inlined]) buf ~pos_ref
+  ;;
+
+  let __bin_read_t__ = Bin_prot_unboxed_numbers.Nativeint_u.__bin_read_t__
+  let bin_writer_t = Bin_prot_unboxed_numbers.Nativeint_u.bin_writer_t
+  let bin_reader_t = Bin_prot_unboxed_numbers.Nativeint_u.bin_reader_t
+  let bin_t = Bin_prot_unboxed_numbers.Nativeint_u.bin_t
 
   let[@inline] hash_fold_t state t =
     (I.hash_fold_t [@inlined hint]) state (to_nativeint t)
@@ -50,7 +70,10 @@ module Shared_derived = struct
   let[@inline] hash t = (I.hash [@inlined hint]) (to_nativeint t)
   let typerep_of_t = Typerep_lib.Std.Typerep.Nativeint_u
   let[@inline] of_string x = of_nativeint ((I.of_string [@inlined hint]) x)
-  let[@inline] to_string t = (I.to_string [@inlined hint]) (to_nativeint t)
+
+  let%template[@alloc a = (heap, stack)] [@inline] to_string t =
+    (I.to_string [@alloc a] [@inlined hint]) (to_nativeint t) [@exclave_if_stack a]
+  ;;
 
   let%template[@mode m = (global, local)] [@inline] [@zero_alloc] equal t1 t2 : bool =
     (I.equal [@mode m]) (to_nativeint t1) (to_nativeint t2)
@@ -141,8 +164,8 @@ let[@inline] to_string_hum ?delimiter t =
   (I.to_string_hum [@inlined hint]) ?delimiter (to_nativeint t)
 ;;
 
-let[@inline] one () = of_nativeint I.one
-let[@inline] minus_one () = of_nativeint I.minus_one
+let one = of_nativeint I.one
+let minus_one = of_nativeint I.minus_one
 
 let[@inline] round ?dir t ~to_multiple_of:t2 =
   of_nativeint
@@ -214,7 +237,7 @@ module O = struct
   external box : nativeint# -> (nativeint[@local_opt]) @@ portable = "%box_nativeint"
   external unbox : (nativeint[@local_opt]) -> nativeint# @@ portable = "%unbox_nativeint"
 
-  let[@inline] zero () = of_nativeint I.O.zero
+  let zero = of_nativeint I.O.zero
 
   let[@inline] ( + ) t1 t2 =
     of_nativeint ((I.O.( + ) [@inlined hint]) (to_nativeint t1) (to_nativeint t2))
@@ -311,8 +334,8 @@ end
 include O
 
 let num_bits = I.num_bits
-let[@inline] max_value () = of_nativeint I.max_value
-let[@inline] min_value () = of_nativeint I.min_value
+let max_value = of_nativeint I.max_value
+let min_value = of_nativeint I.min_value
 let[@inline] ( lsr ) t x = of_nativeint ((I.(( lsr )) [@inlined hint]) (to_nativeint t) x)
 let shift_right_logical = ( lsr )
 let[@inline] ceil_pow2 t = of_nativeint ((I.ceil_pow2 [@inlined hint]) (to_nativeint t))
@@ -454,20 +477,20 @@ module Hex_unsigned = struct
     let of_string s =
       match word_size () with
       | I64 -> of_int64_trunc (Int64_u.box (Int64_u.Hex_unsigned.Local.of_string s))
-      | I32 -> of_int32 (Int32_u.box (Int32_u.Hex_unsigned.Local.of_string s))
+      | I32 -> of_int32 (Int32_u.box (Int32_u.Hex_unsigned.of_string s))
     ;;
 
     let t_of_sexp sexp =
       match word_size () with
       | I64 -> of_int64_trunc (Int64_u.box (Int64_u.Hex_unsigned.Local.t_of_sexp sexp))
-      | I32 -> of_int32 (Int32_u.box (Int32_u.Hex_unsigned.Local.t_of_sexp sexp))
+      | I32 -> of_int32 (Int32_u.box (Int32_u.Hex_unsigned.t_of_sexp sexp))
     ;;
 
     let to_string t = exclave_
       match word_size () with
       | I64 -> Int64_u.Hex_unsigned.Local.to_string (Int64_u.unbox (to_int64 t))
       | I32 ->
-        Int32_u.Hex_unsigned.Local.to_string
+        (Int32_u.Hex_unsigned.to_string [@alloc stack])
           (Int32_u.unbox (I.to_int32_trunc (to_nativeint t)))
     ;;
 
@@ -475,7 +498,7 @@ module Hex_unsigned = struct
       match word_size () with
       | I64 -> Int64_u.Hex_unsigned.Local.sexp_of_t (Int64_u.unbox (to_int64 t))
       | I32 ->
-        Int32_u.Hex_unsigned.Local.sexp_of_t
+        (Int32_u.Hex_unsigned.sexp_of_t [@alloc stack])
           (Int32_u.unbox (I.to_int32_trunc (to_nativeint t)))
     ;;
   end

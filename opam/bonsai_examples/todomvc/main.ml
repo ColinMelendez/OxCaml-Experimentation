@@ -5,7 +5,7 @@ open! Vdom
 module Style = Todomvc
 
 (* Module for getting a Value.t tracking the global URL fragment. Best practice is usually
-   to use Bonsai_web_ui_url_var. As of this writing, that module does not support tracking
+   to use Bonsai_web_url_var. As of this writing, that module does not support tracking
    URL Fragments. As a lightweight workaround, I created the Url_hash module. *)
 module Url_hash : sig
   val get : unit -> string Bonsai.t
@@ -141,7 +141,7 @@ let header_component ~inject (local_ graph) =
     let attr =
       Attr.many
         [ Style.new_todo
-        ; Attr.value_prop state
+        ; Attr.value state
         ; Attr.on_input (fun _ input -> set_state input)
         ; Attr.placeholder "What needs to be done?"
         ; Attr.autofocus true
@@ -192,7 +192,7 @@ let todo_item_component
     in
     let attr =
       Attr.many
-        [ Attr.value todo.title
+        [ Attr.value_attr todo.title
         ; Style.edit
         ; Attr.on_blur handle_focus_leave
         ; Attr.on_keydown handle_enter
@@ -357,4 +357,4 @@ let root_component (local_ graph) =
   Vdom.Node.div [ app; info ]
 ;;
 
-let () = Bonsai_web.Start.start root_component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start root_component

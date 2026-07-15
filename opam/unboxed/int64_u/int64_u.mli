@@ -49,7 +49,7 @@ include%template Bin_prot.Binable.S [@mode local] with type t := t
 
 (** {3 For [hash]} *)
 
-include Ppx_hash_lib.Hashable.S_any with type t := t
+include Ppx_hash_lib.Hashable.S with type t := t
 
 (** {3 From [Typerep]} *)
 
@@ -57,8 +57,9 @@ val typerep_of_t : t Typerep_lib.Std.Typerep.t
 
 (** {3 Inlined from [Stringable]} *)
 
-val of_string : string -> t
-val to_string : t -> string
+val of_string : string @ local -> t
+
+val%template to_string : t -> string @ l [@@alloc a @ l = (heap @ global, stack @ local)]
 
 [%%template:
 [@@@mode.default m = (global, local)]
@@ -123,8 +124,8 @@ val to_string_hum : ?delimiter:char -> t -> string
 
 (** {2 Infix operators and constants} *)
 
-val one : unit -> t [@@zero_alloc]
-val minus_one : unit -> t [@@zero_alloc]
+val one : t
+val minus_one : t
 val rem : t -> t -> t [@@zero_alloc]
 
 (** {2 Other common functions} *)
@@ -221,10 +222,10 @@ val of_float_unchecked : float# -> t
 val num_bits : int64
 
 (** The largest representable integer. *)
-val max_value : unit -> t [@@zero_alloc]
+val max_value : t
 
 (** The smallest representable integer. *)
-val min_value : unit -> t [@@zero_alloc]
+val min_value : t
 
 (** Shifts right, filling in with zeroes, which will not preserve the sign of the input. *)
 val shift_right_logical : t -> int -> t
@@ -313,7 +314,7 @@ module O : sig
   (** Negation *)
   val neg : t -> t [@@zero_alloc]
 
-  val zero : unit -> t [@@zero_alloc]
+  val zero : t
 
   (** There are two pairs of integer division and remainder functions, [/%] and [%], and
       [/] and [rem]. They both satisfy the same equation relating the quotient and the
@@ -428,6 +429,20 @@ module Array_index : sig
   [@@layout_poly]
 end
 
+module Iarray_index : sig
+  external get
+    : ('a : any mod separable).
+    ('a iarray[@local_opt]) -> (t[@local_opt]) -> 'a
+    = "%array_safe_get_indexed_by_int64#"
+  [@@layout_poly]
+
+  external unsafe_get
+    : ('a : any mod separable).
+    ('a iarray[@local_opt]) -> (t[@local_opt]) -> 'a
+    = "%array_unsafe_get_indexed_by_int64#"
+  [@@layout_poly]
+end
+
 (** {1 An array of [_ : bits64]} *)
 
 module Array : sig
@@ -476,7 +491,7 @@ module Stable : sig
 
     include%template Bin_prot.Binable.S [@mode local] with type t := t
 
-    include Ppx_hash_lib.Hashable.S_any with type t := t
+    include Ppx_hash_lib.Hashable.S with type t := t
 
     val typerep_of_t : t Typerep_lib.Std.Typerep.t
     val of_string : string -> t
@@ -511,24 +526,49 @@ end
 
 (** Prints [-#0x1L] as [0xffffffffffffffff], not [-0x1]. *)
 module Hex_unsigned : sig
+  module To_string_config : sig
+    module Case : sig
+      type t =
+        | Lowercase
+        | Uppercase
+      [@@deriving equal ~localize, sexp_of]
+    end
+
+    (** We define both [t] and [t#] so we can provide [default : t], and [unbox] it for
+        use as [~config] later. We can unwind this and provide only the unboxed type once
+        unboxed values can be exported as top-level values in modules. *)
+    type t =
+      { prefix_with_0x : bool
+      ; render_letters : Case.t
+      }
+    [@@deriving box, equal ~localize, sexp_of]
+
+    val default : t
+  end
+
   type nonrec t = t
 
-  include Ppx_hash_lib.Hashable.S_any with type t := t
+  include Ppx_hash_lib.Hashable.S with type t := t
 
   val compare : t -> t -> int
   val sexp_of_t : t -> Sexp.t
   val t_of_sexp : Sexp.t @ local -> t [@@zero_alloc]
   val to_string : t -> string
+  val to_string_custom : t -> config:To_string_config.t# -> string
   val of_string : string @ local -> t [@@zero_alloc]
 
   module Local : sig
     type nonrec t = t
 
-    include Ppx_hash_lib.Hashable.S_any with type t := t
+    include Ppx_hash_lib.Hashable.S with type t := t
 
     val compare : t -> t -> int
     val sexp_of_t : t -> Sexp.t @ local [@@zero_alloc]
     val t_of_sexp : Sexp.t @ local -> t [@@zero_alloc]
+
+    val to_string_custom : t -> config:To_string_config.t# -> string @ local
+    [@@zero_alloc]
+
     val to_string : t -> string @ local [@@zero_alloc]
     val of_string : string @ local -> t [@@zero_alloc]
   end
@@ -540,20 +580,31 @@ module Hex_unsigned : sig
     val digits_to_process : t -> max_digits:t -> digits_to_process
 
     val of_string : string @ local -> max_digits:t -> t
-    val to_string_required_length : digits_to_process:digits_to_process -> int
-    val to_string_into : t -> bytes @ local -> digits_to_process:digits_to_process -> unit
+
+    val to_string_required_length
+      :  config:To_string_config.t#
+      -> digits_to_process:digits_to_process
+      -> int
+
+    val to_string_into
+      :  t
+      -> bytes @ local
+      -> config:To_string_config.t#
+      -> digits_to_process:digits_to_process
+      -> unit
+
     val t_of_sexp_failed : Sexp.t @ local -> Nothing.t
   end
 end
 
 (** This allows us to represent [t option] without allocating for [Some _] tags.
-    [Some (min_value ())] is not representable because its representation would overlap
-    with the representation of [None]. *)
+    [Some min_value] is not representable because its representation would overlap with
+    the representation of [None]. *)
 module Option : sig
   type value = t
   type t : bits64 mod everything
 
-  val none : unit -> t [@@zero_alloc]
+  val none : t
   val some : value -> t [@@zero_alloc]
   val unchecked_some : value -> t [@@zero_alloc]
   val some_is_representable : value -> bool [@@zero_alloc]

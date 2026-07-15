@@ -12,7 +12,7 @@ module Definitions = struct
 
     open! Import
 
-    type t = float [@@deriving globalize, sexp ~stackify, sexp_grammar]
+    type t = float [@@deriving globalize, sexp ~stackify ~unboxed, sexp_grammar]
 
     include Floatable.S with type t := t
 
@@ -154,6 +154,10 @@ module Definitions = struct
     val iround_down : local_ t -> int option
     val iround_up : local_ t -> int option
     val iround_nearest : local_ t -> int option
+    val iround_towards_zero_or_null : local_ t -> int or_null [@@zero_alloc]
+    val iround_down_or_null : local_ t -> int or_null [@@zero_alloc]
+    val iround_up_or_null : local_ t -> int or_null [@@zero_alloc]
+    val iround_nearest_or_null : local_ t -> int or_null [@@zero_alloc]
     val iround_towards_zero_exn : local_ t -> int [@@zero_alloc]
     val iround_down_exn : local_ t -> int [@@zero_alloc]
     val iround_up_exn : local_ t -> int [@@zero_alloc]
@@ -161,6 +165,10 @@ module Definitions = struct
     val int63_round_down_exn : local_ t -> Int63.t
     val int63_round_up_exn : local_ t -> Int63.t
     val int63_round_nearest_exn : local_ t -> Int63.t
+
+    (** If the argument is NaN, infinite, or otherwise cannot be represented, no exception
+        is raised and the result is an unspecified int64. *)
+    val iround_nearest_half_to_even : local_ t -> int64
 
     (** If [f < iround_lbound || f > iround_ubound], then [iround*] functions will refuse
         to round [f], returning [None] or raising as appropriate. *)
@@ -648,6 +656,10 @@ module Definitions = struct
     external sqrt : (t[@local_opt]) -> t = "caml_sqrt_float" "sqrt"
     [@@unboxed] [@@noalloc]
 
+    (** Cube root. *)
+    external cbrt : (t[@local_opt]) -> t = "caml_cbrt_float" "caml_cbrt"
+    [@@unboxed] [@@noalloc]
+
     (** Exponential. *)
     external exp : (t[@local_opt]) -> t = "caml_exp_float" "exp"
     [@@unboxed] [@@noalloc]
@@ -723,7 +735,7 @@ module Definitions = struct
     module Terse : sig
       type nonrec t = t [@@deriving sexp ~stackify, sexp_grammar]
 
-      include Stringable.S_local_input with type t := t
+      include%template Stringable.S [@mode local] with type t := t
     end
   end
 end

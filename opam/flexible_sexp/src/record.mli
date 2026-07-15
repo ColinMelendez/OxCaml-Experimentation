@@ -5,7 +5,7 @@ open! Import
 
 module (Tags @@ nonportable) : sig @@ portable
   type t : value mod contended portable
-  [@@deriving compare ~localize, equal ~localize, hash, quickcheck, sexp_of]
+  [@@deriving compare ~localize, equal ~localize, hash, quickcheck, sexp_of ~stackify]
 
   (** A simple generator to help you derive quickcheck on flexible-sexp types. It's your
       responsibility to pick [field_names] that do not already exist in the record type in
@@ -27,6 +27,10 @@ module (Tags @@ nonportable) : sig @@ portable
     val of_map : Sexp.t String.Map.t -> t
     val to_map : t -> Sexp.t String.Map.t
   end
+
+  module Private__for_ppx_flexible_sexp : sig
+    val eq : (t, Sexp.t String.Map.t) Type_equal.t
+  end
 end
 
 module (Stable @@ nonportable) : sig
@@ -34,11 +38,12 @@ module (Stable @@ nonportable) : sig
     module V1 : sig @@ portable
       type nonrec t = Tags.t
       [@@deriving
-        compare ~localize
+        bin_shape
+        , compare ~localize
         , equal ~localize
         , hash
         , quickcheck
-        , sexp
+        , sexp ~stackify
         , sexp_grammar
         , stable_witness]
 
@@ -62,10 +67,10 @@ module (Stable @@ nonportable) : sig
         fields and similar are supported fine. *)
   module Make : sig
     module%template
-      [@modality p = (portable, nonportable)] V1
+      [@mode m = (global, local)] [@modality p = (portable, nonportable)] V1
         (T : sig
          @@ p
-           type t [@@deriving compare, sexp]
+           type t [@@deriving (compare [@mode.explicit m]), sexp]
 
            module Fields : sig
              val names : string list

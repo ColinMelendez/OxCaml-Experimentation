@@ -34,6 +34,16 @@ end
    │ foo │ bar │
    │ baz │ qux │
    └─────┴─────┘
+    v}
+
+    With [~transpose:true], the same input produces:
+
+    {v
+   ┌┬┬┬┬┬┬┬┬┬┬┬┬┬┬┬┐
+   ├┴┴┴┼┴┴┴┴┴┼┴┴┴┴┴┤
+   │ a │ foo │ baz │
+   │ b │ bar │ qux │
+   └───┴─────┴─────┘
     v} *)
 val print
   :  ?max_column_width:int
@@ -44,6 +54,7 @@ val print
   -> ?limit_width_to:int
   -> ?prefer_split_on_spaces:bool
   -> ?nested_columns:Column_display.t (** Defaults to [`auto]. *)
+  -> ?transpose:bool (** Defaults to [false]. *)
   -> Sexp.t list
   -> unit
 
@@ -64,6 +75,57 @@ val print
    └──────────────┴───┴─────┘
     v} *)
 val print_alist
+  : ('a : value_or_null).
+  ?max_column_width:int
+  -> ?max_depth:int
+  -> ?align:[< `left | `right | `center | `numbers ]
+  -> ?display:Ascii_table_kernel.Display.t
+  -> ?separate_rows:bool
+  -> ?limit_width_to:int
+  -> ?prefer_split_on_spaces:bool
+  -> ?nested_columns:Column_display.t (** Defaults to [`auto]. *)
+  -> ?transpose:bool (** Defaults to [false]. *)
+  -> ('a -> Sexp.t)
+  -> (string * 'a) list
+  -> unit
+
+(** [print_record] gives you a one-level pivot table. If you give it a record-shaped sexp,
+    it will split each nested column into a separate row instead of rendering them as
+    nested columns.
+
+    {[
+      print_record
+        [%sexp { top_left = { x = 5; y = 6 }; bottom_right = { x = 0; y = 1.2 } }]
+    ]}
+
+    {v
+    ┌───┬──────────┬──────────────┐
+    │   │ top_left │ bottom_right │
+    ├───┼──────────┼──────────────┤
+    │ x │ 5        │ 0            │
+    │ y │ 6        │ 1.2          │
+    └───┴──────────┴──────────────┘
+    v}
+
+    With [~transpose:true], the output is similar to [print_alist], treating each field in
+    your top-level record as a separate alist entry. This can be convenient for comparing
+    similar structures using [ppx_sexp] literal record syntax.
+
+    {[
+      print_record
+        ~transpose:true
+        [%sexp { top_left = { x = 5; y = 6 }; bottom_right = { x = 0; y = 1.2 } }]
+    ]}
+
+    {v
+    ┌──────────────┬───┬─────┐
+    │              │ x │ y   │
+    ├──────────────┼───┼─────┤
+    │ top_left     │ 5 │ 6   │
+    │ bottom_right │ 0 │ 1.2 │
+    └──────────────┴───┴─────┘
+    v} *)
+val print_record
   :  ?max_column_width:int
   -> ?max_depth:int
   -> ?align:[< `left | `right | `center | `numbers ]
@@ -72,25 +134,12 @@ val print_alist
   -> ?limit_width_to:int
   -> ?prefer_split_on_spaces:bool
   -> ?nested_columns:Column_display.t (** Defaults to [`auto]. *)
-  -> ('a -> Sexp.t)
-  -> (string * 'a) list
+  -> ?transpose:bool (** Defaults to [false]. *)
+  -> Sexp.t
   -> unit
 
-(** If you give this a sexp representing a record, it will transpose each top-level field
-    into a separate row, sort of like a one-level-only pivot table.
-
-    {[
-      print_record_transposed
-        [%sexp { top_left = { x = 5; y = 6 }; bottom_right = { x = 0; y = 1.2 } }]
-    ]}
-    {v
-   ┌──────────────┬───┬─────┐
-   │              │ x │ y   │
-   ├──────────────┼───┼─────┤
-   │ top_left     │ 5 │ 6   │
-   │ bottom_right │ 0 │ 1.2 │
-   └──────────────┴───┴─────┘
-    v} *)
+(** [print_record_transposed] is [print_record ~transpose:true]. It exists as a top-level
+    function for backwards compatibility and will probably be deleted soon. *)
 val print_record_transposed
   :  ?max_column_width:int
   -> ?max_depth:int
@@ -111,7 +160,8 @@ val print_record_transposed
     input and output sexps are records, but it's unnecessary if one or both of them are
     simple values. *)
 val print_cases
-  :  ?max_column_width:int
+  : ('input : value_or_null) ('output : value_or_null).
+  ?max_column_width:int
   -> ?max_depth:int
   -> ?align:[< `left | `right | `center | `numbers ]
   -> ?display:Ascii_table_kernel.Display.t
@@ -128,7 +178,7 @@ val print_cases
 
 (** These are exactly the same as the top-level functions with the same name, but they
     return the formatted string instead of printing it to stdout. *)
-module Format : sig
+module (Format @@ portable) : sig
   val print
     :  ?max_column_width:int
     -> ?max_depth:int
@@ -138,10 +188,26 @@ module Format : sig
     -> ?limit_width_to:int
     -> ?prefer_split_on_spaces:bool
     -> ?nested_columns:Column_display.t
+    -> ?transpose:bool
     -> Sexp.t list
     -> string
 
   val print_alist
+    : ('a : value_or_null).
+    ?max_column_width:int
+    -> ?max_depth:int
+    -> ?align:[< `left | `right | `center | `numbers ]
+    -> ?display:Ascii_table_kernel.Display.t
+    -> ?separate_rows:bool
+    -> ?limit_width_to:int
+    -> ?prefer_split_on_spaces:bool
+    -> ?nested_columns:Column_display.t
+    -> ?transpose:bool
+    -> ('a -> Sexp.t)
+    -> (string * 'a) list
+    -> string
+
+  val print_record
     :  ?max_column_width:int
     -> ?max_depth:int
     -> ?align:[< `left | `right | `center | `numbers ]
@@ -150,8 +216,8 @@ module Format : sig
     -> ?limit_width_to:int
     -> ?prefer_split_on_spaces:bool
     -> ?nested_columns:Column_display.t
-    -> ('a -> Sexp.t)
-    -> (string * 'a) list
+    -> ?transpose:bool
+    -> Sexp.t
     -> string
 
   val print_record_transposed
@@ -167,7 +233,8 @@ module Format : sig
     -> string
 
   val print_cases
-    :  ?max_column_width:int
+    : ('input : value_or_null) ('output : value_or_null).
+    ?max_column_width:int
     -> ?max_depth:int
     -> ?align:[< `left | `right | `center | `numbers ]
     -> ?display:Ascii_table_kernel.Display.t

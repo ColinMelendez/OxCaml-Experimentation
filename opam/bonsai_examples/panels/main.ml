@@ -57,7 +57,7 @@ let panel_component id (_ : unit Bonsai.t) (local_ _graph) =
 let component (local_ graph) =
   let%sub { ids; inject_add_with_next_id; inject_remove } = Ids.component graph in
   let panels = Bonsai.assoc (module Id) ids ~f:panel_component graph in
-  Bonsai_web_ui_panels_experimental.component
+  Bonsai_experimental_panels.component
     ~key:(module Id)
     ~inject_add:inject_add_with_next_id
     ~inject_remove
@@ -65,4 +65,4 @@ let component (local_ graph) =
     graph
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

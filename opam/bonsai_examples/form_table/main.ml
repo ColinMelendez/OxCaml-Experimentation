@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 module Username = Username_kernel.Username
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Form = Bonsai_web_form.With_automatic_view
 module Table_form = Bonsai_experimental_table_form
 
 (* All of the fields in this record are going to be editable in the form. *)
@@ -63,5 +63,5 @@ let () =
        just project out the view and return that for the application component. *)
     Bonsai.map ~f:Form.view_as_vdom table_form
   in
-  Bonsai_web.Start.start app ~enable_bonsai_telemetry:Enabled
+  Bonsai_web.Start.start app
 ;;

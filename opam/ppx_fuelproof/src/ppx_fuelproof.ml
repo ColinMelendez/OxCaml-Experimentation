@@ -54,10 +54,8 @@ module Supported_axis = struct
     | Mode "unyielding" -> Ok Unyielding
     | Mode "many" -> Ok Many
     | Mode "stateless" -> Ok Stateless
-    | Mode "immutable" ->
-      Ok Immutable
-      (* It's intentional that we're omitting [non_float]: it's non-modal, so there's no
-         reason to use it with fuelproof. *)
+    | Mode "immutable" -> Ok Immutable
+    | Mode "non_float" -> Ok Non_float
     | Mode axis -> Or_error.errorf "Modifier not supported by fuelproof: %s" axis
   ;;
 
@@ -233,18 +231,20 @@ let type_with_builtin_cross_checking ty ~axes_to_cross ~axes_to_ignore =
         ty
         None
         (Some
-           { pjkind_desc =
+           { pjka_desc =
                Pjk_mod
-                 ( { pjkind_desc = Pjk_abbreviation "any"; pjkind_loc = loc }
+                 ( { pjka_desc = Pjk_abbreviation ({ txt = Lident "any"; loc }, [])
+                   ; pjka_loc = loc
+                   }
                  , List.map axes_to_check_crossing ~f:(fun axis ->
                      Supported_axis.to_axis axis.txt, axis.loc)
                      (* sort to match ocamlformat output *)
-                   |> List.sort ~compare:[%compare: string * _]
+                   |> List.sort ~compare:[%compare__local: string * _]
                    |> List.map ~f:(fun (mod_, loc) ->
                      { txt = Ppxlib_jane.Shim.Mode.Mode mod_
                      ; loc = { loc with loc_ghost = true }
                      }) )
-           ; pjkind_loc = loc
+           ; pjka_loc = loc
            })
         ~loc
     in
@@ -283,7 +283,7 @@ let rewrite_fields original_fields ~axes_to_cross =
   let open Result.Let_syntax in
   let check_crossing_contention =
     List.exists axes_to_cross ~f:(fun axis ->
-      [%compare.equal: Supported_axis.t] axis.txt Contended)
+      [%compare.equal__local: Supported_axis.t] axis.txt Contended)
   in
   List.map original_fields ~f:(fun field ->
     let modalities, _ = Ppxlib_jane.Shim.Label_declaration.extract_modalities field in
@@ -369,7 +369,10 @@ let rewrite_tydecls (tydecls : type_declaration list) ~loc
         | Some jkind ->
           let%bind axes_to_cross =
             match jkind with
-            | { pjkind_desc = Pjk_mod ({ pjkind_desc = Pjk_abbreviation "value"; _ }, mods)
+            | { pjka_desc =
+                  Pjk_mod
+                    ( { pjka_desc = Pjk_abbreviation ({ txt = Lident "value"; _ }, _); _ }
+                    , mods )
               ; _
               } ->
               let%bind axes =
@@ -382,13 +385,16 @@ let rewrite_tydecls (tydecls : type_declaration list) ~loc
                 |> Result.all
               in
               Ok axes
-            | { pjkind_desc = Pjk_abbreviation "immutable_data"; pjkind_loc = loc } ->
-              Ok (immutable_data ~loc)
-            | { pjkind_desc = Pjk_abbreviation "mutable_data"; pjkind_loc = loc } ->
-              Ok (mutable_data ~loc)
-            | { pjkind_desc = Pjk_abbreviation "sync_data"; pjkind_loc = loc } ->
-              Ok (sync_data ~loc)
-            | { pjkind_loc = loc; _ } ->
+            | { pjka_desc = Pjk_abbreviation ({ txt = Lident "immutable_data"; _ }, _)
+              ; pjka_loc = loc
+              } -> Ok (immutable_data ~loc)
+            | { pjka_desc = Pjk_abbreviation ({ txt = Lident "mutable_data"; _ }, _)
+              ; pjka_loc = loc
+              } -> Ok (mutable_data ~loc)
+            | { pjka_desc = Pjk_abbreviation ({ txt = Lident "sync_data"; _ }, _)
+              ; pjka_loc = loc
+              } -> Ok (sync_data ~loc)
+            | { pjka_loc = loc; _ } ->
               Error (Error.of_string "Unsupported kind annotation for %fuelproof", loc)
           in
           let axes_to_cross =

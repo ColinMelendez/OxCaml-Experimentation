@@ -116,7 +116,7 @@ let test_udp_packet_stream_waves
         ~config:Cyclesim.Config.trace_all
         (Udp_packet_stream.create_internal scope)
   in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   let valid_dst_mac = random ~width:Ethernet_header.port_widths.dst_mac in

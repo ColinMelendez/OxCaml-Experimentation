@@ -1,4 +1,4 @@
-external runtime5 : unit -> bool @@ portable = "%runtime5"
+external runtime5 : unit -> bool @@ stateless = "%runtime5"
 
 external ignore_contended
   : ('a : value_or_null).
@@ -101,6 +101,7 @@ module Ephemeron = struct
 end
 
 module Format = Format
+module Gc = Gc
 
 module Hashtbl = struct
   module MakePortable = Hashtbl.MakePortable
@@ -111,7 +112,9 @@ module Map = struct
   module MakePortable = Map.MakePortable
 end
 
-module Modes = Modes
+module Modes = struct
+  include Stdlib.Modes
+end
 
 module MoreLabels = struct
   module Hashtbl = struct

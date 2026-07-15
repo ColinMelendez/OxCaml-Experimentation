@@ -7,6 +7,6 @@ val f
   -> recursive_scopes:Computation.Recursive_scopes.t
   -> time_source:Time_source.t
   -> inner:'a Computation.t
-  -> reset_id:unit Effect.t Type_equal.Id.t
+  -> reset_id:unit Effect.t Var_id.t
   -> here:Source_code_position.t
   -> ('a, unit) Computation.packed_info Trampoline.t

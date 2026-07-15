@@ -3,4 +3,4 @@
  (public_name numeric_string)
  (libraries base)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

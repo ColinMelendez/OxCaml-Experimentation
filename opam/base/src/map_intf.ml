@@ -98,6 +98,7 @@ module Definitions = struct
        and type ('fn, 'key, _, 'cmp) accessor := ('key, 'cmp, 'fn) access_options
 
     val invariants : ('k, 'cmp, ('k, 'v, 'cmp) t -> bool) access_options
+    val find_or_null : ('k, 'cmp, ('k, 'v, 'cmp) t -> 'k key -> 'v or_null) access_options
 
     val iteri_until
       :  ('k, 'v, _) t
@@ -243,6 +244,16 @@ module Definitions = struct
        and type ('key, 'data, 'cmp) t := ('key, 'data, 'cmp) t
        and type ('fn, 'key, _, 'cmp) transformer := ('key, 'cmp, 'fn) access_options
 
+    (** Like [change] but [f] receives and returns ['v or_null] instead of ['v option]. *)
+    val change_or_null
+      : ( 'k
+          , 'cmp
+          , ('k, 'v, 'cmp) t
+            -> 'k key
+            -> f:local_ ('v or_null -> 'v or_null)
+            -> ('k, 'v, 'cmp) t )
+          access_options
+
     val split
       : ( 'k
           , 'cmp
@@ -316,6 +327,40 @@ module Definitions = struct
             -> both:('k key, 'v1, 'v2, 'v3) When_matched.t @ local
             -> ('k, 'v3, 'cmp) t )
           access_options
+
+    val merge_aligned
+      : ( 'k
+          , 'cmp
+          , ('k, 'v1, 'cmp) t
+            -> ('k, 'v2, 'cmp) t
+            -> f:(key:'k key -> 'v1 -> 'v2 -> 'v) @ local
+            -> ('k, 'v, 'cmp) t Or_error.t )
+          access_options
+
+    val zip
+      : ( 'k
+          , 'cmp
+          , ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t Or_error.t
+          )
+          access_options
+
+    val zip_exn
+      : ( 'k
+          , 'cmp
+          , ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t )
+          access_options
+
+    val filter_map_or_null
+      :  ('k, 'v1, 'cmp) t
+      -> f:('v1 -> 'v2 or_null) @ local
+      -> ('k, 'v2, 'cmp) t
+
+    val filter_mapi_or_null
+      :  ('k, 'v1, 'cmp) t
+      -> f:(key:'k key -> data:'v1 -> 'v2 or_null) @ local
+      -> ('k, 'v2, 'cmp) t
+
+    val filter_opt : ('k, 'v option, 'cmp) t -> ('k, 'v, 'cmp) t
 
     module%template.portable Make_applicative_traversals
         (A : Applicative.Lazy_applicative) : sig
@@ -514,12 +559,13 @@ module Definitions = struct
       -> ('k, 'v, 'cmp) t
       -> int
 
-    val compare_m__t__local
+    val%template compare_m__t
       :  (module Compare_m)
       -> ('v @ local -> 'v @ local -> int)
       -> ('k, 'v, 'cmp) t @ local
       -> ('k, 'v, 'cmp) t @ local
       -> int
+    [@@mode local]
 
     val equal_m__t
       :  (module Equal_m)
@@ -528,12 +574,13 @@ module Definitions = struct
       -> ('k, 'v, 'cmp) t
       -> bool
 
-    val equal_m__t__local
+    val%template equal_m__t
       :  (module Equal_m)
       -> ('v @ local -> 'v @ local -> bool)
       -> ('k, 'v, 'cmp) t @ local
       -> ('k, 'v, 'cmp) t @ local
       -> bool
+    [@@mode local]
 
     val globalize_m__t
       :  (module Globalize_m)
@@ -549,115 +596,127 @@ module Definitions = struct
       -> Hash.state
   end
 
-  (**/**)
+  module type Enum = sig
+    type ('k, 'v, 'cmp) tree
 
-  (*_ See the Jane Street Style Guide for an explanation of [Private] submodules:
+    (** Phantom types, to avoid mixing up enumeration directions. *)
 
-      https://opensource.janestreet.com/standards/#private-submodules *)
-  module Private = struct
-    module type Enum = sig
-      type ('k, 'v, 'cmp) tree
+    type increasing
+    type decreasing
 
-      (** Phantom types, to avoid mixing up enumeration directions. *)
+    (** Enum type *)
 
-      type increasing
-      type decreasing
+    type ('k, 'v, 'cmp, 'direction) nonempty : immutable_data with 'k with 'v
 
-      (** Enum type *)
+    and ('k, 'v, 'cmp, 'direction) t = ('k, 'v, 'cmp, 'direction) nonempty or_null
+    [@@deriving sexp_of]
 
-      type ('k, 'v, 'cmp, 'direction) nonempty =
-        | More of 'k * 'v * ('k, 'v, 'cmp) tree * ('k, 'v, 'cmp, 'direction) t
+    (** Conversions, for testing purposes *)
 
-      and ('k, 'v, 'cmp, 'direction) t = ('k, 'v, 'cmp, 'direction) nonempty or_null
+    val to_list_with_trees
+      :  ('k, 'v, 'cmp, 'dir) t
+      -> ('k * 'v * ('k, 'v, 'cmp) tree) list
 
-      (** Constructors *)
+    val of_list_with_trees
+      :  ('k * 'v * ('k, 'v, 'cmp) tree) list
+      -> ('k, 'v, 'cmp, 'dir) t
 
-      val cons
-        :  ('k, 'v, 'cmp) tree
-        -> ('k, 'v, 'cmp, increasing) t
-        -> ('k, 'v, 'cmp, increasing) t
+    (** Constructors *)
 
-      val cons_right
-        :  ('k, 'v, 'cmp) tree
-        -> ('k, 'v, 'cmp, decreasing) t
-        -> ('k, 'v, 'cmp, decreasing) t
+    val cons
+      :  ('k, 'v, 'cmp) tree
+      -> ('k, 'v, 'cmp, increasing) t
+      -> ('k, 'v, 'cmp, increasing) t
 
-      val of_tree : ('k, 'v, 'cmp) tree -> ('k, 'v, 'cmp, increasing) t
-      val of_tree_right : ('k, 'v, 'cmp) tree -> ('k, 'v, 'cmp, decreasing) t
+    val cons_right
+      :  ('k, 'v, 'cmp) tree
+      -> ('k, 'v, 'cmp, decreasing) t
+      -> ('k, 'v, 'cmp, decreasing) t
 
-      val starting_at_increasing
-        :  ('k, 'v, 'cmp) tree @ local
-        -> 'k
-        -> ('k -> 'k -> int)
-        -> ('k, 'v, 'cmp, increasing) t
+    val of_tree : ('k, 'v, 'cmp) tree -> ('k, 'v, 'cmp, increasing) t
+    val of_tree_right : ('k, 'v, 'cmp) tree -> ('k, 'v, 'cmp, decreasing) t
 
-      val starting_at_decreasing
-        :  ('k, 'v, 'cmp) tree @ local
-        -> 'k
-        -> ('k -> 'k -> int)
-        -> ('k, 'v, 'cmp, decreasing) t
+    val starting_at_increasing
+      :  ('k, 'v, 'cmp) tree @ local
+      -> 'k
+      -> ('k -> 'k -> int)
+      -> ('k, 'v, 'cmp, increasing) t
 
-      (** Comparing two enums, or two trees using enums behind the scenes *)
+    val starting_at_decreasing
+      :  ('k, 'v, 'cmp) tree @ local
+      -> 'k
+      -> ('k -> 'k -> int)
+      -> ('k, 'v, 'cmp, decreasing) t
 
-      val drop_phys_equal_prefix
-        :  ('k, 'v, 'cmp) tree @ local
-        -> ('k, 'v, 'cmp, 'dir) t
-        -> ('k, 'v, 'cmp) tree @ local
-        -> ('k, 'v, 'cmp, 'dir) t
-        -> ('k, 'v, 'cmp, 'dir) t * ('k, 'v, 'cmp, 'dir) t
+    (** Accessors *)
 
-      val symmetric_diff
-        :  ('k, 'v, 'cmp) tree
-        -> ('k, 'v, 'cmp) tree
-        -> compare_key:('k -> 'k -> int)
-        -> data_equal:('v -> 'v -> bool)
-        -> ('k, 'v) Symmetric_diff_element.t Sequence.t
+    val length : _ t -> int
+    val key : ('k, 'v, 'cmp, 'dir) nonempty -> 'k
+    val data : ('k, 'v, 'cmp, 'dir) nonempty -> 'v
+    val next : ('k, 'v, 'cmp, increasing) nonempty -> ('k, 'v, 'cmp, increasing) t
 
-      val fold_symmetric_diff
-        :  ('k, 'v, 'cmp) tree
-        -> ('k, 'v, 'cmp) tree
-        -> compare_key:('k -> 'k -> int) @ local
-        -> data_equal:('v -> 'v -> bool) @ local
-        -> init:'acc
-        -> f:('acc -> ('k, 'v) Symmetric_diff_element.t -> 'acc) @ local
-        -> 'acc
+    val next_decreasing
+      :  ('k, 'v, 'cmp, decreasing) nonempty
+      -> ('k, 'v, 'cmp, decreasing) t
 
-      val compare
-        :  ('k -> 'k -> int)
-        -> ('v -> ('v -> int) @ local)
-           (** This (otherwise odd) use of [local] makes a single [Enum.compare] usable by
-               both [Map.compare_direct] and [Map.compare_direct [@mode local]]. *)
-        -> ('k, 'v, 'cmp, increasing) t
-        -> ('k, 'v, 'cmp, increasing) t
-        -> int
+    (** Traversing one step of two enums *)
 
-      val equal
-        :  ('k -> 'k -> int)
-        -> ('v -> ('v -> bool) @ local)
-           (** This (otherwise odd) use of [local] makes a single [Enum.equal] usable by
-               both [Map.equal] and [Map.equal [@mode local]]. *)
-        -> ('k, 'v, 'cmp, increasing) t
-        -> ('k, 'v, 'cmp, increasing) t
-        -> bool
-
-      (** Traversing two enums *)
-
-      val fold2
-        :  ('k -> 'k -> int)
-        -> ('k, 'v1, 'cmp, increasing) t
-        -> ('k, 'v2, 'cmp, increasing) t
-        -> init:'kcc
-        -> f:(key:'k -> data:('v1, 'v2) Merge_element.t -> 'kcc -> 'kcc) @ local
-        -> 'kcc
-
-      (** Traversing one enum *)
-
-      val fold
-        :  init:'acc
-        -> f:(key:'k -> data:'v -> 'acc -> 'acc) @ local
-        -> ('k, 'v, 'cmp, increasing) t
-        -> 'acc
+    module Which : sig
+      type t =
+        | Left
+        | Right
+        | Both
     end
+
+    val which
+      :  ('k, 'v1, 'cmp, increasing) nonempty
+      -> ('k, 'v2, 'cmp, increasing) nonempty
+      -> compare_key:('k -> 'k -> int) @ local
+      -> Which.t
+
+    val which_key
+      :  ('k, 'v1, 'cmp, increasing) nonempty
+      -> ('k, 'v2, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> 'k
+
+    val which_merge_element
+      :  ('k, 'v1, 'cmp, increasing) nonempty
+      -> ('k, 'v2, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> ('v1, 'v2) Merge_element.t
+
+    val split_n
+      :  ('k, 'v, 'cmp, increasing) t
+      -> int
+      -> #(('k, 'v, 'cmp, increasing) t * ('k, 'v, 'cmp, increasing) t)
+
+    val next2
+      :  ('k, 'v1, 'cmp, increasing) nonempty
+      -> ('k, 'v2, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> #(('k, 'v1, 'cmp, increasing) t * ('k, 'v2, 'cmp, increasing) t)
+
+    val next2_drop_phys_equal
+      :  ('k, 'v, 'cmp, increasing) nonempty
+      -> ('k, 'v, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> #(('k, 'v, 'cmp, increasing) t * ('k, 'v, 'cmp, increasing) t)
+
+    val split2
+      :  ('k, 'v1, 'cmp, increasing) t
+      -> ('k, 'v2, 'cmp, increasing) t
+      -> compare_key:('k -> 'k -> int)
+      -> (('k, 'v1, 'cmp, increasing) t
+         * ('k, 'v2, 'cmp, increasing) t
+         * ('k, 'v1, 'cmp, increasing) t
+         * ('k, 'v2, 'cmp, increasing) t)
+           or_null
+
+    val drop_phys_equal_prefix_of
+      :  ('k, 'v, 'cmp) tree @ local
+      -> ('k, 'v, 'cmp) tree @ local
+      -> #(('k, 'v, 'cmp, increasing) t * ('k, 'v, 'cmp, increasing) t)
   end
 end
 
@@ -667,14 +726,41 @@ module type Map = sig @@ portable
   end
 
   (** [Map] is a functional data structure (balanced binary tree) implementing finite maps
-      over a totally-ordered domain, called a "key". *)
+      over a totally-ordered domain, called a "key".
+
+      {2 Mode crossing of maps}
+
+      In OxCaml, maps mode cross contention as long as the ['key] and ['value] types do,
+      and portability as long as ['key] and ['value] do
+      {i and if the {!Comparator.t} is portable}. The portability of the comparator is
+      witnessed by the {i kind} of the ['cmp] comparator witness type; if ['cmp] has kind
+      [value mod portable], then it is known that the {!Comparator.t} is portable, and if
+      it has kind [value] then it is not known.
+
+      To expose that your type's comparator is portable, add the [[@modality portable]]
+      template attribute to the functor you are using to make the comparator and to the
+      return signature of the functor in your signature. For example, write the following
+      in your structure:
+
+      {[
+        include%template Comparable.Make [@modality portable] (Arg)
+      ]}
+
+      and the following in your signature:
+
+      {[
+        include%template Comparable.S [@modality portable] with type t := t
+      ]}
+
+      Note that this applies to other functors and signatures that include {!Comparable},
+      such as {!Identifiable}. *)
 
   type (!'key
        , +!'value
        , !'cmp)
        t :
        immutable_data with 'key with 'value with ('key, 'cmp) Comparator.t
-  [@@deriving globalize]
+  [@@sexp.phantom: 'cmp] [@@deriving globalize, sexp_of]
 
   module Finished_or_unfinished : sig
     type t = Finished_or_unfinished.t =
@@ -988,6 +1074,13 @@ module type Map = sig @@ portable
     -> f:('v option -> 'v option) @ local
     -> ('k, 'v, 'cmp) t
 
+  (** Like [change] but [f] receives and returns ['v or_null] instead of ['v option]. *)
+  val change_or_null
+    :  ('k, 'v, 'cmp) t
+    -> 'k
+    -> f:('v or_null -> 'v or_null) @ local
+    -> ('k, 'v, 'cmp) t
+
   (** [update t key ~f] returns a new map which is the same as [t] but sets the value
       corresponding to [key] to the result of [f].
 
@@ -1008,9 +1101,12 @@ module type Map = sig @@ portable
   (** Returns [Some value] bound to the given key, or [None] if none exists. *)
   val find : ('k, 'v, 'cmp) t -> 'k -> 'v option
 
+  (** Like [find] but returns [or_null] instead of [option]. *)
+  val find_or_null : ('k, 'v, 'cmp) t -> 'k -> 'v or_null
+
   (** Returns the value bound to the given key, raising [Stdlib.Not_found] or
       [Not_found_s] if none exists. *)
-  val find_exn : ('k, 'v, 'cmp) t -> 'k -> 'v
+  val find_exn : here:[%call_pos] -> ('k, 'v, 'cmp) t -> 'k -> 'v
 
   (** Returns a new map with any binding for the key in question removed. *)
   val remove : ('k, 'v, 'cmp) t -> 'k -> ('k, 'v, 'cmp) t
@@ -1120,6 +1216,21 @@ module type Map = sig @@ portable
     -> f:(key:'k -> data:'v1 -> 'v2 option) @ local
     -> ('k, 'v2, 'cmp) t
 
+  (** Like [filter_map] but with a function returning [or_null] instead of [option]. *)
+  val filter_map_or_null
+    :  ('k, 'v1, 'cmp) t
+    -> f:('v1 -> 'v2 or_null) @ local
+    -> ('k, 'v2, 'cmp) t
+
+  (** Like [filter_mapi] but with a function returning [or_null] instead of [option]. *)
+  val filter_mapi_or_null
+    :  ('k, 'v1, 'cmp) t
+    -> f:(key:'k -> data:'v1 -> 'v2 or_null) @ local
+    -> ('k, 'v2, 'cmp) t
+
+  (** Returns a new map with [None] data filtered out and [Some v] data unwrapped to [v]. *)
+  val filter_opt : ('k, 'v option, 'cmp) t -> ('k, 'v, 'cmp) t
+
   (** [partition_mapi t ~f] returns two new [t]s, with each key in [t] appearing in
       exactly one of the resulting maps depending on its mapping in [f]. *)
   val partition_mapi
@@ -1157,6 +1268,13 @@ module type Map = sig @@ portable
   (** Produces [Ok] of a map including all keys if all data is [Ok], or an [Error]
       including all errors otherwise. *)
   val combine_errors : ('k, 'v Or_error.t, 'cmp) t -> ('k, 'v, 'cmp) t Or_error.t
+
+  (** Given two maps, produces a map of tuples. Returns an [Error] if the key sets of the
+      two maps differ. *)
+  val zip : ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t Or_error.t
+
+  (** Like [zip], but raises on error. *)
+  val zip_exn : ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t
 
   (** Given a map of tuples, produces a tuple of maps. Equivalent to:
       [map t ~f:fst, map t ~f:snd] *)
@@ -1240,6 +1358,14 @@ module type Map = sig @@ portable
     -> second:('k, 'v2, 'v3) When_unmatched.t @ local
     -> both:('k, 'v1, 'v2, 'v3) When_matched.t @ local
     -> ('k, 'v3, 'cmp) t
+
+  (** Merges two maps with the same set of keys. Returns an [Error] if the key sets are
+      not the same. *)
+  val merge_aligned
+    :  ('k, 'v1, 'cmp) t
+    -> ('k, 'v2, 'cmp) t
+    -> f:(key:'k -> 'v1 -> 'v2 -> 'v) @ local
+    -> ('k, 'v, 'cmp) t Or_error.t
 
   (** [symmetric_diff t1 t2 ~data_equal] returns a list of changes between [t1] and [t2].
       It is intended to be efficient in the case where [t1] and [t2] share a large amount
@@ -1591,7 +1717,7 @@ module type Map = sig @@ portable
           ; global_ right : ('k, 'v, 'cmp) t
           ; weight : weight
           }
-    [@@deriving sexp_of]
+    [@@sexp.phantom: 'cmp] [@@deriving sexp_of]
 
     val t_of_sexp_direct
       :  comparator:('k, 'cmp) Comparator.t
@@ -1629,6 +1755,7 @@ module type Map = sig @@ portable
       type ('k, 'v, 'w) t
 
       val empty : ('k, 'v, 'w) t
+      val get_empty : unit -> ('k, 'v, 'w) t
 
       (** Time complexity of [add_exn] is amortized constant-time (if [t] is used
           linearly), with a worst-case O(log(n)) time. *)
@@ -1643,11 +1770,14 @@ module type Map = sig @@ portable
       val to_tree : ('k, 'v, 'w) t -> ('k, 'v, 'w) tree
     end
 
+    module Enum : Enum with type ('k, 'v, 'cmp) tree := ('k, 'v, 'cmp) t
+
     (** Low-level constructors for balanced trees. If not carefully used, the results
         might violate the normal invariants of a tree. *)
     module Expert : sig
       (** Sexp prints the internal node structure. *)
-      type nonrec ('k, 'v, 'cmp) t = ('k, 'v, 'cmp) t [@@deriving sexp_of]
+      type nonrec ('k, 'v, 'cmp) t = ('k, 'v, 'cmp) t
+      [@@deriving equal ~localize, sexp_of]
 
       (** Just the tree balance checks from [invariants]. Excludes the checks in
           [order_invariants]. *)
@@ -1747,7 +1877,8 @@ module type Map = sig @@ portable
       functions take a [~comparator:('k, 'cmp) Comparator.t], whereas the functions at the
       toplevel of [Map] take a [('k, 'cmp) comparator]. *)
   module Using_comparator : sig
-    type nonrec ('k, +'v, 'cmp) t = ('k, 'v, 'cmp) t [@@deriving sexp_of]
+    type nonrec ('k, +'v, 'cmp) t = ('k, 'v, 'cmp) t
+    [@@sexp.phantom: 'cmp] [@@deriving sexp_of]
 
     val t_of_sexp_direct
       :  comparator:('k, 'cmp) Comparator.t
@@ -1800,13 +1931,4 @@ module type Map = sig @@ portable
 
   (** Extract a tree from a map. *)
   val to_tree : ('k, 'v, 'cmp) t -> ('k, 'v, 'cmp) Using_comparator.Tree.t
-
-  (**/**)
-
-  (*_ See the Jane Street Style Guide for an explanation of [Private] submodules:
-
-      https://opensource.janestreet.com/standards/#private-submodules *)
-  module Private : sig
-    module Enum : Private.Enum with type ('k, 'v, 'cmp) tree := ('k, 'v, 'cmp) Tree.t
-  end
 end

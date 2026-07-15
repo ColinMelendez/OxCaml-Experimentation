@@ -5,7 +5,7 @@ module rec T : sig
   type ('input, 'action, 'model) apply_action =
     inject:('action Action.t -> unit Effect.t)
     -> schedule_event:(unit Effect.t -> unit)
-    -> 'input option
+    -> 'input Computation_status.t
     -> 'model
     -> 'action Action.t
     -> 'model
@@ -47,18 +47,9 @@ and Recursive_scopes : sig
   val add_overwriting : t -> key:'a Fix_id.t -> data:('a, unit) T.packed_info lazy_t -> t
   val find : t -> 'a Fix_id.t -> ('a, unit) T.packed_info lazy_t option
   val find_exn : t -> 'a Fix_id.t -> ('a, unit) T.packed_info lazy_t
-end = struct
-  include
-    Univ_map.Make
-      (Fix_id)
-      (struct
-        type 'a t = ('a, unit) T.packed_info lazy_t
-
-        let sexp_of_t _sexp_of_a = sexp_of_opaque
-      end)
-
-  let add_overwriting t ~key ~data = update t key ~f:(fun _ -> data)
-end
+end = Fix_id.Map.Make (struct
+    type 'a t = ('a, unit) T.packed_info lazy_t
+  end)
 
 include T
 
@@ -71,12 +62,12 @@ type 'result t =
   | Leaf1 :
       { model : 'model Meta.Model.t
       ; input_id : 'input Meta.Input.t
-      ; dynamic_action : 'dynamic_action Type_equal.Id.t
+      ; dynamic_action : 'dynamic_action Var_id.t
       ; apply_action :
           inject:('dynamic_action -> unit Effect.t)
           -> schedule_event:(unit Effect.t -> unit)
           -> time_source:Ui_time_source.t
-          -> 'input option
+          -> 'input Computation_status.t
           -> 'model
           -> 'dynamic_action
           -> 'model
@@ -87,12 +78,14 @@ type 'result t =
           -> 'model
           -> 'model
       ; input : 'input Value.t
+      ; action_name : string
+      ; sexp_of_action : ('dynamic_action -> Sexp.t) option
       ; here : Source_code_position.t
       }
       -> ('model * ('dynamic_action -> unit Effect.t)) t
   | Leaf0 :
       { model : 'model Meta.Model.t
-      ; static_action : 'static_action Type_equal.Id.t
+      ; static_action : 'static_action Var_id.t
       ; apply_action :
           inject:('static_action -> unit Effect.t)
           -> schedule_event:(unit Effect.t -> unit)
@@ -106,6 +99,8 @@ type 'result t =
           -> time_source:Ui_time_source.t
           -> 'model
           -> 'model
+      ; action_name : string
+      ; sexp_of_action : ('static_action -> Sexp.t) option
       ; here : Source_code_position.t
       }
       -> ('model * ('static_action -> unit Effect.t)) t
@@ -117,21 +112,21 @@ type 'result t =
       -> 'result t
   | Sub :
       { from : 'via t
-      ; via : 'via Type_equal.Id.t
+      ; via : 'via Var_id.t
       ; into : 'result t
       ; invert_lifecycles : bool
       ; here : Source_code_position.t
       }
       -> 'result t
   | Store :
-      { id : 'x Type_equal.Id.t
+      { id : 'x Var_id.t
       ; value : 'x Value.t
       ; inner : 'result t
       ; here : Source_code_position.t
       }
       -> 'result t
   | Fetch :
-      { id : 'a Type_equal.Id.t
+      { id : 'a Var_id.t
       ; default : 'result
       ; for_some : 'a -> 'result
       ; here : Source_code_position.t
@@ -140,9 +135,9 @@ type 'result t =
   | Assoc :
       { map : ('k, 'v, 'cmp) Map.t Value.t
       ; key_comparator : ('k, 'cmp) Comparator.Module.t
-      ; key_id : 'k Type_equal.Id.t
-      ; cmp_id : 'cmp Type_equal.Id.t
-      ; data_id : 'v Type_equal.Id.t
+      ; key_id : 'k Var_id.t
+      ; cmp_id : 'cmp Var_id.t
+      ; data_id : 'v Var_id.t
       ; by : 'result t
       ; here : Source_code_position.t
       }
@@ -151,11 +146,11 @@ type 'result t =
       { map : ('io_key, 'v, 'io_cmp) Map.t Value.t
       ; io_comparator : ('io_key, 'io_cmp) Comparator.Module.t
       ; model_comparator : ('model_key, 'model_cmp) Comparator.Module.t
-      ; io_key_id : 'io_key Type_equal.Id.t
-      ; io_cmp_id : 'io_cmp Type_equal.Id.t
-      ; model_key_id : 'model_key Type_equal.Id.t
-      ; model_cmp_id : 'model_cmp Type_equal.Id.t
-      ; data_id : 'v Type_equal.Id.t
+      ; io_key_id : 'io_key Var_id.t
+      ; io_cmp_id : 'io_cmp Var_id.t
+      ; model_key_id : 'model_key Var_id.t
+      ; model_cmp_id : 'model_cmp Var_id.t
+      ; data_id : 'v Var_id.t
       ; by : 'result t
       ; get_model_key : 'io_key -> 'v -> 'model_key
       ; here : Source_code_position.t
@@ -190,7 +185,7 @@ type 'result t =
   | Fix_define :
       { fix_id : 'result Fix_id.t
       ; initial_input : 'input Value.t
-      ; input_id : 'input Type_equal.Id.t
+      ; input_id : 'input Var_id.t
       ; result : 'result t
       ; here : Source_code_position.t
       }
@@ -199,7 +194,7 @@ type 'result t =
       instances of [Fix_recurse]. *)
   | Fix_recurse :
       { input : 'input Value.t
-      ; input_id : 'input Type_equal.Id.t
+      ; input_id : 'input Var_id.t
       ; fix_id : 'result Fix_id.t
       ; here : Source_code_position.t
       }
@@ -208,15 +203,15 @@ type 'result t =
   | Wrap :
       { wrapper_model : 'outer_model Meta.Model.t
       ; result_id : 'result Meta.Input.t
-      ; action_id : 'outer_action Type_equal.Id.t
-      ; inject_id : ('outer_action -> unit Effect.t) Type_equal.Id.t
-      ; model_id : 'outer_model Type_equal.Id.t
+      ; action_id : 'outer_action Var_id.t
+      ; inject_id : ('outer_action -> unit Effect.t) Var_id.t
+      ; model_id : 'outer_model Var_id.t
       ; inner : 'result t
       ; dynamic_apply_action :
           inject:('outer_action -> unit Effect.t)
           -> schedule_event:(unit Effect.t -> unit)
           -> time_source:Ui_time_source.t
-          -> 'result option
+          -> 'result Computation_status.t
           -> 'outer_model
           -> 'outer_action
           -> 'outer_model
@@ -230,7 +225,7 @@ type 'result t =
       }
       -> 'result t
   | With_model_resetter :
-      { reset_id : unit Effect.t Type_equal.Id.t
+      { reset_id : unit Effect.t Var_id.t
       ; inner : 'result t
       ; here : Source_code_position.t
       }
@@ -245,7 +240,7 @@ type 'result t =
       { inner : 'result t
       ; enable_watcher : bool
       ; here : Source_code_position.t
-      ; free_vars : Computation_watcher.Type_id_location_map.t
+      ; free_vars : Computation_watcher.Var_id_location_map.t
       ; config : Computation_watcher.Config.t
       ; queue : Computation_watcher.Output_queue.t option
       ; value_id_observation_definition_positions :

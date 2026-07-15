@@ -1,16 +1,15 @@
 (*
-   * zed_edit.ml
+ * zed_edit.ml
  * -----------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 open React
 
-(* +-----------------------------------------------------------------+
-   | Types                                                           |
+(* +-----------------------------------------------------------------+ | Types |
    +-----------------------------------------------------------------+ *)
 
 type clipboard =
@@ -33,16 +32,15 @@ type 'a t =
   ; set_selection : bool -> unit (* The current selection state. *)
   ; match_word : Zed_rope.t -> int -> int option (* The function for matching words. *)
   ; undo : (Zed_rope.t * Zed_lines.t * int * int * int * int) array
-      (* The undo buffer. It is an array of element of the form [(text,
-     lines, pos, new_pos, added, removed)]. *)
+      (* The undo buffer. It is an array of element of the form
+         [(text, lines, pos, new_pos, added, removed)]. *)
   ; undo_size : int (* Size of the undo buffer. *)
   ; mutable undo_start : int (* Position of the first used cell in the undo buffer. *)
   ; mutable undo_index : int (* Position of the next available cell in the undo buffer. *)
   ; mutable undo_count : int (* Number of used cell in the undo buffer. *)
   }
 
-(* +-----------------------------------------------------------------+
-   | Creation                                                        |
+(* +-----------------------------------------------------------------+ | Creation |
    +-----------------------------------------------------------------+ *)
 
 let dummy_cursor = Zed_cursor.create 0 E.never (fun () -> Zed_lines.empty) 0 0
@@ -108,8 +106,7 @@ let create
   edit
 ;;
 
-(* +-----------------------------------------------------------------+
-   | State                                                           |
+(* +-----------------------------------------------------------------+ | State |
    +-----------------------------------------------------------------+ *)
 
 let get_data engine =
@@ -149,8 +146,7 @@ let update engine cursors =
           cursors)
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Cursors                                                         |
+(* +-----------------------------------------------------------------+ | Cursors |
    +-----------------------------------------------------------------+ *)
 
 let new_cursor engine =
@@ -162,8 +158,7 @@ let new_cursor engine =
     0
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Actions                                                         |
+(* +-----------------------------------------------------------------+ | Actions |
    +-----------------------------------------------------------------+ *)
 
 exception Cannot_edit
@@ -648,8 +643,7 @@ let set_text_and_forget_history { edit; cursor = _; check = _ } new_rope =
   ()
 ;;
 
-(* +-----------------------------------------------------------------+
-   | Action by names                                                 |
+(* +-----------------------------------------------------------------+ | Action by names |
    +-----------------------------------------------------------------+ *)
 
 type utf8 = Zed_utf8.t [@@deriving sexp]

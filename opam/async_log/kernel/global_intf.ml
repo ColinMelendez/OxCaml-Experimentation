@@ -54,9 +54,6 @@ module type S = sig
       is not provided. *)
   val set_level_via_param : ?default:Level.t -> unit -> unit Command.Param.t
 
-  (** Functions that operate on a given log. In this case they operate on a single log
-      global to the module. *)
-
   val raw
     :  ?time:Time_float.t
     -> ?tags:(string * string) list
@@ -64,6 +61,12 @@ module type S = sig
     -> 'a
 
   val info
+    :  ?time:Time_float.t
+    -> ?tags:(string * string) list
+    -> ('a, unit, string, unit) format4
+    -> 'a
+
+  val warn
     :  ?time:Time_float.t
     -> ?tags:(string * string) list
     -> ('a, unit, string, unit) format4
@@ -81,6 +84,10 @@ module type S = sig
     -> ('a, unit, string, unit) format4
     -> 'a
 
+  (** [flushed ()] waits for messages that have already been delivered to the global log.
+      Logs written via portable functions, such as [Log.Global.Portable.info], may still
+      be waiting in the portable enqueue path and are not included until they have been
+      delivered to the global log. *)
   val flushed : unit -> unit Deferred.t
 
   (** Generalized printf-style logging. *)
@@ -96,6 +103,7 @@ module type S = sig
 
   val raw_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
   val info_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
+  val warn_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
   val error_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
   val debug_s : ?time:Time_float.t -> ?tags:(string * string) list -> Sexp.t -> unit
 
@@ -122,6 +130,15 @@ module type S = sig
     -> Message_data.t
     -> Message_source.t
     -> unit
+
+  val enqueue_structured_message
+    :  ?level:Level.t
+    -> ?time:Time_float.t
+    -> ?tags:(string * string) list
+    -> Message_data.t
+    -> Message_source.t
+    -> unit
+    @@ portable
 
   (** Log a pre-created message. *)
   val message : Message.t -> unit
@@ -207,6 +224,11 @@ module type S = sig
         "This function is meant for the specific use case of logging from \
          [Async_command] and [Async_unix] at shutdown without double-writing to stderr. \
          Please speak to async log devs if you need to use it for something else."]
+  end
+
+  module Private : sig
+    (** Returns the portable global log handle once the lazy global log has been forced. *)
+    val current_published_log : unit -> Log.t option @@ portable
   end
 end
 

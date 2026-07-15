@@ -11,11 +11,11 @@ module Message = struct
   ;;
 
   let write_sexp t ~hum wr =
-    Writer.write_sexp ~hum wr (Message.Stable.V2.sexp_of_t t);
+    Writer.write_sexp ~hum wr (Message.Stable.V3.sexp_of_t t);
     Writer.newline wr
   ;;
 
-  let write_bin_prot t wr = Writer.write_bin_prot wr Message.Stable.V2.bin_writer_t t
+  let write_bin_prot t wr = Writer.write_bin_prot wr Message.Stable.V3.bin_writer_t t
 end
 
 include Async_log_kernel.Output
@@ -66,6 +66,22 @@ let write' w format msgs =
   write_immediately w format msgs
 ;;
 
+let flushed_or_consumer_left writer =
+  match%bind Writer.flushed_or_failed_with_result writer with
+  | Flushed _ -> Deferred.unit
+  | Consumer_left ->
+    (* Outputs like [stderr] sometimes get disconnected, e.g., if the program is run in a
+       pipeline and the pipeline is Ctrl+C'd. Here the user has made a clear intention to
+       drop the logs, so we don't wait for flushed in this case. (Indeed, waiting for
+       flushed can cause the program to hang because there's a shutdown handler that waits
+       for flushed on all logs). *)
+    Deferred.unit
+  | Force_closed | Error ->
+    (* If the writer encountered an exceptional error, it'd be a lie for [flushed] to be
+       resolved, so like [Writer.flushed] we wait forever. *)
+    Deferred.never ()
+;;
+
 module File : sig
   val create : ?perm:Unix.file_perm -> Format.t -> filename:string -> t
 end = struct
@@ -73,7 +89,8 @@ end = struct
     let w = open_writer ~filename ~perm in
     create
       ~finalize:(fun () -> if Lazy.is_val w then force w >>= Writer.close else return ())
-      ~flush:(fun () -> if Lazy.is_val w then force w >>= Writer.flushed else return ())
+      ~flush:(fun () ->
+        if Lazy.is_val w then force w >>= flushed_or_consumer_left else return ())
       (fun msgs ->
         let%map (_ : Int63.t) = write' (force w) format msgs in
         ())
@@ -85,7 +102,7 @@ module Log_writer : sig
 end = struct
   let create format w =
     create
-      ~flush:(fun () -> Writer.flushed w)
+      ~flush:(fun () -> flushed_or_consumer_left w)
       (fun msgs ->
         Queue.iter msgs ~f:(fun msg -> basic_write format w msg);
         return ())
@@ -294,7 +311,9 @@ end = struct
       in
       let flush () =
         let%bind t = t_deferred in
-        if Lazy.is_val t.writer then force t.writer >>= Writer.flushed else return ()
+        if Lazy.is_val t.writer
+        then force t.writer >>= flushed_or_consumer_left
+        else return ()
       in
       ( create
           ~finalize
@@ -426,14 +445,16 @@ let writer = Log_writer.create
 
 let stdout =
   let make =
-    Memo.general (fun format -> Log_writer.create format (Lazy.force Writer.stdout))
+    Memo.general ~hashable:Hashtbl.Hashable.poly (fun format ->
+      Log_writer.create format (Lazy.force Writer.stdout))
   in
   fun ?(format = `Text) () -> make format
 ;;
 
 let stderr =
   let make =
-    Memo.general (fun format -> Log_writer.create format (Lazy.force Writer.stderr))
+    Memo.general ~hashable:Hashtbl.Hashable.poly (fun format ->
+      Log_writer.create format (Lazy.force Writer.stderr))
   in
   fun ?(format = `Text) () -> make format
 ;;

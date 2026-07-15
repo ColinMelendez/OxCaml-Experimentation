@@ -135,7 +135,13 @@ let create_handle_generic
          Cursor.For_mock_tests.register
            (fun (local_ graph) ->
              Title.For_mock_tests.register
-               (fun (local_ graph) -> app ~dimensions graph)
+               (fun (local_ graph) ->
+                 Bonsai_term.Private.For_testing.register_mouse_reporting_for_mock_tests
+                   (fun (local_ graph) ->
+                     Expert.Write_to_tty.For_mock_tests.register
+                       (fun (local_ graph) -> app ~dimensions graph)
+                       graph)
+                   graph)
                graph)
            graph
        in
@@ -186,6 +192,33 @@ let send_event handle event =
 
 let do_actions handle actions =
   Handle.do_actions handle (List.map actions ~f:(fun x -> Result_spec.External_event x))
+;;
+
+let last_result handle =
+  let last_result = Handle.last_result handle in
+  last_result.Result_spec.a
+;;
+
+let last_view handle =
+  let last_result = Handle.last_result handle in
+  let ~view, ~handler:_ = last_result.Result_spec.to_view_with_handler last_result.a in
+  view
+;;
+
+let last_dimensions handle =
+  let last_result = Handle.last_result handle in
+  last_result.Result_spec.dimensions
+;;
+
+let print_view view =
+  let buffer = Buffer.create 100 in
+  Notty.Render.to_buffer
+    buffer
+    Notty.Cap.dumb
+    (0, 0)
+    (View.width view, View.height view)
+    (View.Private.notty_image view);
+  print_endline (Buffer.contents buffer)
 ;;
 
 module For_minimal_mocking_test_suite = struct

@@ -361,10 +361,12 @@ module%template.portable Make_tree_S1 (Key : Comparator.S1) = struct
   let remove_multi a b = remove_multi a b ~comparator
   let find_multi a b = find_multi a b ~comparator
   let change a b ~f = change a b ~f ~comparator
+  let change_or_null a b ~f = change_or_null a b ~f ~comparator
   let update a b ~f = update a b ~f ~comparator
   let update_and_return a b ~f = update_and_return a b ~f ~comparator
-  let find_exn a b = find_exn a b ~comparator
+  let find_exn ~(here : [%call_pos]) a b = find_exn ~here a b ~comparator
   let find a b = find a b ~comparator
+  let find_or_null a b = find_or_null a b ~comparator
   let remove a b = remove a b ~comparator
   let mem a b = mem a b ~comparator
   let iter_keys = iter_keys
@@ -383,12 +385,17 @@ module%template.portable Make_tree_S1 (Key : Comparator.S1) = struct
   let filteri a ~f = filteri a ~f
   let filter_map a ~f = filter_map a ~f
   let filter_mapi a ~f = filter_mapi a ~f
+  let filter_map_or_null a ~f = filter_map_or_null a ~f
+  let filter_mapi_or_null a ~f = filter_mapi_or_null a ~f
+  let filter_opt a = filter_opt a
   let partition_mapi t ~f = partition_mapi t ~f
   let partition_map t ~f = partition_map t ~f
   let partition_result t = partition_result t
   let partitioni_tf t ~f = partitioni_tf t ~f
   let partition_tf t ~f = partition_tf t ~f
   let combine_errors t = combine_errors t ~comparator
+  let zip a b = zip a b ~comparator
+  let zip_exn a b = zip_exn a b ~comparator
   let unzip = unzip
 
   let%template[@mode m = (local, global)] compare_direct a b c =
@@ -418,6 +425,7 @@ module%template.portable Make_tree_S1 (Key : Comparator.S1) = struct
     merge_by_case a b ~first ~second ~both ~comparator
   ;;
 
+  let merge_aligned a b ~f = merge_aligned a b ~f ~comparator
   let min_elt = min_elt
   let min_elt_exn = min_elt_exn
   let max_elt = max_elt
@@ -499,7 +507,7 @@ struct
 
   type +'v t = (Key.t, 'v, Key.comparator_witness) Tree.t
 
-  let sexp_of_t sexp_of_v t = sexp_of_t Key.sexp_of_t sexp_of_v [%sexp_of: _] t
+  let sexp_of_t sexp_of_v t = sexp_of_t Key.sexp_of_t sexp_of_v t
 end
 
 module%template.portable Provide_of_sexp_tree (Key : sig
@@ -550,9 +558,7 @@ module Poly = struct
   [@@mode m = (local, global)]
   ;;
 
-  let sexp_of_t sexp_of_k sexp_of_v t =
-    Using_comparator.sexp_of_t sexp_of_k sexp_of_v [%sexp_of: _] t
-  ;;
+  let sexp_of_t sexp_of_k sexp_of_v t = Using_comparator.sexp_of_t sexp_of_k sexp_of_v t
 
   let t_of_sexp sexp_of_k sexp_of_v t =
     Using_comparator.t_of_sexp_direct
@@ -597,7 +603,7 @@ module Poly = struct
     type ('k, +'v) t = ('k, 'v, Comparator.Poly.comparator_witness) tree
     type comparator_witness = Comparator.Poly.comparator_witness
 
-    let sexp_of_t sexp_of_k sexp_of_v t = sexp_of_t sexp_of_k sexp_of_v [%sexp_of: _] t
+    let sexp_of_t sexp_of_k sexp_of_v t = sexp_of_t sexp_of_k sexp_of_v t
 
     let t_of_sexp k_of_sexp v_of_sexp t =
       Tree.t_of_sexp_direct ~comparator:Comparator.Poly.comparator k_of_sexp v_of_sexp t
@@ -714,9 +720,7 @@ struct
     (compare_direct [@mode m]) cmpv t1 t2
   ;;
 
-  let sexp_of_t sexp_of_v t =
-    Using_comparator.sexp_of_t Key.sexp_of_t sexp_of_v [%sexp_of: _] t
-  ;;
+  let sexp_of_t sexp_of_v t = Using_comparator.sexp_of_t Key.sexp_of_t sexp_of_v t
 
   module Diff = struct
     type 'a derived_on = 'a t
@@ -992,10 +996,12 @@ module Stable = struct
   module V1 = struct
     type nonrec ('k, 'v, 'cmp) t = ('k, 'v, 'cmp) t
 
-    module type S = sig
+    module type%template [@mode m = (local, global)] S = sig
       type key
       type comparator_witness
-      type nonrec 'a t = (key, 'a, comparator_witness) t [@@deriving equal]
+
+      type nonrec 'a t = (key, 'a, comparator_witness) t
+      [@@deriving equal [@mode.explicit m]]
 
       include%template Stable_module_types.S1 [@mode local] with type 'a t := 'a t
 

@@ -1,0 +1,6 @@
+(library
+ (name bonsai_term_color_scheme_catppuccin)
+ (public_name bonsai_term_components.color_scheme.catppuccin)
+ (libraries bonsai_term core)
+ (preprocess
+  (pps ppx_jane)))

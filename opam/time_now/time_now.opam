@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/time_now/issues"
 dev-repo: "git+https://github.com/janestreet/time_now.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/time_now/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -14,11 +15,13 @@ depends: [
   "base"
   "jane-street-headers"
   "jst-config"
-  "ppx_base"
   "ppx_optcomp"
   "dune"                {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Reports the current time"
 description: "
 Provides a single function to report the current time in nanoseconds

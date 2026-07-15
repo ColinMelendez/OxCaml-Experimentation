@@ -1,11 +1,11 @@
 (*
-   * zed_cursor.ml
+ * zed_cursor.ml
  * -------------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 open React
 
@@ -48,12 +48,11 @@ let create length changes get_lines position wanted_column =
           position + delta
         else if position < start - delta
         then
-          (* Text has been removed and the removed block contains the
-             cursor, move it at the beginning of the removed block. *)
+          (* Text has been removed and the removed block contains the cursor, move it at
+             the beginning of the removed block. *)
           start
         else
-          (* Text has been removed before the cursor, move back the
-             cursor. *)
+          (* Text has been removed before the cursor, move back the cursor. *)
           position + delta
       else position
   in

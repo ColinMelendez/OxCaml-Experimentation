@@ -1,0 +1,6 @@
+(library
+ (name trampoline)
+ (public_name bonsai.trampoline)
+ (libraries core)
+ (preprocess
+  (pps ppx_jane -compare-require-explicit-locality)))

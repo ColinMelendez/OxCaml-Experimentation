@@ -673,7 +673,7 @@ module Edge = struct
   let on_change'
     ~(here : [%call_pos])
     ?sexp_of_model
-    ?(trigger = (`After_display : [ `Before_display | `After_display ]))
+    ?(trigger = (`Before_display : [ `Before_display | `After_display ]))
     ~equal
     input
     ~callback
@@ -865,7 +865,13 @@ module Edge = struct
         fun (_ : a) -> refresh
       in
       let%sub () =
-        on_change ~here ?sexp_of_model:sexp_of_input ~equal:equal_input input ~callback
+        on_change
+          ~here
+          ?sexp_of_model:sexp_of_input
+          ~trigger:`After_display
+          ~equal:equal_input
+          input
+          ~callback
       in
       return ~here result
     ;;
@@ -1088,7 +1094,9 @@ let most_recent_some ~(here : [%call_pos]) ?sexp_of_model ~equal input ~f =
       let%arr set_most_recent_valid_value in
       fun x -> set_most_recent_valid_value (Some x)
     in
-    let%sub () = Edge.on_change ~here ?sexp_of_model ~equal inner ~callback in
+    let%sub () =
+      Edge.on_change ~here ?sexp_of_model ~trigger:`After_display ~equal inner ~callback
+    in
     return ~here input
 ;;
 
@@ -1116,7 +1124,9 @@ let previous_value
     let%arr set_prev in
     fun input -> set_prev (Some input)
   in
-  let%sub () = Edge.on_change ~here ?sexp_of_model ~equal input ~callback in
+  let%sub () =
+    Edge.on_change ~here ?sexp_of_model ~trigger:`After_display ~equal input ~callback
+  in
   return ~here prev
 ;;
 
@@ -1171,7 +1181,7 @@ module Dynamic_scope = struct
 
   type _ t =
     | Independent :
-        { id : 'a Type_equal.Id.t
+        { id : 'a Var_id.t
         ; fallback : 'a
         }
         -> 'a t
@@ -1179,13 +1189,12 @@ module Dynamic_scope = struct
         { base : 'a t
         ; get : 'a -> 'b
         ; set : 'a -> 'b -> 'a
-        ; sexp_of : 'b -> Sexp.t
         }
         -> 'b t
 
   let rec fallback : type a. a t -> a = function
     | Independent { fallback; _ } -> fallback
-    | Derived { base; get; set = _; sexp_of = _ } -> get (fallback base)
+    | Derived { base; get; set = _ } -> get (fallback base)
   ;;
 
   let rec fetch
@@ -1195,7 +1204,7 @@ module Dynamic_scope = struct
     fun ~(here : [%call_pos]) t ~default ~for_some ->
     match t with
     | Independent { id; _ } -> Dynamic_scope.fetch ~here ~id ~default ~for_some ()
-    | Derived { base; get; set = _; sexp_of = _ } ->
+    | Derived { base; get; set = _ } ->
       fetch ~here base ~default ~for_some:(fun x -> for_some (get x))
   ;;
 
@@ -1209,7 +1218,7 @@ module Dynamic_scope = struct
     fun ~(here : [%call_pos]) var value inner ->
     match var with
     | Independent { id; _ } -> Dynamic_scope.store ~here ~id ~value ~inner ()
-    | Derived { base; get = _; set; sexp_of = _ } ->
+    | Derived { base; get = _; set } ->
       let%sub current = lookup ~here base in
       let%sub new_ =
         let%arr current and value in
@@ -1219,16 +1228,39 @@ module Dynamic_scope = struct
   ;;
 
   let create ?(sexp_of = sexp_of_opaque) ~name ~fallback () =
-    Independent { id = Type_equal.Id.create ~name sexp_of; fallback }
+    ignore sexp_of;
+    ignore name;
+    Independent { id = Var_id.create (); fallback }
   ;;
 
   let derived ?(sexp_of = sexp_of_opaque) base ~get ~set =
-    Derived { base; get; set; sexp_of }
+    ignore sexp_of;
+    Derived { base; get; set }
   ;;
 
   type revert = { revert : 'a. 'a Computation.t -> 'a Computation.t }
 
   let set ~(here : [%call_pos]) t v ~inside = store ~here t v inside
+
+  module Bulk_setter = struct
+    type 'a id = 'a t
+
+    type 'a t =
+      | [] : unit t
+      | ( :: ) : ('element id * 'element Value.t) * 'rem t -> ('element * 'rem) t
+
+    let set (type a) ~(here : [%call_pos]) (hlist : a t) ~inside =
+      let rec set_loop : type a out. a t -> out Computation.t -> out Computation.t =
+        fun hlist inside ->
+        match hlist with
+        | [] -> inside
+        | (id, value) :: rem ->
+          let inside = set ~here id value ~inside in
+          set_loop rem inside [@tail]
+      in
+      set_loop hlist inside
+    ;;
+  end
 end
 
 module Clock = struct
@@ -1345,6 +1377,7 @@ module Clock = struct
     Edge.on_change
       ~here
       ~sexp_of_model:[%sexp_of: (Trigger_id.t option * Before_or_after.t) option]
+      ~trigger:`After_display
       ~equal:[%equal: (Trigger_id.t option * Before_or_after.t) option]
       before_or_after
       ~callback

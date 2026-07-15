@@ -98,7 +98,15 @@ let create ?polling_timeout ~queue_depth () =
 let exit = Uring.exit
 let supports_ext_arg = Uring.supports_ext_arg
 let register_eventfd = Uring.register_eventfd
-let submit t = Uring.submit t
+
+module Submit_outcome = struct
+  type t = Uring.Submit_outcome.t =
+    | All_submitted
+    | Remaining_unsubmitted
+end
+
+let submit t = Uring.submit_check t
+let submit_raw t = Uring.submit t
 let cqe_ready t = Uring.cqe_ready t
 
 let rec iter_completions_internal io_uring ~f count =
@@ -176,8 +184,9 @@ let openat2 t ~access ~flags ~perm ~resolve ?fd filename =
 
 let close t fd = prepare_internal (Uring.close t fd)
 
-let link t ~follow ~target ~link_name =
-  prepare_internal (Uring.linkat t ~follow ~target ~link_name)
+let link t ~follow ~old_path ~new_path =
+  let flags = Uring.Linkat_flags.(if follow then symlink_follow else empty) in
+  prepare_internal (Uring.linkat t ~flags ~old_path ~new_path)
 ;;
 
 let unlink t ~dir ?fd filename = prepare_internal (Uring.unlink t ~dir ?fd filename)

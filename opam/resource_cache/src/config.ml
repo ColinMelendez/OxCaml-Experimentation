@@ -10,7 +10,7 @@ module Stable = struct
       ; close_idle_resources_when_at_limit : bool
       ; close_resource_on_unhandled_exn : bool
       }
-    [@@deriving bin_io, sexp]
+    [@@deriving bin_io, sexp, stable_witness]
 
     let%expect_test _ =
       print_endline [%bin_digest: t];
@@ -27,7 +27,10 @@ module Stable = struct
       ; close_idle_resources_when_at_limit : bool
       }
     [@@deriving
-      bin_io, sexp, stable_record ~version:V3.t ~add:[ close_resource_on_unhandled_exn ]]
+      bin_io
+      , sexp
+      , stable_record ~version:V3.t ~add:[ close_resource_on_unhandled_exn ]
+      , stable_witness]
 
     let to_v3 = to_V3_t ~close_resource_on_unhandled_exn:false
 
@@ -47,7 +50,8 @@ module Stable = struct
     [@@deriving
       bin_io
       , sexp
-      , stable_record ~version:V2.t ~add:[ close_idle_resources_when_at_limit ]]
+      , stable_record ~version:V2.t ~add:[ close_idle_resources_when_at_limit ]
+      , stable_witness]
 
     let to_v2 = to_V2_t ~close_idle_resources_when_at_limit:false
 

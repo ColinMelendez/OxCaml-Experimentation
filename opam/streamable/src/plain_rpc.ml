@@ -1,13 +1,12 @@
 open! Core
 open! Async_kernel
 open! Import
-open Deferred.Or_error.Let_syntax
 include Plain_rpc_intf
 
-(* Implementation-wise, a [Streamable.Plain_rpc] is just a [Streamable.State_rpc] with the
-   pipe unused. *)
+(* Implementation-wise, a [Streamable.Plain_rpc] is just a [Streamable.State_rpc] with no
+   updates (i.e. [update = Nothing.t]). *)
 let plain_impl_to_state f conn query =
-  let%bind response = f conn query in
+  let%bind.Deferred.Or_error response = f conn query in
   let empty = Pipe.create_reader ~close_on_exception:false (fun _ -> Deferred.unit) in
   Deferred.Or_error.return (response, empty)
 ;;
@@ -16,34 +15,39 @@ module Update = Main.Of_atomic (Nothing)
 
 type ('q, 'r) t = ('q, 'r, Nothing.t) State_rpc.t
 
-module Direct_writer = struct
+module Direct_parts_writer = struct
   type 'response_part t =
-    ('response_part, Update.Intermediate.Part.t) State_rpc.Direct_writer.t
+    ('response_part, Update.Intermediate.Part.t) State_rpc.Direct_parts_writer.t
 
   let write_response_without_pushback_exn =
-    State_rpc.Direct_writer.write_state_without_pushback_exn
+    State_rpc.Direct_parts_writer.write_state_without_pushback_exn
   ;;
 
   let finalise_response_without_pushback_exn =
-    State_rpc.Direct_writer.finalise_state_without_pushback_exn
+    State_rpc.Direct_parts_writer.finalise_state_without_pushback_exn
   ;;
 
-  let is_response_finalised = State_rpc.Direct_writer.is_state_finalised
-  let response_finalised = State_rpc.Direct_writer.state_finalised
-  let close = State_rpc.Direct_writer.close
-  let closed = State_rpc.Direct_writer.closed
-  let flushed = State_rpc.Direct_writer.flushed
-  let is_closed = State_rpc.Direct_writer.is_closed
+  let is_response_finalised = State_rpc.Direct_parts_writer.is_state_finalised
+  let response_finalised = State_rpc.Direct_parts_writer.state_finalised
+  let close = State_rpc.Direct_parts_writer.close
+  let closed = State_rpc.Direct_parts_writer.closed
+  let flushed = State_rpc.Direct_parts_writer.flushed
+  let is_closed = State_rpc.Direct_parts_writer.is_closed
 
   module Expert = struct
     let create_response_part ~bin_writer response_part =
-      State_rpc.Direct_writer.Expert.create_state_part
+      State_rpc.Direct_parts_writer.Expert.create_state_part
         ~state_bin_writer:bin_writer
         response_part
     ;;
 
-    let finalise_response_message = State_rpc.Direct_writer.Expert.finalise_state_message
-    let write_without_pushback = State_rpc.Direct_writer.Expert.write_without_pushback
+    let finalise_response_message =
+      State_rpc.Direct_parts_writer.Expert.finalise_state_message
+    ;;
+
+    let write_without_pushback =
+      State_rpc.Direct_parts_writer.Expert.write_without_pushback
+    ;;
   end
 end
 
@@ -74,11 +78,11 @@ end
 let description = State_rpc.description
 
 let dispatch' rpc conn query =
-  let%bind server_response = State_rpc.dispatch' rpc conn query in
-  Or_error.map server_response ~f:(fun (response, pipe) ->
+  let%bind.Deferred.Or_error server_response = State_rpc.dispatch' rpc conn query in
+  Or_error.map server_response ~f:(fun (response, pipe, (_ : Rpc.State_rpc.Metadata.t)) ->
     Pipe.close_read pipe;
     response)
-  |> return
+  |> Deferred.Or_error.return
 ;;
 
 let dispatch rpc conn query = dispatch' rpc conn query |> Deferred.map ~f:Or_error.join
@@ -87,7 +91,7 @@ let dispatch_with_rpc_result_and_metadata rpc conn query ~metadata =
   let%bind.Deferred.Result server_response =
     State_rpc.Expert.dispatch_with_rpc_result_and_metadata rpc conn query ~metadata
   in
-  Or_error.map server_response ~f:(fun (response, pipe) ->
+  Or_error.map server_response ~f:(fun (response, pipe, (_ : Rpc.State_rpc.Metadata.t)) ->
     Pipe.close_read pipe;
     response)
   |> Deferred.Result.return

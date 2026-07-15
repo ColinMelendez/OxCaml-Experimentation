@@ -1661,7 +1661,10 @@ module Polling_state_rpc = struct
         Connector.with_connection connector ~where_to_connect ~callback:(fun connection ->
           let%bind.Eager_deferred.Or_error client = Rvar.contents client_rvar in
           match%map.Deferred
-            Polling_state_rpc.Client.forget_on_server client connection
+            Polling_state_rpc.Client.forget_on_server
+              ~on_dispatch:Rpc_effect_introspection.just_sent_ignored_query
+              client
+              connection
           with
           | Ok () -> Ok ()
           | Error _ when Rpc.Connection.is_closed connection ->
@@ -1705,6 +1708,7 @@ module Polling_state_rpc = struct
           Polling_state_rpc.Client.For_introspection.dispatch_with_underlying_diff_as_sexp
             ?sexp_of_response
             ~on_dispatch:(fun () -> Rpc_effect_introspection.just_sent_query_with_id id)
+            ~on_cancel_dispatch:Rpc_effect_introspection.just_sent_ignored_query
             client
             connection
             query
@@ -2265,7 +2269,8 @@ module Status = struct
                writeback Connected;
                upon
                  (Rpc.Connection.close_reason connection ~on_close:`started)
-                 (fun reason -> writeback (Disconnected (Error.of_info reason)));
+                 (fun reason ->
+                    writeback (Disconnected (Error.of_info (Info.of_portable reason))));
                Deferred.Or_error.return ())
          with
          | Ok () -> ()

@@ -14,18 +14,31 @@ let map_pat { pat } ~f = { pat = (fun () -> map1 (pat ()) ~f) }
 let at_most_one_pattern p = p ^:: nil ||| map0 nil ~f:[]
 let at_most_one_eval p = pstr (at_most_one_pattern (pstr_eval p nil))
 
+let is_standard_identifier string =
+  String.equal string (Ppxlib.Longident.name (Lident string))
+;;
+
+let check_standard_identifier ident ~loc =
+  match is_standard_identifier ident with
+  | true -> ()
+  | false ->
+    if String.equal ident "="
+    then
+      Ast_pattern.fail
+        loc
+        "did you write e.g. [@kind ...] when you meant [@@kind ...]?\n\
+         standard (non-operator) identifier"
+      (* error message constructed based on the fact that [fail] adds " expected" *)
+    else Ast_pattern.fail loc "standard (non-operator) identifier"
+;;
+
 let ident_pattern =
   { pat =
       (fun () ->
         pexp_ident
           (map1' (lident __) ~f:(fun loc ident ->
-             match ident with
-             | "@" | "=" ->
-               (* This helps break parsing ambiguity between punning and alternate forms
-                  of alloc-poly (otherwise, [[@@alloc a = heap]] can be parsed as a punned
-                  binding with the identifiers [( = )], [a], and [heap]). *)
-               Ast_pattern.fail loc ("Invalid ppx_template identifier: " ^ ident)
-             | _ -> Pattern.Identifier { ident }))
+             check_standard_identifier ident ~loc;
+             Pattern.Identifier { ident }))
         ||| map0 pexp_hole ~f:Pattern.Wildcard)
   }
 ;;
@@ -36,12 +49,12 @@ let pexp_tuple p =
     ~f:(function
       | [] | [ _ ] ->
         failwith "parsetree invariant violated: tuples have at least two elements"
-      | hd :: (_ :: _ as tl) -> (hd :: tl : _ Nonempty_list.t))
+      | hd :: (_ :: _ as tl) -> Nonempty_list.create hd tl)
 ;;
 
 let one_or_many a b = map1 a ~f:(fun x -> [ x ]) ||| b
-let tuple_or_one p = pexp_tuple p ||| map1 p ~f:(fun x : _ Nonempty_list.t -> [ x ])
-let one_or_tuple p = map1 p ~f:(fun x : _ Nonempty_list.t -> [ x ]) ||| pexp_tuple p
+let tuple_or_one p = pexp_tuple p ||| map1 p ~f:Nonempty_list.singleton
+let one_or_tuple p = map1 p ~f:Nonempty_list.singleton ||| pexp_tuple p
 
 let one_or_many_as_list { pat } =
   one_or_many
@@ -78,22 +91,13 @@ let expr =
          , Ppxlib_jane.Shim.Core_type_desc.of_parsetree ptyp_desc )
        with
        | Pexp_hole, Ptyp_any (Some jkind) ->
-         let rec of_jkind : jkind_annotation -> Expression.t = function
-           | { pjkind_desc = Pjk_abbreviation ident; _ } ->
-             Typed (Identifier { ident }, P (Non_tuple Kind))
-           | { pjkind_desc = Pjk_mod (jkind, mode :: modes); _ } ->
-             let modes =
-               Nonempty_list.map (mode :: modes) ~f:(fun { txt = Mode ident; _ } ->
-                 Expression.Identifier { ident })
-             in
-             Kind_mod (of_jkind jkind, modes)
-           | { pjkind_desc = Pjk_product (jkind :: jkinds); _ } ->
-             Kind_product (Nonempty_list.map (jkind :: jkinds) ~f:of_jkind)
-           | { pjkind_loc = loc; _ } -> expected ~loc "kind abbreviation, mod, or product"
-         in
-         of_jkind jkind
+         (match Language.Typed.Expression.of_parsetree_jkind jkind with
+          | Ok expr -> Typed (Language.Typed.Expression.untype expr, P (Non_tuple Kind))
+          | Error { loc; txt } -> expected ~loc txt)
        | _ -> expected ~loc "(_ : (_ : <kind>))")
-    | _, Pexp_ident { txt = Lident ident; _ } -> Identifier { ident }
+    | _, Pexp_ident { txt = Lident ident; loc } ->
+      check_standard_identifier ident ~loc;
+      Identifier { ident }
     | [%expr [%e? lhs] & [%e? rhs]], _ ->
       let lhs = of_expr lhs in
       let rhs =
@@ -105,10 +109,10 @@ let expr =
         | (Comma_separated _ | Identifier _ | Kind_mod _ | Kind_coercion _ | Typed _) as
           rhs -> [ rhs ]
       in
-      Kind_product (lhs :: Nonempty_list.to_list rhs)
+      Kind_product (Nonempty_list.cons lhs rhs)
     | [%expr [%e? base] mod [%e? modifiers_exp]], _ ->
       let base = of_expr base in
-      let modifier_exps : _ Nonempty_list.t =
+      let modifier_exps =
         match modifiers_exp with
         | { pexp_desc = Pexp_apply (modifiers_hd, modifiers_tl); _ } ->
           let modifiers_tl =
@@ -118,8 +122,8 @@ let expr =
               | Labelled _ | Optional _ ->
                 expected ~loc:modifier.pexp_loc "unlabeled kind modifier")
           in
-          modifiers_hd :: modifiers_tl
-        | modifiers_hd -> [ modifiers_hd ]
+          Nonempty_list.create modifiers_hd modifiers_tl
+        | modifiers_hd -> Nonempty_list.singleton modifiers_hd
       in
       let modifiers = Nonempty_list.map modifier_exps ~f:of_expr in
       Kind_mod (base, modifiers)
@@ -131,7 +135,7 @@ let expr =
          |> (function
                | [] | _ :: [] ->
                  failwith "parsetree invariant: tuples must have at least two elements"
-               | hd :: (_ :: _ as tl) -> (hd :: tl : _ Nonempty_list.t))
+               | hd :: (_ :: _ as tl) -> Nonempty_list.create hd tl)
          |> Nonempty_list.map ~f:(function
            | Some _label, { pexp_loc = loc; _ } -> expected ~loc "unlabeled tuple element"
            | None, expr -> of_expr expr))
@@ -171,7 +175,7 @@ let binding =
 
 (* Parses an [expression] of the form [a] as [_, [ "a" ]]. *)
 let punned_binding =
-  map_pat expr ~f:(fun expr -> Pattern.Wildcard, ([ expr ] : _ Nonempty_list.t))
+  map_pat expr ~f:(fun expr -> Pattern.Wildcard, Nonempty_list.singleton expr)
 ;;
 
 let single_ident () = pstr (pstr_eval (expr.pat ()) nil ^:: nil)

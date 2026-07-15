@@ -9,7 +9,7 @@
 open! Core
 
 type t = private float
-[@@deriving bin_io ~localize, globalize, sexp, sexp_grammar, typerep]
+[@@deriving bin_io ~localize, globalize, sexp ~stackify, sexp_grammar, typerep]
 
 (** This interface includes [hash]. However, the evaluation of [hash t] requires a
     comparison, and also it allocates, so this should not be used in highly
@@ -54,7 +54,8 @@ val compare : t -> t -> int
 val between : t -> low:t -> high:t -> bool
 
 (** Unlike polymorphic compare, [none=none]. *)
-val equal : t -> t -> bool
+val%template equal : t @ m -> t @ m -> bool
+[@@mode m = (global, local)]
 
 val value_map : t -> f:(float -> 'a) -> default:'a -> 'a
 
@@ -219,7 +220,7 @@ module Stable : sig
       , compare ~localize
       , equal ~localize
       , globalize
-      , sexp
+      , sexp ~stackify
       , stable_witness]
   end
 end
@@ -231,160 +232,19 @@ end
     choice and more we haven't implemented everything. Feel free to add!) *)
 module Unboxed : sig
   type boxed := t
-  type t : float64 mod everything = private float# [@@deriving quickcheck, typerep]
 
-  val globalize : local_ t -> t
-  val to_string : t -> string
-  val sexp_of_t : t -> Sexp.t
-  val t_of_sexp : Sexp.t -> t
-
-  include%template Bin_prot.Binable.S [@mode local] with type t := t
-
-  include Ppx_hash_lib.Hashable.S_any with type t := t
-
-  module Optional_syntax : sig
-    module Optional_syntax : sig
-      val is_none : t -> bool [@@zero_alloc]
-      val unsafe_value : t -> Float_u.t [@@zero_alloc]
-    end
+  include module type of struct
+    include Float_u.Option
   end
-
-  include module type of Optional_syntax.Optional_syntax
-
-  val typerep_of_t : t Typerep.t
-  val none : unit -> t [@@zero_alloc]
-  val is_some : t -> bool [@@zero_alloc]
-  val some : float# -> t [@@zero_alloc]
-  val unchecked_some : float# -> t [@@zero_alloc]
-  val of_float_nan_as_none : float# -> t [@@zero_alloc strict]
-  val to_float_none_as_nan : t -> float# [@@zero_alloc]
-  val neg : t -> t [@@zero_alloc]
-  val zero : unit -> t [@@zero_alloc]
-  val one : unit -> t [@@zero_alloc]
-  val scale : t -> float# -> t [@@zero_alloc]
-
-  val%template equal : t @ m -> t @ m -> bool [@@mode m = (global, local)] [@@zero_alloc]
-
-  val div : t -> float# -> t [@@zero_alloc]
-  val abs : t -> t [@@zero_alloc]
-
-  [%%template:
-  [@@@mode.default m = (global, local)]
-
-  val of_option : float option @ m -> t
-  val to_option : t -> float option @ m]
-
-  (** The result of [min] will be [none] if either operand is. *)
-  val min : t -> t -> t
-  [@@zero_alloc]
-
-  val select : bool -> t -> t -> t [@@zero_alloc]
-  val some_if : bool -> float# -> t [@@zero_alloc]
-
-  (** A workaround for the lack of unboxed float literals; strictly speaking one can use
-      it for non constants but the name is a helpful reminder. *)
-  val const : float -> t
-  [@@zero_alloc]
-
-  [%%template:
-  [@@@mode.default m = (global, local)]
-
-  (** Converters for the normal PFO. *)
-  val box : t @ m -> boxed @ m
-  [@@zero_alloc_if_local m]
-
-  val unbox : boxed @ local -> t [@@zero_alloc]]
-
-  (** [first_some x y] returns x if x is not none, else returns y *)
-  val first_some : t -> t -> t
-  [@@zero_alloc]
-
-  (** [some_or t ~default = first_some t (unchecked_some t)] *)
-  val some_or : t -> default:float# -> t
-  [@@zero_alloc]
-
-  (** Computes [numerator / denominator] when [denominator] is nonzero, otherwise returns
-      [else_]. This is done without allocating or branching by using [Unboxed.select]. *)
-  val divide_if_denominator_nonzero_else : numerator:t -> denominator:t -> else_:t -> t
-  [@@zero_alloc]
-
-  val value : t -> default:Float_u.t -> Float_u.t [@@zero_alloc]
-  val value_exn : t -> Float_u.t [@@zero_alloc]
-  val compare : t -> t -> int [@@zero_alloc]
-
-  (** Returns [false] if [t] is [none] *)
-
-  val is_finite : t -> bool [@@zero_alloc]
-  val is_inf : t -> bool [@@zero_alloc]
-  val is_positive : t -> bool [@@zero_alloc]
-  val is_non_negative : t -> bool [@@zero_alloc]
-  val is_negative : t -> bool [@@zero_alloc]
-  val is_non_positive : t -> bool [@@zero_alloc]
-  val is_integer : t -> bool [@@zero_alloc]
-
-  module Infix : sig
-    val ( + ) : t -> t -> t [@@zero_alloc]
-    val ( - ) : t -> t -> t [@@zero_alloc]
-    val ( * ) : t -> t -> t [@@zero_alloc]
-    val ( / ) : t -> t -> t [@@zero_alloc]
-    val ( ** ) : t -> t -> t [@@zero_alloc]
-    val ( = ) : t -> t -> bool [@@zero_alloc]
-    val ( <> ) : t -> t -> bool [@@zero_alloc]
-  end
-
-  (** See [Ieee_nan] of the boxed type *)
-  module Ieee_nan : sig
-    module Infix : sig
-      val ( < ) : t -> t -> bool [@@zero_alloc]
-      val ( <= ) : t -> t -> bool [@@zero_alloc]
-      val ( > ) : t -> t -> bool [@@zero_alloc]
-      val ( >= ) : t -> t -> bool [@@zero_alloc]
-    end
-
-    include module type of Infix
-
-    val max : t -> t -> t [@@zero_alloc]
-  end
-
-  include module type of Infix
 
   module O : sig
+    include module type of O
+
     val%template box : t @ m -> boxed @ m
     [@@zero_alloc_if_local m] [@@mode m = (global, local)]
 
     val unbox : boxed @ local -> t [@@zero_alloc]
-
-    include module type of Infix
-
-    val abs : t -> t [@@zero_alloc]
-    val neg : t -> t [@@zero_alloc]
   end
 
-  module Array : sig
-    include Float_u.Array with type elt := t
-  end
-
-  val merge : t -> t -> f:(float# -> float# -> float#) -> t
-
-  module Ref : Unboxed_ref_intf.T with type elt := t
-
-  module Stable : sig
-    module V1 : sig
-      type nonrec t = t [@@deriving globalize, stable_witness]
-
-      (** We derive [sexp], [bin_io], [hash], [typerep], [equal], and [compare]. *)
-
-      val sexp_of_t : t -> Sexp.t
-      val t_of_sexp : Sexp.t -> t
-
-      include%template Bin_prot.Binable.S [@mode local] with type t := t
-
-      include Ppx_hash_lib.Hashable.S_any with type t := t
-
-      val typerep_of_t : t Typerep.t
-      val typename_of_t : t Typerep_lib.Typename.t
-      val equal : t -> t -> bool
-      val compare : t -> t -> int
-    end
-  end
+  include module type of O
 end

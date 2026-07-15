@@ -3,7 +3,7 @@ open Core
 (** ['a list t] represents a list temporarily stored in the reverse of its logical order.
 
     e.g. to represent the sequence 1 then 2 we may store [2 :: 1 :: []] *)
-type +'a t [@@deriving sexp_of, compare, equal]
+type +'a t [@@deriving sexp_of, compare ~localize, equal ~localize]
 
 (** The empty list.
 

@@ -1,5 +1,4 @@
 (* Utils: utility functions for user convenience *)
-
 open! Base
 open Common
 open Size
@@ -143,11 +142,15 @@ struct
         [@@@mode.default m = (global, m)]
 
         let bin_size_t t =
-          (B.bin_size_t [@mode m]) ((S.to_binable [@mode m]) t) [@nontail]
+          (B.bin_size_t [@inlined hint] [@mode m])
+            ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
         ;;
 
         let bin_write_t buf ~pos t =
-          (B.bin_write_t [@mode m]) buf ~pos ((S.to_binable [@mode m]) t) [@nontail]
+          (B.bin_write_t [@inlined hint] [@mode m])
+            buf
+            ~pos
+            ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
         ;;
       end
 
@@ -156,10 +159,10 @@ struct
     end)
 end
 
-[@@@kind.default ka = (value, any)]
+[@@@kind.default.explicit ka = (value, value_or_null, any)]
 
 module%template.portable Make_binable1_gen (S : sig
-    include Make_binable1_without_uuid_spec [@kind ka] [@mode m]
+    include Make_binable1_without_uuid_spec [@kind.explicit ka] [@mode m]
 
     val maybe_caller_identity : Shape.Uuid.t option
   end) =
@@ -174,15 +177,17 @@ struct
     [@@@mode.default m = (global, m)]
 
     let bin_size_t bin_size_el t =
-      (B.bin_size_t [@mode m]) bin_size_el ((S.to_binable [@mode m]) t) [@nontail]
+      (B.bin_size_t [@inlined hint] [@mode m])
+        bin_size_el
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
 
     let bin_write_t bin_write_el buf ~pos t =
-      (B.bin_write_t [@mode m])
+      (B.bin_write_t [@inlined hint] [@mode m])
         bin_write_el
         buf
         ~pos
-        ((S.to_binable [@mode m]) t) [@nontail]
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
   end
 
@@ -216,10 +221,10 @@ struct
   ;;
 end
 
-[@@@kind.default kb = (value, any)]
+[@@@kind.default.explicit kb = (value, any)]
 
 module%template.portable Make_binable2_gen (S : sig
-    include Make_binable2_without_uuid_spec [@kind ka kb] [@mode m]
+    include Make_binable2_without_uuid_spec [@kind.explicit ka kb] [@mode m]
 
     val maybe_caller_identity : Shape.Uuid.t option
   end) =
@@ -236,19 +241,19 @@ struct
     [@@@mode.default m = (global, m)]
 
     let bin_size_t bin_size_el1 bin_size_el2 t =
-      (B.bin_size_t [@mode m])
+      (B.bin_size_t [@inlined hint] [@mode m])
         bin_size_el1
         bin_size_el2
-        ((S.to_binable [@mode m]) t) [@nontail]
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
 
     let bin_write_t bin_write_el1 bin_write_el2 buf ~pos t =
-      (B.bin_write_t [@mode m])
+      (B.bin_write_t [@inlined hint] [@mode m])
         bin_write_el1
         bin_write_el2
         buf
         ~pos
-        ((S.to_binable [@mode m]) t) [@nontail]
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
   end
 
@@ -284,10 +289,12 @@ struct
   ;;
 end
 
-[@@@kind.default kc = (value, any)]
+[@@@kind.default.explicit kc = (value, any)]
 
 module%template.portable Make_binable3_gen (S : sig
-    include Make_binable3_without_uuid_spec [@kind ka kb kc] [@mode m]
+    include
+      Make_binable3_without_uuid_spec
+    [@kind.explicit_plus_unmangled ka kb kc] [@mode m]
 
     val maybe_caller_identity : Shape.Uuid.t option
   end) =
@@ -304,21 +311,21 @@ struct
     [@@@mode.default m = (global, m)]
 
     let bin_size_t bin_size_el1 bin_size_el2 bin_size_el3 t =
-      (B.bin_size_t [@mode m])
+      (B.bin_size_t [@inlined hint] [@mode m])
         bin_size_el1
         bin_size_el2
         bin_size_el3
-        ((S.to_binable [@mode m]) t) [@nontail]
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
 
     let bin_write_t bin_write_el1 bin_write_el2 bin_write_el3 buf ~pos t =
-      (B.bin_write_t [@mode m])
+      (B.bin_write_t [@inlined hint] [@mode m])
         bin_write_el1
         bin_write_el2
         bin_write_el3
         buf
         ~pos
-        ((S.to_binable [@mode m]) t) [@nontail]
+        ((S.to_binable [@inlined hint] [@mode m]) t) [@nontail]
     ;;
   end
 
@@ -379,13 +386,13 @@ Make_binable_gen [@mode m] [@modality p] (struct
     let maybe_caller_identity = None
   end)
 
-[@@@kind.default ka = (value, any)]
+[@@@kind.default.explicit_plus_unmangled ka = (value, value_or_null, any)]
 
 module%template.portable
   [@modality p] Make_binable1_with_uuid
     (S : Make_binable1_with_uuid_spec
-  [@kind ka] [@mode m]) =
-Make_binable1_gen [@kind ka] [@mode m] [@modality p] (struct
+  [@kind.explicit ka] [@mode m]) =
+Make_binable1_gen [@kind.explicit ka] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = Some S.caller_identity
@@ -394,20 +401,20 @@ Make_binable1_gen [@kind ka] [@mode m] [@modality p] (struct
 module%template.portable
   [@modality p] Make_binable1_without_uuid
     (S : Make_binable1_without_uuid_spec
-  [@kind ka] [@mode m]) =
-Make_binable1_gen [@kind ka] [@mode m] [@modality p] (struct
+  [@kind.explicit ka] [@mode m]) =
+Make_binable1_gen [@kind.explicit ka] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = None
   end)
 
-[@@@kind.default kb = (value, any)]
+[@@@kind.default.explicit_plus_unmangled kb = (value, any)]
 
 module%template.portable
   [@modality p] Make_binable2_with_uuid
     (S : Make_binable2_with_uuid_spec
-  [@kind ka kb] [@mode m]) =
-Make_binable2_gen [@kind ka kb] [@mode m] [@modality p] (struct
+  [@kind.explicit ka kb] [@mode m]) =
+Make_binable2_gen [@kind.explicit ka kb] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = Some S.caller_identity
@@ -416,20 +423,20 @@ Make_binable2_gen [@kind ka kb] [@mode m] [@modality p] (struct
 module%template.portable
   [@modality p] Make_binable2_without_uuid
     (S : Make_binable2_without_uuid_spec
-  [@kind ka kb] [@mode m]) =
-Make_binable2_gen [@kind ka kb] [@mode m] [@modality p] (struct
+  [@kind.explicit ka kb] [@mode m]) =
+Make_binable2_gen [@kind.explicit ka kb] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = None
   end)
 
-[@@@kind.default kc = (value, any)]
+[@@@kind.default.explicit_plus_unmangled kc = (value, any)]
 
 module%template.portable
   [@modality p] Make_binable3_with_uuid
     (S : Make_binable3_with_uuid_spec
-  [@kind ka kb kc] [@mode m]) =
-Make_binable3_gen [@kind ka kb kc] [@mode m] [@modality p] (struct
+  [@kind.explicit ka kb kc] [@mode m]) =
+Make_binable3_gen [@kind.explicit ka kb kc] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = Some S.caller_identity
@@ -438,8 +445,8 @@ Make_binable3_gen [@kind ka kb kc] [@mode m] [@modality p] (struct
 module%template.portable
   [@modality p] Make_binable3_without_uuid
     (S : Make_binable3_without_uuid_spec
-  [@kind ka kb kc] [@mode m]) =
-Make_binable3_gen [@kind ka kb kc] [@mode m] [@modality p] (struct
+  [@kind.explicit ka kb kc] [@mode m]) =
+Make_binable3_gen [@kind.explicit ka kb kc] [@mode m] [@modality p] (struct
     include S
 
     let maybe_caller_identity = None

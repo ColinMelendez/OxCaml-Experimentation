@@ -38,11 +38,66 @@ let%expect_test "Extension names" =
     @log.global.raw
     @log.global.sexp
     @log.global.string
+    @log.global.warn
+    @log.global.warn_format
+    @log.global.warn_raw
+    @log.global.warn_sexp
+    @log.global.warn_string
     @log.info
     @log.info_format
     @log.info_raw
     @log.info_sexp
     @log.info_string
+    @log.portable
+    @log.portable.debug
+    @log.portable.debug_format
+    @log.portable.debug_raw
+    @log.portable.debug_sexp
+    @log.portable.debug_string
+    @log.portable.error
+    @log.portable.error_format
+    @log.portable.error_raw
+    @log.portable.error_sexp
+    @log.portable.error_string
+    @log.portable.format
+    @log.portable.info
+    @log.portable.info_format
+    @log.portable.info_raw
+    @log.portable.info_sexp
+    @log.portable.info_string
+    @log.portable.raw
+    @log.portable.sexp
+    @log.portable.string
+    @log.portable.t
+    @log.portable.t.debug
+    @log.portable.t.debug_format
+    @log.portable.t.debug_raw
+    @log.portable.t.debug_sexp
+    @log.portable.t.debug_string
+    @log.portable.t.error
+    @log.portable.t.error_format
+    @log.portable.t.error_raw
+    @log.portable.t.error_sexp
+    @log.portable.t.error_string
+    @log.portable.t.format
+    @log.portable.t.info
+    @log.portable.t.info_format
+    @log.portable.t.info_raw
+    @log.portable.t.info_sexp
+    @log.portable.t.info_string
+    @log.portable.t.raw
+    @log.portable.t.sexp
+    @log.portable.t.string
+    @log.portable.t.warn
+    @log.portable.t.warn_format
+    @log.portable.t.warn_raw
+    @log.portable.t.warn_sexp
+    @log.portable.t.warn_string
+    @log.portable.warn
+    @log.portable.warn_format
+    @log.portable.warn_raw
+    @log.portable.warn_sexp
+    @log.portable.warn_string
     @log.raw
     @log.sexp
     @log.string
@@ -66,5 +121,15 @@ let%expect_test "Extension names" =
     @log.t.raw
     @log.t.sexp
     @log.t.string
+    @log.t.warn
+    @log.t.warn_format
+    @log.t.warn_raw
+    @log.t.warn_sexp
+    @log.t.warn_string
+    @log.warn
+    @log.warn_format
+    @log.warn_raw
+    @log.warn_sexp
+    @log.warn_string
     |}]
 ;;

@@ -1,7 +1,7 @@
 open! Core
 open Import
 open Form_view
-module Toggle = Bonsai_web_ui_toggle
+module Toggle = Bonsai_web_contrib_toggle
 
 let rec view_error (e : Error.Internal_repr.t) : Vdom.Node.t list =
   let bold text = Vdom.Node.strong [ Vdom.Node.text text ] in
@@ -381,7 +381,12 @@ let to_vdom self ?on_submit ~eval_context view =
                      [ Vdom.Node.text button_text ]
                  | Some event ->
                    let event =
-                     Effect.(Many [ event; Prevent_default; Stop_propagation ])
+                     Effect.(
+                       Many
+                         [ event
+                         ; (Prevent_default [@alert "-deprecated"])
+                         ; Stop_propagation
+                         ])
                    in
                    Vdom.Node.button
                      ~attrs:[ button_attr; Vdom.Attr.on_click (fun _ -> event) ]
@@ -407,7 +412,11 @@ let to_vdom self ?on_submit ~eval_context view =
   in
   match on_submit with
   | Some { on_submit; handle_enter = true; button_text; _ } ->
-    let always_use = [ Vdom.Effect.Prevent_default; Vdom.Effect.Stop_propagation ] in
+    let always_use =
+      [ (Vdom.Effect.Prevent_default [@alert "-deprecated"])
+      ; Vdom.Effect.Stop_propagation
+      ]
+    in
     let event =
       match on_submit with
       | None -> Vdom.Effect.Many always_use

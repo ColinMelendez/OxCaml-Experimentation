@@ -75,11 +75,18 @@ let create ~(here : [%call_pos]) ?info ?name () =
 ;;
 
 module Monitor_exn = struct
+  (* The parts of [t] that are used in exception serialization. We extract only the
+     necessary parts to ensure thread-safety. *)
+  type monitor_thread_safe =
+    { name : Info.t @@ portable
+    ; here : Source_code_position.t
+    }
+
   type t =
     { exn : exn
     ; backtrace : Backtrace.t option
     ; backtrace_history : Backtrace.t list
-    ; monitor : Monitor.t
+    ; monitor : monitor_thread_safe
     }
 
   let backtrace t = t.backtrace
@@ -179,19 +186,24 @@ end
 exception Monitor_exn of Monitor_exn.t
 
 let () =
-  Sexplib.Conv.Exn_converter.add
-    [%extension_constructor Monitor_exn]
-    (Obj.magic_portable (function
-      | Monitor_exn t -> [%sexp "monitor.ml.Error" :: (t : Monitor_exn.t)]
-      | _ ->
-        (* Reaching this branch indicates a bug in sexplib. *)
-        assert false))
+  Sexplib.Conv.Exn_converter.add [%extension_constructor Monitor_exn] (function
+    | Monitor_exn t -> [%sexp "monitor.ml.Error" :: (t : Monitor_exn.t)]
+    | _ ->
+      (* Reaching this branch indicates a bug in sexplib. *)
+      assert false)
 ;;
 
 let extract_exn exn =
   match exn with
   | Monitor_exn error -> error.exn
   | exn -> exn
+;;
+
+let report_uncaught_exn exn =
+  (* Do not change this function to print the exception or to exit. Having the scheduler
+     raise an uncaught exception is the necessary behavior for programs that call
+     [Scheduler.go] and want to handle it. *)
+  Scheduler.(got_uncaught_exn (t ())) exn ((Atomic.get Async_kernel_config.task_id) ())
 ;;
 
 let send_exn t ?(backtrace = `Get) exn =
@@ -208,7 +220,12 @@ let send_exn t ?(backtrace = `Get) exn =
         | `This b -> Some b
       in
       let backtrace_history = (current_execution_context ()).backtrace_history in
-      Monitor_exn { Monitor_exn.exn; backtrace; backtrace_history; monitor = t }
+      Monitor_exn
+        { Monitor_exn.exn
+        ; backtrace
+        ; backtrace_history
+        ; monitor = { name = Info.portabilize t.name; here = t.here }
+        }
   in
   if Debug.monitor_send_exn then Debug.log "Monitor.send_exn" (t, exn) [%sexp_of: t * exn];
   let scheduler = Scheduler.t () in
@@ -225,13 +242,7 @@ let send_exn t ?(backtrace = `Get) exn =
         Scheduler.enqueue scheduler execution_context f exn);
       List.iter t.tails_for_all_errors ~f:(fun tail -> Tail.extend tail exn)
     | Parent parent -> loop parent
-    | Report_uncaught_exn ->
-      (* Do not change this branch to print the exception or to exit. Having the scheduler
-         raise an uncaught exception is the necessary behavior for programs that call
-         [Scheduler.go] and want to handle it. *)
-      Scheduler.(got_uncaught_exn (t ()))
-        exn
-        ((Atomic.get Async_kernel_config.task_id) ())
+    | Report_uncaught_exn -> report_uncaught_exn exn
   in
   loop t
 ;;
@@ -326,10 +337,19 @@ let stream_iter stream ~f =
   loop stream
 ;;
 
+let within_v_detached ~(here : [%call_pos]) ?info ?name ~on_exn ~on_exn_context f =
+  let monitor = create_with_parent ~here ?info ?name None in
+  let exns = detach_and_get_error_stream monitor in
+  within_context on_exn_context (fun () ->
+    stream_iter exns ~f:on_exn;
+    f ())
+  |> Result.ok
+;;
+
 (* An ['a Ok_and_exns.t] represents the output of a computation running in a detached
    monitor. *)
 module Ok_and_exns = struct
-  type 'a t =
+  type ('a : value_or_null) t =
     { ok : 'a Deferred.t
     ; exns : exn Stream.t
     }

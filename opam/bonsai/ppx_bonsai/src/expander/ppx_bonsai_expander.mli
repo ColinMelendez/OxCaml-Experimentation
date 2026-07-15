@@ -8,6 +8,7 @@ end
 
 val sub : Location_behavior.t -> Ppx_let_expander.t
 val arr : Location_behavior.t -> Ppx_let_expander.t
+val arr_debug : Location_behavior.t -> Ppx_let_expander.t
 
 module For_testing : sig
   module Balance_list_tree = Balance_list_tree

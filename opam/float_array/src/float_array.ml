@@ -60,10 +60,10 @@ module T = struct
   include FA
 
   include struct
-    open Base.Exported_for_specific_uses.Globalize
     open Bin_prot.Std
 
-    type t = floatarray [@@deriving bin_io ~localize, globalize]
+    type t = floatarray
+    [@@deriving bin_io ~localize, globalize, sexp ~stackify, sexp_grammar]
   end
 
   let empty = make 0 0.0
@@ -117,8 +117,6 @@ module T = struct
       raise (Sexp.Of_sexp_error (Failure what, sexp))
   ;;
 
-  let t_of_sexp sexp = custom_t_of_sexp float_of_sexp sexp
-
   let[@inline] custom_sexp_of_t sexp_of_elt t : Sexp.t =
     (* Adapted from sexplib0/src/sexp_conv.ml *)
     let lst_ref = ref [] in
@@ -128,7 +126,6 @@ module T = struct
     List !lst_ref
   ;;
 
-  let sexp_of_t t = custom_sexp_of_t sexp_of_float t
   let max_length = Sys.max_array_length
 
   let create ~len x =
@@ -1016,7 +1013,7 @@ module Via_floatarray_optimization = struct
   [@@@mode.default l = (local, global)]
 
   let of_array_id (arr @ l) =
-    if Config.flat_float_array
+    if Float_array_config.flat_float_array
     then of_array_id arr [@exclave_if_local l]
     else
       failwith
@@ -1025,7 +1022,7 @@ module Via_floatarray_optimization = struct
   ;;
 
   let to_array_id (arr @ l) =
-    if Config.flat_float_array
+    if Float_array_config.flat_float_array
     then to_array_id arr [@exclave_if_local l]
     else
       failwith

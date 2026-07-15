@@ -9,7 +9,7 @@ val f
   -> time_source:Time_source.t
   -> inner:'a Computation.t
   -> here:Lexing.position
-  -> free_vars:Computation_watcher.Type_id_location_map.t
+  -> free_vars:Computation_watcher.Var_id_location_map.t
   -> config:Computation_watcher.Config.t
   -> watcher_queue:Computation_watcher.Output_queue.t option
   -> value_id_observation_definition_positions:

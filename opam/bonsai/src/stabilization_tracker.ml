@@ -145,15 +145,15 @@ module Action_trie = struct
       | Lazy { type_id; action } ->
         let inner = with_current_generation (node_of_action action) in
         Lazy (T { inner; type_id })
-      | Assoc { key; id; compare; action } ->
+      | Assoc { key; id; comparator; action } ->
         let inner = with_current_generation (node_of_action action) in
-        Assoc { by_key = Keyed.Map.singleton (Keyed.create ~key ~id ~compare) inner }
-      | Assoc_on { io_key; model_key = _; io_id; io_compare; action } ->
+        Assoc { by_key = Keyed.Map.singleton (Keyed.create ~key ~id ~comparator) inner }
+      | Assoc_on { io_key; model_key = _; io_id; io_comparator; action } ->
         let inner = with_current_generation (node_of_action action) in
         Assoc_on
           { by_io_key =
               Keyed.Map.singleton
-                (Keyed.create ~key:io_key ~id:io_id ~compare:io_compare)
+                (Keyed.create ~key:io_key ~id:io_id ~comparator:io_comparator)
                 inner
           }
     in
@@ -237,8 +237,8 @@ module Action_trie = struct
         let state = traverser.lazy_ state inner action in
         loop state action inner
       | Assoc assoc ->
-        let (Assoc { key; id; compare; action = inner_action }) = action in
-        let keyed = Keyed.create ~key ~id ~compare in
+        let (Assoc { key; id; comparator; action = inner_action }) = action in
+        let keyed = Keyed.create ~key ~id ~comparator in
         let state = traverser.assoc state ~assoc ~key:keyed action in
         (match Map.find assoc.by_key keyed with
          | None ->
@@ -247,11 +247,12 @@ module Action_trie = struct
            traverser.unexplored state empty inner_action
          | Some inner -> loop state inner_action inner)
       | Assoc_on assoc_on ->
-        let (Assoc_on { io_key; model_key = _; io_compare; io_id; action = inner_action })
+        let (Assoc_on
+              { io_key; model_key = _; io_comparator; io_id; action = inner_action })
           =
           action
         in
-        let keyed = Keyed.create ~key:io_key ~id:io_id ~compare:io_compare in
+        let keyed = Keyed.create ~key:io_key ~id:io_id ~comparator:io_comparator in
         let state = traverser.assoc_on state ~assoc_on ~key:keyed action in
         (match Map.find assoc_on.by_io_key keyed with
          | None ->
@@ -291,8 +292,8 @@ module Action_trie = struct
     | Model_reset_inner action -> is_dynamic_action action
     | Switch { action; type_id = _; branch = _ } -> is_dynamic_action action
     | Lazy { action; type_id = _ } -> is_dynamic_action action
-    | Assoc { action; key = _; id = _; compare = _ } -> is_dynamic_action action
-    | Assoc_on { action; io_key = _; io_id = _; io_compare = _; model_key = _ } ->
+    | Assoc { action; key = _; id = _; comparator = _ } -> is_dynamic_action action
+    | Assoc_on { action; io_key = _; io_id = _; io_comparator = _; model_key = _ } ->
       is_dynamic_action action
   ;;
 

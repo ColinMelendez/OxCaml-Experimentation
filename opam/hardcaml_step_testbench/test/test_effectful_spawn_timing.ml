@@ -2,7 +2,7 @@ open Core
 open Hardcaml
 open Hardcaml_waveterm
 
-module%test [@tags "runtime5-only"] _ = struct
+module%test _ = struct
   module Bit = struct
     type 'a t = { x : 'a } [@@deriving hardcaml]
   end
@@ -30,7 +30,7 @@ module%test [@tags "runtime5-only"] _ = struct
   ;;
 
   module Sim = Cyclesim.With_interface (I) (O)
-  module Step = Hardcaml_step_testbench_effectful.Functional.Cyclesim.Make (I) (O)
+  module Step = Hardcaml_step_testbench.Functional.Cyclesim.Make (I) (O)
 
   let setx2 handler _ =
     Step.delay handler { Step.input_hold with i2 = { x = Bits.vdd } } ~num_cycles:1
@@ -55,7 +55,7 @@ module%test [@tags "runtime5-only"] _ = struct
 
   let%expect_test "" =
     let simulator = Sim.create create in
-    let waves, simulator = Waveform.create simulator in
+    let waves, simulator = Cyclesim.Waveform.create simulator in
     Step.run_until_finished () ~simulator ~testbench;
     Waveform.print waves;
     [%expect

@@ -1,3 +1,5 @@
+@@ portable
+
 (** This is a trie that remembers the insertion order of its values, but only within a
     single prefix. *)
 type t

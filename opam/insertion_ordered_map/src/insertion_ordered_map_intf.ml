@@ -2,9 +2,9 @@ open! Core
 
 (** See {!Insertion_ordered_map} below. *)
 
-module type S_plain = sig
+module type%template [@mode m = (local, global)] S_plain = sig
   module Key : sig
-    type t [@@deriving compare, sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
 
     include Comparator.S with type t := t
   end
@@ -26,36 +26,12 @@ module type S_plain = sig
   (** [Semantic_compare] provides a compare function with the same semantics as in
       [Semantic_equal]. *)
   module Semantic_compare : sig
-    type nonrec 'a t = 'a t [@@deriving compare]
+    type nonrec 'a t = 'a t [@@deriving compare [@mode.explicit m]]
   end
 
   val empty : _ t
   val singleton : Key.t -> 'a -> 'a t
   val of_alist_exn : (Key.t * 'a) list -> 'a t
-
-  module Provide_of_sexp
-      (Key : sig
-               type t [@@deriving of_sexp]
-             end
-             with type t = Key.t) : sig
-      type _ t [@@deriving of_sexp]
-    end
-    with type 'a t := 'a t
-
-  module Provide_bin_io
-      (Key : Stable with type t = Key.t) : sig
-      type _ t [@@deriving bin_io]
-    end
-    with type 'a t := 'a t
-
-  module Provide_sexp_grammar
-      (Key : sig
-               type t [@@deriving sexp_grammar]
-             end
-             with type t = Key.t) : sig
-      type _ t [@@deriving sexp_grammar]
-    end
-    with type 'a t := 'a t
 end
 
 module type S = sig
@@ -68,7 +44,7 @@ module type S_binable = sig
   include Binable.S1 with type 'a t := 'a t
 end
 
-module type Insertion_ordered_map = sig
+module type Insertion_ordered_map = sig @@ portable
   (** [Insertion_ordered_map] is [Map] with a notion of insertion order.
 
       An [Insertion_ordered_map.Make(Key).t] can be queried as normal with a [Key.t].
@@ -211,21 +187,50 @@ module type Insertion_ordered_map = sig
   module type S_binable =
     S_binable with type ('key, 'a, 'cmp) insertion_ordered_map := ('key, 'a, 'cmp) t
 
-  module Make_plain (Key : sig
-      type t [@@deriving compare, sexp_of]
+  module%template.portable
+    [@modality p] [@mode m = (local, global)] Make_plain (Key : sig
+      type t [@@deriving (compare [@mode.explicit m]), sexp_of]
 
-      include Comparator.S with type t := t
+      include Comparator.S [@modality p] with type t := t
     end) : S_plain with module Key := Key
 
-  module Make (Key : sig
-      type t [@@deriving compare, sexp]
+  module%template.portable
+    [@modality p] Provide_of_sexp (Key : sig
+      type t [@@deriving of_sexp]
 
-      include Comparator.S with type t := t
+      include Comparator.S [@modality p] with type t := t
+    end) : sig
+      type _ t [@@deriving of_sexp]
+    end
+    with type 'a t := (Key.t, 'a, Key.comparator_witness) t
+
+  module%template.portable
+    [@modality p] [@mode m = (local, global)] Make (Key : sig
+      type t [@@deriving (compare [@mode.explicit m]), sexp]
+
+      include Comparator.S [@modality p] with type t := t
     end) : S with module Key := Key
 
-  module Make_binable (Key : sig
-      type t [@@deriving bin_io, compare, sexp]
+  module%template.portable
+    [@modality p] Provide_bin_io
+      (Key : Stable
+    [@modality p]) : sig
+      type _ t [@@deriving bin_io]
+    end
+    with type 'a t := (Key.t, 'a, Key.comparator_witness) t
 
-      include Comparator.S with type t := t
+  module%template.portable
+    [@modality p] [@mode m = (local, global)] Make_binable (Key : sig
+      type t [@@deriving bin_io, (compare [@mode.explicit m]), sexp]
+
+      include Comparator.S [@modality p] with type t := t
     end) : S_binable with module Key := Key
+
+  module Provide_sexp_grammar (Key : sig
+      type t [@@deriving sexp_grammar]
+      type comparator_witness
+    end) : sig
+      type _ t [@@deriving sexp_grammar]
+    end
+    with type 'a t := (Key.t, 'a, Key.comparator_witness) t
 end

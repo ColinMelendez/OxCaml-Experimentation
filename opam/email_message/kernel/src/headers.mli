@@ -58,6 +58,7 @@ module Common : sig
   val date : string
   val message_id : string
   val list_id : string
+  val received : string
 end
 
 module Value : sig
@@ -81,7 +82,7 @@ end
 (*_ The add and set functions are same as in Field_list, except they add a space before
     the value. *)
 
-type t [@@deriving compare, hash, sexp_of, equal]
+type t : value mod contended portable [@@deriving compare, hash, sexp_of, equal]
 
 (** [eol] defaults to `LF *)
 val to_string_monoid : ?eol:Lf_or_crlf.t -> t -> String_monoid.t

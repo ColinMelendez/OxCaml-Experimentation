@@ -37,7 +37,7 @@ let[@inline always] is_invalid span =
 let span_since_start_of_day_is_valid span = not (is_invalid span)
 let of_span_since_start_of_day_unchecked span = span
 
-let of_span_since_start_of_day_exn span =
+let[@zero_alloc] of_span_since_start_of_day_exn span =
   if is_invalid span then input_out_of_bounds span else span
 ;;
 
@@ -50,7 +50,7 @@ let next t = of_span_since_start_of_day_opt (Span.next t)
 let prev t = of_span_since_start_of_day_opt (Span.prev t)
 let diff t u = Span.( - ) t u
 
-let create ?hr ?min ?sec ?ms ?us ?ns () =
+let[@zero_alloc] create ?hr ?min ?sec ?ms ?us ?ns () =
   (* Similar to [Time.Ofday.create], if we detect a leap second we strip off all
      sub-second elements so that HH:MM:60.XXXXXXXXX is all mapped to HH:MM:60. *)
   let ms, us, ns =
@@ -268,6 +268,7 @@ include%template
     let module_name = "Core.Time_ns.Ofday"
   end)
 
+let%template[@alloc a = stack] to_string = (Stable.V1.to_string [@alloc a])
 let%template[@alloc a = stack] sexp_of_t = (Stable.V1.sexp_of_t [@alloc a])
 
 include%template (
@@ -336,7 +337,8 @@ let every =
     else if Span.( <= ) span Span.zero
     then
       Or_error.error_s
-        [%message "[Time_ns.Ofday.every] called with negative span" ~_:(span : Span.t)]
+        [%message
+          "[Time_ns.Ofday.every] called with non-positive span" ~_:(span : Span.t)]
     else if is_invalid span
     then Ok [ start ]
     else Ok (every_valid_ofday_span span ~start ~stop ~acc:[])

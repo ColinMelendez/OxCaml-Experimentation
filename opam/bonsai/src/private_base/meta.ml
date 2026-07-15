@@ -1,39 +1,41 @@
 open! Core
 open! Import
 
-let unit_type_id = Type_equal.Id.create ~name:"unit" [%sexp_of: unit]
-let nothing_type_id = Type_equal.Id.create ~name:"Nothing.t" [%sexp_of: Nothing.t]
+let unit_var_id = Var_id.create ()
+let nothing_var_id = Var_id.create ()
 
 module type Type_id = sig
   type 'a t [@@deriving sexp_of]
 
   val same_witness : 'a t -> 'b t -> ('a, 'b) Type_equal.t option
   val same_witness_exn : 'a t -> 'b t -> ('a, 'b) Type_equal.t
-  val to_type_id : 'a t -> 'a Type_equal.Id.t
-  val to_sexp : 'a t -> 'a -> Sexp.t
+  val to_var_id : 'a t -> 'a Var_id.t
   val nothing : Nothing.t t
   val unit : unit t
 end
 
 module Model = struct
   type 'a id =
-    | Leaf : { type_id : 'a Type_equal.Id.t } -> 'a id
+    | Leaf :
+        { var_id : 'a Var_id.t
+        ; name : string
+        }
+        -> 'a id
     | Tuple :
         { a : 'a id
         ; b : 'b id
         }
         -> ('a * 'b) id
-    | Optional : 'a id -> 'a option id
     | Map :
-        { k : 'k Type_equal.Id.t
-        ; cmp : 'cmp Type_equal.Id.t
+        { k : 'k Var_id.t
+        ; cmp : 'cmp Var_id.t
         ; by : 'result id
         }
         -> ('k, 'result, 'cmp) Map.t id
     | Map_on :
-        { k_model : 'k_model Type_equal.Id.t
-        ; k_io : 'k_io Type_equal.Id.t
-        ; cmp : 'cmp_model Type_equal.Id.t
+        { k_model : 'k_model Var_id.t
+        ; k_io : 'k_io Var_id.t
+        ; cmp : 'cmp_model Var_id.t
         ; by : 'result id
         }
         -> ('k_model, 'k_io * 'result, 'cmp_model) Map.t id
@@ -57,10 +59,9 @@ module Model = struct
     type 'a t = 'a id
 
     let rec sexp_of_t : type a. (a -> Sexp.t) -> a t -> Sexp.t =
-      fun sexp_of_a -> function
-      | Leaf { type_id } -> [%sexp (type_id : a Type_equal.Id.t)]
+      fun _sexp_of_a -> function
+      | Leaf { name; _ } -> [%sexp (name : string)]
       | Tuple { a; b } -> [%sexp (a : opaque t), (b : opaque t)]
-      | Optional a -> [%sexp `optional (a : opaque t)]
       | Map { by; _ } -> [%sexp (by : opaque t)]
       | Map_on { by; _ } -> [%sexp (by : opaque t)]
       | Multi_model { multi_model } ->
@@ -70,72 +71,27 @@ module Model = struct
         [%sexp (multi_model : hidden Int.Map.t)]
     ;;
 
-    let rec to_sexp : type a. a t -> a -> Sexp.t = function
-      | Leaf { type_id } -> Type_equal.Id.to_sexp type_id
-      | Tuple { a = a_t; b = b_t } ->
-        let sexp_of_a = to_sexp a_t in
-        let sexp_of_b = to_sexp b_t in
-        [%sexp_of: a * b]
-      | Optional a_t ->
-        let sexp_of_a = sexp_of_option (to_sexp a_t) in
-        [%sexp_of: a]
-      | Map { k; by; _ } ->
-        let result : type k by. k Type_equal.Id.t -> by id -> (k, by, _) Map.t -> Sexp.t =
-          fun k by ->
-          let module Key = struct
-            type t = k
-
-            let sexp_of_t : t -> Sexp.t = Type_equal.Id.to_sexp k
-          end
-          in
-          let sexp_of_by = to_sexp by in
-          [%sexp_of: by Map.M(Key).t]
-        in
-        result k by
-      | Map_on { k_model; k_io; by; _ } ->
-        let result (type k_model) (k_model : k_model Type_equal.Id.t) k_io by =
-          let module Key = struct
-            type t = k_model
-
-            let sexp_of_t : t -> Sexp.t = Type_equal.Id.to_sexp k_model
-          end
-          in
-          let sexp_of_by = to_sexp by in
-          let sexp_of_k_io = Type_equal.Id.to_sexp k_io in
-          [%sexp_of: (k_io * by) Map.M(Key).t]
-        in
-        result k_model k_io by
-      | Multi_model _ ->
-        let sexp_of_hidden (T { info = { type_id; _ }; _ }) =
-          sexp_of_t sexp_of_opaque type_id
-        in
-        [%sexp_of: hidden Int.Map.t]
-    ;;
-
     exception Fail
 
-    let type_equal_id_same_witness = Type_equal.Id.same_witness
+    let var_id_same_witness = Var_id.same_witness
 
     let rec same_witness : type a b. a t -> b t -> (a, b) Type_equal.t option =
       fun a b ->
       match a, b with
-      | Leaf a, Leaf b -> type_equal_id_same_witness a.type_id b.type_id
+      | Leaf a, Leaf b -> var_id_same_witness a.var_id b.var_id
       | Tuple a, Tuple b ->
         let%bind.Option T = same_witness a.a b.a in
         let%bind.Option T = same_witness a.b b.b in
         Some (Type_equal.T : (a, b) Type_equal.t)
-      | Optional a, Optional b ->
-        let%bind.Option T = same_witness a b in
-        Some (Type_equal.T : (a, b) Type_equal.t)
       | Map a, Map b ->
-        let%bind.Option T = type_equal_id_same_witness a.k b.k in
-        let%bind.Option T = type_equal_id_same_witness a.cmp b.cmp in
+        let%bind.Option T = var_id_same_witness a.k b.k in
+        let%bind.Option T = var_id_same_witness a.cmp b.cmp in
         let%bind.Option T = same_witness a.by b.by in
         Some (Type_equal.T : (a, b) Type_equal.t)
       | Map_on a, Map_on b ->
-        let%bind.Option T = type_equal_id_same_witness a.k_io b.k_io in
-        let%bind.Option T = type_equal_id_same_witness a.k_model b.k_model in
-        let%bind.Option T = type_equal_id_same_witness a.cmp b.cmp in
+        let%bind.Option T = var_id_same_witness a.k_io b.k_io in
+        let%bind.Option T = var_id_same_witness a.k_model b.k_model in
+        let%bind.Option T = var_id_same_witness a.cmp b.cmp in
         let%bind.Option T = same_witness a.by b.by in
         Some (Type_equal.T : (a, b) Type_equal.t)
       | Multi_model a, Multi_model b ->
@@ -149,35 +105,25 @@ module Model = struct
         then Some Type_equal.T
         else None
       | Leaf _, Tuple _
-      | Leaf _, Optional _
       | Leaf _, Map _
       | Leaf _, Map_on _
       | Leaf _, Multi_model _
       | Tuple _, Leaf _
-      | Tuple _, Optional _
       | Tuple _, Map _
       | Tuple _, Map_on _
       | Tuple _, Multi_model _
       | Map _, Leaf _
       | Map _, Tuple _
-      | Map _, Optional _
       | Map _, Map_on _
       | Map _, Multi_model _
       | Map_on _, Leaf _
       | Map_on _, Tuple _
-      | Map_on _, Optional _
       | Map_on _, Map _
       | Map_on _, Multi_model _
       | Multi_model _, Leaf _
       | Multi_model _, Tuple _
-      | Multi_model _, Optional _
       | Multi_model _, Map _
-      | Multi_model _, Map_on _
-      | Optional _, Leaf _
-      | Optional _, Tuple _
-      | Optional _, Map _
-      | Optional _, Map_on _
-      | Optional _, Multi_model _ -> None
+      | Multi_model _, Map_on _ -> None
     ;;
 
     let same_witness_exn a b =
@@ -186,9 +132,9 @@ module Model = struct
       | Some proof -> proof
     ;;
 
-    let to_type_id _ = Type_equal.Id.create ~name:"module tree type id" [%sexp_of: opaque]
-    let unit = Leaf { type_id = unit_type_id }
-    let nothing = Leaf { type_id = nothing_type_id }
+    let to_var_id _ = Var_id.create ()
+    let unit = Leaf { var_id = unit_var_id; name = "unit" }
+    let nothing = Leaf { var_id = nothing_var_id; name = "Nothing.t" }
   end
 
   let unit =
@@ -260,8 +206,12 @@ module Model = struct
 
   let of_module ~sexp_of_model ~equal ~default ~name =
     let equal = Option.value ~default:[%eta2 phys_equal] equal in
-    let type_id = Type_equal.Id.create ~name:(sprintf "%s-model" name) sexp_of_model in
-    { type_id = Leaf { type_id }; default; equal; sexp_of = sexp_of_model }
+    let var_id = Var_id.create () in
+    { type_id = Leaf { var_id; name = sprintf "%s-model" name }
+    ; default
+    ; equal
+    ; sexp_of = sexp_of_model
+    }
   ;;
 
   module Hidden = struct
@@ -293,8 +243,7 @@ module Model = struct
     let lazy_ =
       { default = None
       ; equal = [%equal: t option]
-      ; type_id =
-          Leaf { type_id = Type_equal.Id.create ~name:"lazy-model" [%sexp_of: t option] }
+      ; type_id = Leaf { var_id = Var_id.create (); name = "lazy-model" }
       ; sexp_of = [%sexp_of: t option]
       }
     ;;
@@ -312,7 +261,7 @@ module Multi_model = struct
     [%sexp_of: Model.Hidden.t Map.M(K).t]
   ;;
 
-  let find_exn = Map.find_exn
+  let find_exn t key = Map.find_exn t key
   let set = Map.set
   let to_models, of_models = Fn.id, Fn.id
 
@@ -332,13 +281,9 @@ module Input = struct
   let same_witness = Type_id.same_witness
   let same_witness_exn = Type_id.same_witness_exn
   let unit = Type_id.unit
-
-  let create ?(name = "input") () =
-    Model.Leaf { type_id = Type_equal.Id.create ~name sexp_of_opaque }
-  ;;
-
+  let create ?(name = "input") () = Model.Leaf { var_id = Var_id.create (); name }
   let both a b = Model.Tuple { a; b }
-  let map k cmp by = Model.Optional (Model.Map { k; cmp; by })
+  let map k cmp by = Model.Map { k; cmp; by }
 
   module Hidden = struct
     type 'a input = 'a t
@@ -351,12 +296,7 @@ module Input = struct
           }
           -> 'key t
 
-    let unit : unit t input =
-      Leaf { type_id = Type_equal.Id.create ~name:"lazy input" sexp_of_opaque }
-    ;;
-
-    let int : int t option input =
-      Optional (Leaf { type_id = Type_equal.Id.create ~name:"enum input" sexp_of_opaque })
-    ;;
+    let unit : unit t input = Leaf { var_id = Var_id.create (); name = "lazy input" }
+    let int : int t input = Leaf { var_id = Var_id.create (); name = "enum input" }
   end
 end

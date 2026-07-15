@@ -97,21 +97,19 @@ module Util = struct
     [%%template
     [@@@mode.default m = (global, local)]
 
-    external%template equal
+    external equal
       :  (float32[@local_opt])
       -> (float32[@local_opt])
       -> bool
       @@ portable
       = "%equal"
-    [@@mode __ = (local, global)]
 
-    external%template compare
+    external compare
       :  (float32[@local_opt])
       -> (float32[@local_opt])
       -> int
       @@ portable
       = "%compare"
-    [@@mode __ = (local, global)]
 
     let max (x : float32) y =
       let geq = x >= y in
@@ -274,12 +272,6 @@ let one_ulp dir t =
           | `Up -> 1l
           | `Down -> -1l))
 ;;
-
-external ceil : local_ t -> t @@ portable = "caml_ceil_float32_bytecode" "ceilf"
-[@@unboxed] [@@noalloc]
-
-external floor : local_ t -> t @@ portable = "caml_floor_float32_bytecode" "floorf"
-[@@unboxed] [@@noalloc]
 
 external mod_float
   :  local_ t
@@ -488,78 +480,6 @@ let to_int f =
       ()
 ;;
 
-(* The performance of the "exn" rounding functions is important, so they are written out
-   separately, and tuned individually. (We could have the option versions call the "exn"
-   versions, but that imposes arguably gratuitous overhead---especially in the case where
-   the capture of backtraces is enabled upon "with"---and that seems not worth it when
-   compared to the relatively small amount of code duplication.) *)
-
-let iround_up t =
-  if t > 0.0s
-  then (
-    let t' = ceil t in
-    if t' <= iround_ubound then Some (to_int_unchecked t') else None)
-  else if t >= iround_lbound
-  then Some (to_int_unchecked t)
-  else None
-;;
-
-let[@ocaml.inline always] iround_up_exn t =
-  if t > 0.0s
-  then (
-    let t' = ceil t in
-    if t' <= iround_ubound
-    then to_int_unchecked t'
-    else invalid_argf "Float32.iround_up_exn: argument (%f) is too large" (to_float t) ())
-  else if t >= iround_lbound
-  then to_int_unchecked t
-  else
-    invalid_argf
-      "Float32.iround_up_exn: argument (%f) is too small or NaN"
-      (to_float t)
-      ()
-;;
-
-let iround_down t =
-  if t >= 0.0s
-  then if t <= iround_ubound then Some (to_int_unchecked t) else None
-  else (
-    let t' = floor t in
-    if t' >= iround_lbound then Some (to_int_unchecked t') else None)
-;;
-
-let[@ocaml.inline always] iround_down_exn t =
-  if t >= 0.0s
-  then
-    if t <= iround_ubound
-    then to_int_unchecked t
-    else
-      invalid_argf "Float32.iround_down_exn: argument (%f) is too large" (to_float t) ()
-  else (
-    let t' = floor t in
-    if t' >= iround_lbound
-    then to_int_unchecked t'
-    else
-      invalid_argf
-        "Float32.iround_down_exn: argument (%f) is too small or NaN"
-        (to_float t)
-        ())
-;;
-
-let iround_towards_zero t =
-  if t >= iround_lbound && t <= iround_ubound then Some (to_int_unchecked t) else None
-;;
-
-let[@ocaml.inline always] iround_towards_zero_exn t =
-  if t >= iround_lbound && t <= iround_ubound
-  then to_int_unchecked t
-  else
-    invalid_argf
-      "Float32.iround_towards_zero_exn: argument (%f) is out of range or NaN"
-      (to_float t)
-      ()
-;;
-
 (* Outside of the range (round_nearest_lb..round_nearest_ub), all representable doubles
    are integers in the mathematical sense, and [round_nearest] should be identity.
 
@@ -591,6 +511,129 @@ let[@ocaml.inline always] add_half_for_round_nearest t = exclave_
      else 0.5s)
 ;;
 
+module Rounding_intrinsics = struct
+  external iround_current
+    :  t @ local
+    -> int64
+    @@ portable
+    = "caml_simd_cast_float32_int64_bytecode" "caml_simd_cast_float32_int64"
+  [@@noalloc] [@@unboxed] [@@builtin]
+
+  external round_current
+    :  t @ local
+    -> t
+    @@ portable
+    = "caml_simd_float32_round_current_bytecode" "caml_simd_float32_round_current"
+  [@@noalloc] [@@unboxed] [@@builtin]
+
+  external round_down
+    :  t @ local
+    -> t
+    @@ portable
+    = "caml_simd_float32_round_neg_inf_bytecode" "caml_simd_float32_round_neg_inf"
+  [@@noalloc] [@@unboxed] [@@builtin]
+
+  external round_up
+    :  t @ local
+    -> t
+    @@ portable
+    = "caml_simd_float32_round_pos_inf_bytecode" "caml_simd_float32_round_pos_inf"
+  [@@noalloc] [@@unboxed] [@@builtin]
+
+  external round_towards_zero
+    :  t @ local
+    -> t
+    @@ portable
+    = "caml_simd_float32_round_towards_zero_bytecode"
+      "caml_simd_float32_round_towards_zero"
+  [@@noalloc] [@@unboxed] [@@builtin]
+end
+
+let round_down = Rounding_intrinsics.round_down
+let round_up = Rounding_intrinsics.round_up
+let round_towards_zero = Rounding_intrinsics.round_towards_zero
+
+(* see the comment above [round_nearest_lb] and [round_nearest_ub] for an explanation *)
+let[@ocaml.inline] round_nearest_inline t =
+  if t > round_nearest_lb && t < round_nearest_ub
+  then round_down (add_half_for_round_nearest t) [@nontail]
+  else box t
+;;
+
+let round_nearest t = (round_nearest_inline [@ocaml.inlined always]) t
+
+(* The performance of the "exn" rounding functions is important, so they are written out
+   separately, and tuned individually. (We could have the option versions call the "exn"
+   versions, but that imposes arguably gratuitous overhead---especially in the case where
+   the capture of backtraces is enabled upon "with"---and that seems not worth it when
+   compared to the relatively small amount of code duplication.) *)
+
+let iround_up t =
+  if t > 0.0s
+  then (
+    let t' = round_up t in
+    if t' <= iround_ubound then Some (to_int_unchecked t') else None)
+  else if t >= iround_lbound
+  then Some (to_int_unchecked t)
+  else None
+;;
+
+let[@ocaml.inline always] iround_up_exn t =
+  if t > 0.0s
+  then (
+    let t' = round_up t in
+    if t' <= iround_ubound
+    then to_int_unchecked t'
+    else invalid_argf "Float32.iround_up_exn: argument (%f) is too large" (to_float t) ())
+  else if t >= iround_lbound
+  then to_int_unchecked t
+  else
+    invalid_argf
+      "Float32.iround_up_exn: argument (%f) is too small or NaN"
+      (to_float t)
+      ()
+;;
+
+let iround_down t =
+  if t >= 0.0s
+  then if t <= iround_ubound then Some (to_int_unchecked t) else None
+  else (
+    let t' = round_down t in
+    if t' >= iround_lbound then Some (to_int_unchecked t') else None)
+;;
+
+let[@ocaml.inline always] iround_down_exn t =
+  if t >= 0.0s
+  then
+    if t <= iround_ubound
+    then to_int_unchecked t
+    else
+      invalid_argf "Float32.iround_down_exn: argument (%f) is too large" (to_float t) ()
+  else (
+    let t' = round_down t in
+    if t' >= iround_lbound
+    then to_int_unchecked t'
+    else
+      invalid_argf
+        "Float32.iround_down_exn: argument (%f) is too small or NaN"
+        (to_float t)
+        ())
+;;
+
+let iround_towards_zero t =
+  if t >= iround_lbound && t <= iround_ubound then Some (to_int_unchecked t) else None
+;;
+
+let[@ocaml.inline always] iround_towards_zero_exn t =
+  if t >= iround_lbound && t <= iround_ubound
+  then to_int_unchecked t
+  else
+    invalid_argf
+      "Float32.iround_towards_zero_exn: argument (%f) is out of range or NaN"
+      (to_float t)
+      ()
+;;
+
 let iround_nearest t =
   if t >= 0.s
   then
@@ -600,7 +643,7 @@ let iround_nearest t =
     then Some (to_int_unchecked t)
     else None
   else if t > round_nearest_lb
-  then Some (to_int_unchecked (floor (add t 0.5s)))
+  then Some (to_int_unchecked (round_down (add t 0.5s)))
   else if t >= iround_lbound
   then Some (to_int_unchecked t)
   else None
@@ -619,7 +662,7 @@ let[@ocaml.inline always] iround_nearest_exn t =
         (to_float t)
         ()
   else if t > round_nearest_lb
-  then to_int_unchecked (floor (add t 0.5s))
+  then to_int_unchecked (round_down (add t 0.5s))
   else if t >= iround_lbound
   then to_int_unchecked t
   else
@@ -665,53 +708,11 @@ end
 
 external modf : local_ t -> Parts.t @@ portable = "caml_modf_float32"
 
-module Rounding_intrinsics = struct
-  external iround_current_mode
-    :  t @ local
-    -> int64
-    @@ portable
-    = "caml_simd_cast_float32_int64_bytecode" "caml_simd_cast_float32_int64"
-  [@@noalloc] [@@unboxed] [@@builtin]
-
-  external round_current_mode
-    :  t @ local
-    -> t
-    @@ portable
-    = "caml_simd_float32_round_current_bytecode" "caml_simd_float32_round_current"
-  [@@noalloc] [@@unboxed] [@@builtin]
-
-  external round_down
-    :  t @ local
-    -> t
-    @@ portable
-    = "caml_simd_float32_round_neg_inf_bytecode" "caml_simd_float32_round_neg_inf"
-  [@@noalloc] [@@unboxed] [@@builtin]
-
-  external round_up
-    :  t @ local
-    -> t
-    @@ portable
-    = "caml_simd_float32_round_pos_inf_bytecode" "caml_simd_float32_round_pos_inf"
-  [@@noalloc] [@@unboxed] [@@builtin]
-
-  external round_towards_zero
-    :  t @ local
-    -> t
-    @@ portable
-    = "caml_simd_float32_round_towards_zero_bytecode"
-      "caml_simd_float32_round_towards_zero"
-  [@@noalloc] [@@unboxed] [@@builtin]
-end
-
-let round_down = Rounding_intrinsics.round_down
-let round_up = Rounding_intrinsics.round_up
-let round_towards_zero = Rounding_intrinsics.round_towards_zero
-
 let round_nearest_half_to_even' t =
   if t <= round_nearest_lb || t >= round_nearest_ub
   then box t
   else (
-    let floor = floor t in
+    let floor = round_down t in
     (* [ceil_or_succ = if t is an integer then t +. 1.s else ceil t]. Faster than [ceil]. *)
     let ceil_or_succ = add floor 1.s in
     let diff_floor = sub t floor in
@@ -734,25 +735,16 @@ let iround_nearest_half_to_even' t =
 let round_nearest_half_to_even =
   (* We only assume the current rounding mode is half-to-even in native code. *)
   match Sys.backend_type with
-  | Native -> Rounding_intrinsics.round_current_mode
+  | Native -> Rounding_intrinsics.round_current
   | _ -> round_nearest_half_to_even'
 ;;
 
 let iround_nearest_half_to_even =
   (* We only assume the current rounding mode is half-to-even in native code. *)
   match Sys.backend_type with
-  | Native -> Rounding_intrinsics.iround_current_mode
+  | Native -> Rounding_intrinsics.iround_current
   | _ -> iround_nearest_half_to_even'
 ;;
-
-(* see the comment above [round_nearest_lb] and [round_nearest_ub] for an explanation *)
-let[@ocaml.inline] round_nearest_inline t =
-  if t > round_nearest_lb && t < round_nearest_ub
-  then round_down (add_half_for_round_nearest t) [@nontail]
-  else box t
-;;
-
-let round_nearest t = (round_nearest_inline [@ocaml.inlined always]) t
 
 let round ?(dir = `Nearest) t =
   match dir with
@@ -828,7 +820,7 @@ let to_padded_compact_string_custom t ?(prefix = "") ~kilo ~mega ~giga ~tera ?pe
      [abs numerator < 2e52]) this should be accurate. Otherwise, the result might be a
      little bit off, but we don't really use that case. *)
   let iround_ratio_exn ~numerator ~denominator =
-    let k = floor (div numerator denominator) in
+    let k = round_down (div numerator denominator) in
     (* if [abs k < 2e53], then both [k] and [k +. 1.] are accurately represented, and in
        particular [k +. 1. > k]. If [denominator] is also an integer, and
        [abs (denominator *. (k +. 1)) < 2e53] (and in some other cases, too), then [lower]

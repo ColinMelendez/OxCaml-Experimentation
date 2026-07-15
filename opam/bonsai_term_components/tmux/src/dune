@@ -1,0 +1,9 @@
+(library
+ (name bonsai_term_tmux)
+ (public_name bonsai_term_components.tmux)
+ (libraries patdiff.ansi_text async bonsai_term
+   bonsai_term_ansi_text_renderer bonsai_term_color_scheme core core_unix
+   bonsai.kernel_components.effect_sequencer jane_term_types pending_or_error
+   core_kernel.reversed_list tmux)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai ppx_delta_types)))

@@ -394,6 +394,68 @@ module State_rpc = struct
   ;;
 end
 
+module State_rpc' = struct
+  open Async_rpc_kernel
+
+  let singleton rpc =
+    Nonempty_list.singleton { dispatch = Rpc.State_rpc.dispatch' rpc; rpc = State rpc }
+  ;;
+
+  let add = adder ~f:singleton
+  let map_query = map_query
+
+  let map_state t =
+    Tilde_f.Let_syntax.(
+      map_response t
+      >>= Deferred.map
+      >>= Tilde_f.of_local_k Result.map
+      >>= Tilde_f.of_local_k Result.map
+      >>= Tuple3.map_fst)
+  ;;
+
+  let filter_map_update t =
+    let open Tilde_f.Let_syntax in
+    map_response t
+    >>= Deferred.map
+    >>= Tilde_f.of_local_k Result.map
+    >>= Tilde_f.of_local_k Result.map
+    >>= Tuple3.map_snd
+    >>= Pipe.filter_map ?max_queue_length:None
+  ;;
+
+  let map_update t =
+    let open Tilde_f.Let_syntax in
+    map_response t
+    >>= Deferred.map
+    >>= Tilde_f.of_local_k Result.map
+    >>= Tilde_f.of_local_k Result.map
+    >>= Tuple3.map_snd
+    >>= Pipe_extended.map_batched
+  ;;
+
+  let map_error t =
+    Tilde_f.Let_syntax.(
+      map_response t
+      >>= Deferred.map
+      >>= Tilde_f.of_local_k Result.map
+      >>= Tilde_f.of_local_k Result.map_error)
+  ;;
+
+  let to_state_rpc_style caller =
+    Nonempty_list.map caller ~f:(fun { dispatch; rpc } ->
+      { rpc
+      ; dispatch =
+          (fun conn query ->
+            dispatch conn query
+            >>| Rpc_result.or_error
+                  ~rpc_description:(Generic_rpc.description rpc)
+                  ~connection_description:(Rpc.Connection.description conn)
+                  ~connection_close_started:
+                    (Rpc.Connection.close_reason conn ~on_close:`started))
+      })
+  ;;
+end
+
 module One_way = struct
   open Async_rpc_kernel
 
@@ -451,6 +513,41 @@ module Streamable_plain_rpc = struct
   ;;
 end
 
+module Streamable_plain_rpc' = struct
+  let singleton rpc =
+    Nonempty_list.singleton
+      { dispatch = Streamable.Plain_rpc.dispatch_with_rpc_result rpc
+      ; rpc = Streamable_plain rpc
+      }
+  ;;
+
+  let add = adder ~f:singleton
+  let map_query = map_query
+
+  let map_response t =
+    Tilde_f.Let_syntax.(
+      map_response t
+      >>= Deferred.map
+      >>= Tilde_f.of_local_k Result.map
+      >>= Tilde_f.of_local_k Or_error.map)
+  ;;
+
+  let to_streamable_plain_rpc_style caller =
+    Nonempty_list.map caller ~f:(fun { dispatch; rpc } ->
+      { rpc
+      ; dispatch =
+          (fun conn query ->
+            dispatch conn query
+            >>| Rpc_result.or_error
+                  ~rpc_description:(Generic_rpc.description rpc)
+                  ~connection_description:
+                    (Async_rpc_kernel.Rpc.Connection.description conn)
+                  ~connection_close_started:
+                    (Async_rpc_kernel.Rpc.Connection.close_reason conn ~on_close:`started))
+      })
+  ;;
+end
+
 module Streamable_pipe_rpc = struct
   let dispatch_multi = dispatch_multi_or_error_deferred
 
@@ -468,6 +565,7 @@ module Streamable_pipe_rpc = struct
       >>= Deferred.map
       >>= Tilde_f.of_local_k Or_error.map
       >>= Tilde_f.of_local_k Or_error.map
+      >>= Tuple2.map_fst
       >>= Pipe.filter_map ?max_queue_length:None)
   ;;
 
@@ -477,6 +575,7 @@ module Streamable_pipe_rpc = struct
       >>= Deferred.map
       >>= Tilde_f.of_local_k Or_error.map
       >>= Tilde_f.of_local_k Or_error.map
+      >>= Tuple2.map_fst
       >>= Pipe_extended.map_batched)
   ;;
 end
@@ -498,7 +597,7 @@ module Streamable_state_rpc = struct
       >>= Deferred.map
       >>= Tilde_f.of_local_k Or_error.map
       >>= Tilde_f.of_local_k Or_error.map
-      >>= Tuple2.map_fst)
+      >>= Tuple3.map_fst)
   ;;
 
   let filter_map_update t =
@@ -507,7 +606,7 @@ module Streamable_state_rpc = struct
       >>= Deferred.map
       >>= Tilde_f.of_local_k Or_error.map
       >>= Tilde_f.of_local_k Or_error.map
-      >>= Tuple2.map_snd
+      >>= Tuple3.map_snd
       >>= Pipe.filter_map ?max_queue_length:None)
   ;;
 
@@ -517,7 +616,7 @@ module Streamable_state_rpc = struct
       >>= Deferred.map
       >>= Tilde_f.of_local_k Or_error.map
       >>= Tilde_f.of_local_k Or_error.map
-      >>= Tuple2.map_snd
+      >>= Tuple3.map_snd
       >>= Pipe_extended.map_batched)
   ;;
 end

@@ -1,6 +1,5 @@
 open Core
 open Import
-open Hardcaml_waveterm_cyclesim
 
 module I = struct
   type 'a t =
@@ -127,7 +126,7 @@ let%expect_test "with valid Of_signal and Of_always functions and naming" =
     Circuit.create_exn ~name:"cut_through_latch_with_valid" [ out_valid; out_value ]
   in
   let sim = Cyclesim.create ~config:Cyclesim.Config.trace_all circuit in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let () =
     let open Bits in
     let clear = Cyclesim.in_port sim "clear" in
@@ -147,7 +146,7 @@ let%expect_test "with valid Of_signal and Of_always functions and naming" =
     in_value := of_int_trunc ~width:value_width 0x3;
     Cyclesim.cycle ~n:2 sim
   in
-  Waveform.print ~wave_width:1 ~signals_width:30 waves;
+  Hardcaml_waveterm_kernel.Waveform.print ~wave_width:1 ~signals_width:30 waves;
   [%expect
     {|
     ┌Signals─────────────────────┐┌Waves─────────────────────────────────┐
@@ -155,11 +154,11 @@ let%expect_test "with valid Of_signal and Of_always functions and naming" =
     │                            ││  └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ └─┘ │
     │clear                       ││────┐                                 │
     │                            ││    └───────────────────────────      │
-    │in_valid                    ││                ┌───────┐             │
-    │                            ││────────────────┘       └───────      │
     │                            ││────────────┬───────┬───┬───────      │
     │in_value                    ││ 00         │01     │02 │03           │
     │                            ││────────────┴───────┴───┴───────      │
+    │in_valid                    ││                ┌───────┐             │
+    │                            ││────────────────┘       └───────      │
     │out_valid                   ││                ┌───────────────      │
     │                            ││────────────────┘                     │
     │                            ││────────────────┬───┬───────────      │

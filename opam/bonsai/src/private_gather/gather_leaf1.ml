@@ -3,7 +3,18 @@ open! Bonsai_private_base.Import
 open! Bonsai_private_base
 open Incr.Let_syntax
 
-let f ~model ~input_id ~dynamic_action ~input ~time_source ~reset ~apply_action ~here =
+let f
+  ~model
+  ~input_id
+  ~dynamic_action
+  ~input
+  ~time_source
+  ~reset
+  ~apply_action
+  ~action_name
+  ~sexp_of_action
+  ~here
+  =
   let wrap_leaf inject = Action.dynamic_leaf >>> inject in
   let run ~environment ~fix_envs:_ ~path:_ ~model ~inject =
     annotate ~here Model model;
@@ -35,7 +46,7 @@ let f ~model ~input_id ~dynamic_action ~input ~time_source ~reset ~apply_action 
     (Computation.T
        { model
        ; input = input_id
-       ; action = Action.Type_id.leaf dynamic_action
+       ; action = Action.Type_id.leaf dynamic_action ~action_name ~sexp_of_action
        ; apply_action
        ; reset
        ; run

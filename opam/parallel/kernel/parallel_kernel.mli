@@ -5,33 +5,34 @@ open! Import
 module Hlist = Hlist
 
 (** [t] is the type of implementations of parallelism. Operations that produce parallel
-    tasks take a [t] that provides an implementation of parallelism for them to use. *)
-type t : value mod contended portable
+    subtasks take a [t] that provides an implementation of parallelism for them to use. *)
+type t : value mod contended non_float portable
 
-(** A trivial implementation of parallelism that runs all tasks sequentially. *)
+(** A trivial implementation of parallelism that runs all subtasks sequentially. *)
 val sequential : t
+
+(** [sync t] is an [Await.Sync.t] that may be used to acquire locks inside parallel
+    functions. To do nested parallelism while holding a lock, use [Parallel.Capsule]. *)
+val sync : t @ local -> Sync.t @ local
 
 module Thunk : sig
   type nonrec 'a t = t @ local -> 'a
 end
 
-(** [fork_join t fs] runs the functions in the heterogenous list [f] as parallel tasks and
-    returns their results. If any task raises, this operation will reraise the leftmost
-    exception after all tasks have completed or raised.
-
-    Child tasks must not block on each other or the parent task, but they may take locks. *)
+(** [fork_join t fs] runs the functions in the heterogenous list [f] as parallel subtasks
+    and returns their results. If any subtask raises, this operation will reraise the
+    leftmost exception after all subtasks have completed or raised. *)
 val fork_join : t @ local -> 'l Hlist.Gen(Thunk).t @ once shareable -> 'l Hlist.t
 
 (* $MDX part-begin=fork_join2 *)
 
-(** [fork_join2 t f g] runs [f] and [g] as parallel tasks and returns their results. If
-    either task raises, this operation will reraise the leftmost exception after both
-    tasks have completed or raised. Child tasks must not block on each other or the parent
-    task, but they may take locks.
+(** [fork_join2 t f g] runs [f] and [g] as parallel subtasks and returns their results. If
+    either subtask raises, this operation will reraise the leftmost exception after both
+    subtasks have completed or raised.
 
     [f] and [g] are [shareable], so can capture both [shared] and [uncontended]
-    references. This allows the tasks to read (but not mutate) state from the environment.
-    [f] is also [forkable], so cannot capture capsule passwords. *)
+    references. This allows the subtasks to read (but not mutate) state from the
+    environment. [f] is also [forkable], so cannot capture capsule passwords. *)
 val fork_join2
   :  t @ local
   -> (t @ local -> 'a) @ forkable local once shareable
@@ -68,14 +69,14 @@ val fork_join5
   -> #('a * 'b * 'c * 'd * 'e)
 
 module Biased : sig
-  (** Like {!fork_join2}, but runs the leftmost task in the current capsule. *)
+  (** Like {!fork_join2}, but runs the leftmost subtask in the current capsule. *)
   val fork_join2
     :  t @ local
     -> (t @ local -> 'a) @ local once
     -> (t @ local -> 'b) @ once portable
     -> #('a * 'b)
 
-  (** Like {!fork_join3}, but runs the leftmost task in the current capsule. *)
+  (** Like {!fork_join3}, but runs the leftmost subtask in the current capsule. *)
   val fork_join3
     :  t @ local
     -> (t @ local -> 'a) @ local once
@@ -83,7 +84,7 @@ module Biased : sig
     -> (t @ local -> 'c) @ once portable
     -> #('a * 'b * 'c)
 
-  (** Like {!fork_join4}, but runs the leftmost task in the current capsule. *)
+  (** Like {!fork_join4}, but runs the leftmost subtask in the current capsule. *)
   val fork_join4
     :  t @ local
     -> (t @ local -> 'a) @ local once
@@ -92,7 +93,7 @@ module Biased : sig
     -> (t @ local -> 'd) @ once portable
     -> #('a * 'b * 'c * 'd)
 
-  (** Like {!fork_join5}, but runs the leftmost task in the current capsule. *)
+  (** Like {!fork_join5}, but runs the leftmost subtask in the current capsule. *)
   val fork_join5
     :  t @ local
     -> (t @ local -> 'a) @ local once
@@ -103,7 +104,7 @@ module Biased : sig
     -> #('a * 'b * 'c * 'd * 'e)
 end
 
-(** [for_ t ~start ~stop ~f] runs [f t i] as a parallel task for each [i] in the range
+(** [for_ t ~start ~stop ~f] runs [f t i] as a parallel subtask for each [i] in the range
     [start..stop-1].
 
     If any invocation of [f] raises, this operation will reraise the leftmost exception.
@@ -140,55 +141,56 @@ val%template fold
   -> fork:(t @ local -> 'seq -> (#('seq * 'seq) Option_u.t[@kind seq & seq])) @ shareable
   -> join:(t @ local -> 'ret -> 'ret -> 'ret) @ shareable
   -> 'ret
-[@@kind acc = base_or_null, seq = (base_or_null, value_or_null & value_or_null)]
+[@@kind
+  acc = (base_or_null, value_or_null & base_or_null)
+  , seq = (base_or_null, value_or_null & value_or_null)]
 
-module Scheduler : sig
-  module type S = Parallel_scheduler_intf.S with type parallel := t
-  module type S_concurrent = Parallel_scheduler_intf.S_concurrent with type parallel := t
+(** [heartbeat t ~n] allows [n] subtasks to be promoted to tasks. If there are fewer than
+    [n] subtasks in the current queue, the remaining count will be used to eagerly promote
+    new subtasks. If [n < 0], the next [n] promotions will be skipped. *)
+val heartbeat : t @ local -> n:int -> unit
 
-  (** A trivial scheduler that runs all parallel tasks sequentially. *)
-  module Sequential : S
-
-  (** [heartbeat t ~n] allows [n] jobs to be promoted to parallel tasks. If there are
-      fewer than [n] tasks in the current queue, the remaining count will be used to
-      eagerly promote new tasks. If [n < 0], the next [n] promotions will be skipped. *)
-  val heartbeat : t @ local -> n:int -> unit
-end
+module Lazy : Await_sync.Expert.Lazy.S with type capability := t
 
 module For_scheduler : sig
   module Result = Result
 
-  (** [root_exn f ~promote ~wake] creates a top-level, schedulable task representing the
-      full execution of [f]. The functions [f], [promote], and [wake] must not raise
-      exceptions. All schedulers must use [root_exn] to create the initial portable
-      function they inject into the worker pool.
+  (** [root_exn f ~task ~subtask ~try_wake] creates a top-level, schedulable task
+      representing the full execution of [f]. The functions [f], [task], [subtask], and
+      [wake] must not raise exceptions. All schedulers must use [root_exn] to create the
+      initial portable function they inject into the worker pool.
 
-      The functions [promote] and [wake] define the behavior of the scheduler. When the
-      heartbeat mechanism determines enough work has occurred to amortize promotion
-      overhead, it calls [promote], which gives the scheduler an opportunity to distribute
-      tasks to other domains. After promoting [n] tasks, [wake ~n] is called, which tells
-      the scheduler how many workers it may want to wake up. If a heartbeat occurs during
-      [promote] or [wake], they may be re-entered.
+      The functions [task], [subtask], and [try_wake] define the behavior of the
+      scheduler. When the heartbeat mechanism determines enough work has occurred to
+      amortize promotion overhead, it calls [subtask], which gives the scheduler an
+      opportunity to distribute subtasks to other domains. After promoting [n] subtasks,
+      [try_wake ~n] is called, which tells the scheduler how many workers it may want to
+      wake up. If a heartbeat occurs during [subtask] or [try_wake], they may be
+      re-entered. Tasks scheduled from outside the scheduler - and tasks that suspend
+      using [Await.await await] or [Await.yield await] - are passed to [task] when
+      signaled.
 
       @raise Out_of_fibers if unable to allocate a fiber. *)
   val root_exn
     :  unit Thunk.t @ once portable
-    -> promote:((unit -> unit) @ once portable -> unit) @ portable
-    -> wake:(n:int -> unit) @ portable
-    -> lazy_:bool
-         (** Whether the fiber should be lazily allocated by its executor. If the executor
-             is unable to allocate a fiber, it will raise an exception to top level. *)
+    -> task:((unit -> unit) @ once portable -> unit) @ portable
+    -> subtask:((unit -> unit) @ once portable -> unit) @ portable
+    -> try_wake:(n:int -> unit) @ portable
     -> (unit -> unit) @ once portable
 
-  (** [await t trigger] suspends the current task until [trigger] is signaled, at which
-      point it will be re-promoted. *)
-  val await : t @ local -> Await.Trigger.t -> unit
+  (** [await t terminator] is an [Await.t] that suspends the current task and resubmits it
+      to the global queue when signaled. *)
+  val await : t @ local -> Terminator.t @ local -> Await.t @ local
 
   (** [with_heartbeat f] assures the heartbeat thread is running for the duration of [f]. *)
-  val with_heartbeat : (unit -> unit) @ local once -> unit
+  val with_heartbeat
+    : ('a : value_or_null).
+    (unit -> 'a @ once unique) @ local once -> 'a @ once unique
 
   (** [without_heartbeat f] masks heartbeats for the duration of [f]. *)
-  val without_heartbeat : ('a : value_or_null). (unit -> 'a) @ local once unyielding -> 'a
+  val without_heartbeat
+    : ('a : value_or_null).
+    (unit -> 'a @ once unique) @ local once unyielding -> 'a @ once unique
 end
 
 module For_testing : sig

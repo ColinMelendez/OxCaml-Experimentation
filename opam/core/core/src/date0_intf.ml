@@ -34,10 +34,15 @@ module type Date0 = sig @@ portable
       the month in question, numbers cannot be negative, years must be fully specified,
       etc. *)
   val create_exn : y:int -> m:Month.t -> d:int -> t
+  [@@zero_alloc]
 
   (** For details on this ISO format, see:
 
-      http://www.wikipedia.org/wiki/iso8601 *)
+      http://www.wikipedia.org/wiki/iso8601
+
+      Note: This function parses exactly 8 characters starting at [pos] and does not
+      validate that the substring is exactly 8 characters long. Trailing characters after
+      position [pos + 8] are silently ignored. *)
   val of_string_iso8601_basic : string -> pos:int -> t
 
   [%%template:
@@ -129,6 +134,21 @@ module type Date0 = sig @@ portable
 
       See the caveat on [is_weekend] about varying weekend/weekday cycles. *)
   val diff_weekend_days : t -> t -> int
+
+  (** [diff_business_days t1 t2 ~is_holiday] returns the number of business days in the
+      half-open interval \[t2,t1) if t1 >= t2, and
+      [- diff_business_days t2 t1 ~is_holiday] otherwise.
+
+      By default, weekdays are Monday through Friday. If your use case has a different
+      weekend/weekday cycle, pass a custom [is_weekday] function.
+
+      Time complexity: [O(|diff t1 t2|)] *)
+  val diff_business_days
+    :  ?is_weekday:(Day_of_week.t -> bool)
+    -> t
+    -> t
+    -> is_holiday:(t -> bool)
+    -> int
 
   (** First rounds the given date backward to the previous weekday, if it is not already a
       weekday. Then advances by the given number of weekdays, which may be negative.
@@ -281,7 +301,7 @@ module type Date0 = sig @@ portable
   (** The starting date of the UNIX epoch: 1970-01-01 *)
   val unix_epoch : t
 
-  (** [gen] generates dates between 1900-01-01 and 2100-01-01. *)
+  (** [quickcheck_generator] generates dates between 1900-01-01 and 2100-01-01. *)
   include%template Quickcheckable.S_range [@mode portable] with type t := t
 
   (** [Days] provides a linear representation of dates that is optimized for arithmetic on
@@ -313,10 +333,11 @@ module type Date0 = sig @@ portable
       , equal ~localize
       , globalize
       , hash
-      , sexp
+      , sexp ~stackify
       , sexp_grammar]
 
-    include Immediate_option_intf.S_zero_alloc with type value := value and type t := t
+    include Immediate_option.S_zero_alloc with type value := value and type t := t
+    include Or_nullable.S_with_zero_alloc with type value := value and type t := t
 
     include%template Comparable.S_plain [@mode local] with type t := t
 

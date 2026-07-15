@@ -5,8 +5,7 @@ module type S = Render_intf.S
 
 module M = Render_intf.M
 
-module Make (Data : Data.S) (Wave : Wave.M(Data).S) (Waves : Waves.M(Data)(Wave).S) =
-struct
+module Make (Data : Hardcaml.Wave_data.S) = struct
   open Draw
   open Wave
 
@@ -32,16 +31,16 @@ struct
     else `Chars_per_cycle ((wave_width_code + 1) * 2)
   ;;
 
-  let wave_width (state : Waves.t) =
+  let wave_width (state : _ Waves.t) =
     let wave_width_code = state.cfg.wave_width in
     wave_width_of_code wave_width_code
   ;;
 
-  let get_max_signal_width_in_chars (state : Waves.t) =
+  let get_max_signal_width_in_chars (state : _ Waves.t) =
     Array.fold state.waves ~init:0 ~f:(fun m s -> max m (String.length (get_name s)))
   ;;
 
-  let get_max_value_width_in_chars (state : Waves.t) =
+  let get_max_value_width_in_chars (state : _ Waves.t) =
     let fold f a d =
       let len = Data.length d in
       let rec g a i = if i = len then a else g (f a (Data.get d i)) (i + 1) in
@@ -57,7 +56,7 @@ struct
       | _ -> m)
   ;;
 
-  let get_estimated_max_value_width (state : Waves.t) =
+  let get_estimated_max_value_width (state : _ Waves.t) =
     let unsigned_width =
       let table =
         Array.init 64 ~f:(fun i ->
@@ -101,7 +100,7 @@ struct
       max max_width (get_width (Wave.get_format wave)))
   ;;
 
-  let total_cycles_in_waveform (state : Waves.t) =
+  let total_cycles_in_waveform (state : _ Waves.t) =
     Array.fold state.waves ~init:0 ~f:(fun m d ->
       max
         m
@@ -109,9 +108,9 @@ struct
          | _ -> 0))
   ;;
 
-  let total_signals_in_waveform (state : Waves.t) = Array.length state.waves
+  let total_signals_in_waveform (state : _ Waves.t) = Array.length state.waves
 
-  let get_max_wave_width_in_chars (state : Waves.t) =
+  let get_max_wave_width_in_chars (state : _ Waves.t) =
     let total_cycles = total_cycles_in_waveform state in
     match wave_width state with
     | `Cycles_per_char cycles_per_char ->
@@ -119,7 +118,7 @@ struct
     | `Chars_per_cycle chars_per_cycle -> total_cycles * chars_per_cycle
   ;;
 
-  let get_max_wave_height_in_chars (state : Waves.t) start_signal =
+  let get_max_wave_height_in_chars (state : _ Waves.t) start_signal =
     let rec f acc i =
       if i < Array.length state.waves
       then (
@@ -175,6 +174,12 @@ struct
     | `Cycles_per_char _w -> draw_clock_cycles_per_char ~ctx ~style ~bounds ~cnt
   ;;
 
+  let draw_divider ~ctx ~style ~bounds ~wave_width:_ ~cnt =
+    for c = 0 to cnt - 1 do
+      draw_piece ~ctx ~style ~bounds ~r:0 ~c H_dash
+    done
+  ;;
+
   let get_data_bounds_clipped data i =
     let length = Data.length data in
     if length = 0
@@ -221,17 +226,52 @@ struct
     ;;
   end
 
-  let get_transition_data ~data ~chars_per_cycle ~off =
-    let rec f first_value i =
-      if i = chars_per_cycle
-      then true
-      else if Bits.equal first_value (get_data_bounds_clipped data (off + i))
-      then f first_value (i + 1)
-      else false
+  module To_render = struct
+    type 'a t =
+      { at_most_one_transition : bool
+      ; first : 'a
+      ; last : 'a
+      }
+
+    let bits_to_bool t =
+      { at_most_one_transition = t.at_most_one_transition
+      ; first = Bits.to_bool t.first
+      ; last = Bits.to_bool t.last
+      }
+    ;;
+  end
+
+  let get_transition_data ~(prev_bits : Bits.t option) ~data ~chars_per_cycle ~off =
+    let get_data i = get_data_bounds_clipped data (off + i) in
+    let rec find_first_diff value i =
+      if i >= chars_per_cycle
+      then None
+      else (
+        let cur = get_data i in
+        if Bits.equal value cur then find_first_diff value (i + 1) else Some (i, cur))
     in
-    let first_value = get_data_bounds_clipped data off in
-    if f first_value 1 then Some first_value else None
+    let all_the_same value i = find_first_diff value i |> Option.is_none in
+    let first = get_data 0 in
+    let last = get_data (Int.max 0 (chars_per_cycle - 1)) in
+    let at_most_one_transition =
+      match prev_bits with
+      | Some prev when not (Bits.equal prev first) ->
+        (* Count prev -> fist as one transition; check that there are no remaining
+           transitions. *)
+        all_the_same first 1
+      | None | Some _ ->
+        (* When there is no prev data or the first cycle is the same as the prev data,
+           allow one transition in the remaining cycles. *)
+        (match find_first_diff first 1 with
+         | None -> true
+         | Some (i, value) -> all_the_same value (i + 1))
+    in
+    { To_render.at_most_one_transition; first; last }
   ;;
+
+  module For_testing = struct
+    let get_transition_data = get_transition_data
+  end
 
   let draw_binary_data_chars_per_cycle ~ctx ~style ~(bounds : Rect.t) ~w ~data ~off =
     (* [w] represents the number of chars per cycle and must be 1 or more *)
@@ -259,18 +299,24 @@ struct
       then ()
       else (
         let cur_data =
-          get_transition_data ~data ~chars_per_cycle:w ~off:cycle
-          |> Option.map ~f:Bits.to_bool
+          get_transition_data
+            ~prev_bits:(Option.map prev_data ~f:Bits.of_bool)
+            ~data
+            ~chars_per_cycle:w
+            ~off:cycle
+          |> To_render.bits_to_bool
         in
+        let prev_data = Option.value prev_data ~default:cur_data.first in
         (match prev_data, cur_data with
-         | _, None -> Binary_rendering.fuzz ~ctx ~style ~bounds ~c
-         | (Some false | None), Some false ->
-           Binary_rendering.low ~ctx ~style ~bounds ~w:1 ~c
-         | Some true, Some false -> Binary_rendering.high_low ~ctx ~style ~bounds ~w:1 ~c
-         | Some false, Some true -> Binary_rendering.low_high ~ctx ~style ~bounds ~w:1 ~c
-         | (Some true | None), Some true ->
-           Binary_rendering.high ~ctx ~style ~bounds ~w:1 ~c);
-        f cur_data (c + 1) (cycle + w))
+         | _, { at_most_one_transition = false; _ } ->
+           Binary_rendering.fuzz ~ctx ~style ~bounds ~c
+         | false, { last = false; _ } -> Binary_rendering.low ~ctx ~style ~bounds ~w:1 ~c
+         | true, { last = false; _ } ->
+           Binary_rendering.high_low ~ctx ~style ~bounds ~w:1 ~c
+         | false, { last = true; _ } ->
+           Binary_rendering.low_high ~ctx ~style ~bounds ~w:1 ~c
+         | true, { last = true; _ } -> Binary_rendering.high ~ctx ~style ~bounds ~w:1 ~c);
+        f (Some cur_data.last) (c + 1) (cycle + w))
     in
     f None 0 off
   ;;
@@ -385,28 +431,41 @@ struct
             ~r:1
             ~c:(c - prev_data_space)
             ~max_length:prev_data_space
-            (to_str prev_data))
+            (to_str prev_data.To_render.last))
       in
       if c >= bounds.w || cycle >= Data.length data
       then draw_previous_text_data ()
       else (
-        let cur_data = get_transition_data ~data ~chars_per_cycle:w ~off:cycle in
+        let cur_data =
+          get_transition_data
+            ~prev_bits:(Option.map prev_data ~f:(fun p -> p.last))
+            ~data
+            ~chars_per_cycle:w
+            ~off:cycle
+        in
         match prev_data, cur_data with
-        | None, None ->
-          Data_rendering.fuzz ~ctx ~style ~bounds ~c;
-          f 0 None (c + 1) (cycle + w)
-        | Some _, None ->
+        | _, { at_most_one_transition = false; _ } ->
+          (* Multiple transitions internal to the character, fuzz *)
           draw_previous_text_data ();
           Data_rendering.fuzz ~ctx ~style ~bounds ~c;
           f 0 None (c + 1) (cycle + w)
-        | None, Some cur_data ->
+        | _, { first; last; _ } when not (Bits.equal first last) ->
+          (* One transition internal to the character, draw a transition *)
+          draw_previous_text_data ();
+          Data_rendering.transition ~ctx ~style ~bounds ~w:1 ~c;
+          f 0 (Some cur_data) (c + 1) (cycle + w)
+        | (None | Some { at_most_one_transition = false; _ }), _ ->
+          (* Previous character was fuzzed or doesn't exist, don't draw a transition in
+             this case. *)
           Data_rendering.extend ~ctx ~style ~bounds ~w:1 ~c;
           let prev_data_space_except_at_start = if c = 0 then 0 else 1 in
           f prev_data_space_except_at_start (Some cur_data) (c + 1) (cycle + w)
-        | Some prev_data, Some cur_data when Bits.equal prev_data cur_data ->
+        | Some { last = prev_data; _ }, { last = cur; _ } when Bits.equal prev_data cur ->
+          (* New data is the same as the old, extend *)
           Data_rendering.extend ~ctx ~style ~bounds ~w:1 ~c;
           f (prev_data_space + 1) (Some cur_data) (c + 1) (cycle + w)
-        | Some _, Some cur_data ->
+        | Some _, _ ->
+          (* New data is the different than the old, draw a transition *)
           draw_previous_text_data ();
           Data_rendering.transition ~ctx ~style ~bounds ~w:1 ~c;
           f 0 (Some cur_data) (c + 1) (cycle + w))
@@ -422,7 +481,7 @@ struct
       draw_data_cycles_per_char ~ctx ~style ~bounds ~to_str ~alignment ~w ~data ~off
   ;;
 
-  let rec draw_iter i (bounds : Rect.t) (state : Waves.t) f =
+  let rec draw_iter i (bounds : Rect.t) (state : _ Waves.t) f =
     if i < Array.length state.waves && bounds.h > 0
     then (
       let wah = Wave.get_height_in_chars state.waves.(i) in
@@ -431,7 +490,8 @@ struct
       draw_iter (i + 1) { bounds with r = bounds.r + wah; h = bounds.h - wah } state f)
   ;;
 
-  type 'a draw_item = ?style:Style.t -> ctx:Draw.ctx -> bounds:Rect.t -> Waves.t -> 'a
+  type 'a draw_item =
+    ?style:Style.t -> ctx:Draw.ctx -> bounds:Rect.t -> Data.t Waves.t -> 'a
 
   let with_border
     ~(draw : 'a draw_item)
@@ -454,7 +514,7 @@ struct
     | _ -> r
   ;;
 
-  let draw_cursor ~ctx ~(bounds : Rect.t) ~wave_cursor ~primary ~(state : Waves.t) =
+  let draw_cursor ~ctx ~(bounds : Rect.t) ~wave_cursor ~primary ~(state : _ Waves.t) =
     let c =
       let cycle_offset = wave_cursor - state.cfg.start_cycle in
       match wave_width state with
@@ -482,7 +542,7 @@ struct
     ~selected_wave_index
     ~ctx
     ~bounds
-    (state : Waves.t)
+    (state : _ Waves.t)
     =
     let wave_width = wave_width state in
     fill ~ctx ~bounds ~style ' ';
@@ -495,6 +555,9 @@ struct
       let off = state.cfg.start_cycle in
       (match wave with
        | Empty _ -> ()
+       | Divider { name = _; style } ->
+         maybe_fill ~bounds ~style:style.style;
+         draw_divider ~ctx ~style:style.style ~bounds ~wave_width ~cnt:bounds.w
        | Clock { name = _; style } ->
          maybe_fill ~bounds ~style:style.style;
          draw_clock_cycles ~ctx ~style:style.style ~bounds ~wave_width ~cnt:bounds.w
@@ -502,7 +565,7 @@ struct
          maybe_fill ~bounds ~style:style.style;
          let off = min (Data.length data - 1) off in
          draw_binary_data ~ctx ~style:style.style ~bounds ~wave_width ~data ~off
-       | Data { name = _; data; wave_format = _; text_alignment; style } ->
+       | Data { name = _; data; width = _; wave_format = _; text_alignment; style } ->
          maybe_fill ~bounds ~style:style.style;
          let off = min (Data.length data - 1) off in
          draw_data
@@ -570,7 +633,7 @@ struct
     ~selected_wave_index
     ~ctx
     ~bounds
-    (state : Waves.t)
+    (state : _ Waves.t)
     =
     fill ~ctx ~bounds ~style ' ';
     draw_iter state.cfg.start_signal bounds state (fun i bounds wave ->
@@ -620,7 +683,7 @@ struct
     ~selected_wave_index
     ~ctx
     ~bounds
-    (state : Waves.t)
+    (state : _ Waves.t)
     =
     fill ~ctx ~bounds ~style ' ';
     let off =
@@ -633,13 +696,13 @@ struct
       let wah = Wave.get_height_in_chars wave in
       let r = (wah - 1) / 2 in
       (match wave with
-       | Empty _ | Clock _ -> ()
+       | Empty _ | Divider _ | Clock _ -> ()
        | Binary { name = _; data; style = _ } ->
          let d = get_data_bounds_clipped data off in
          let str = Bits.to_bstr d in
          max_string_length := max !max_string_length (String.length str);
          draw_scroll_string_right ~ctx ~style ~bounds ~r ~c:state.cfg.value_scroll str
-       | Data { name = _; data; wave_format; text_alignment = _; style = _ } ->
+       | Data { name = _; data; width = _; wave_format; text_alignment = _; style = _ } ->
          let d = get_data_bounds_clipped data off in
          let to_str = Wave.get_to_str wave in
          let str = add_value_prefix wave_format.current d (to_str d) in
@@ -654,7 +717,7 @@ struct
     !max_string_length
   ;;
 
-  let draw_status ?(style = Style.default) ?wave_cursor ~ctx ~bounds (state : Waves.t) =
+  let draw_status ?(style = Style.default) ?wave_cursor ~ctx ~bounds (state : _ Waves.t) =
     fill ~ctx ~bounds ~style ' ';
     draw_string
       ~ctx
@@ -676,7 +739,7 @@ struct
     ?(style = Window_styles.default Style.default)
     ?(bounds : Window_bounds.t option)
     ~ctx
-    (state : Waves.t)
+    (state : _ Waves.t)
     =
     let bounds =
       match bounds with
@@ -750,7 +813,7 @@ struct
     | Status
     | No_pick
 
-  let pick ~(bounds : Window_bounds.t) ~r ~c (state : Waves.t) =
+  let pick ~(bounds : Window_bounds.t) ~r ~c (state : _ Waves.t) =
     let in_rect (b : Rect.t) = r >= b.r && c >= b.c && r < b.r + b.h && c < b.c + b.w in
     let get_signal_offset (b : Rect.t) =
       let r = r - b.r in
@@ -790,7 +853,7 @@ struct
       | Some _ -> 2
     ;;
 
-    let get_max_height border (state : Waves.t) =
+    let get_max_height border (state : _ Waves.t) =
       border_ext border + get_max_wave_height_in_chars state state.cfg.start_signal
     ;;
 

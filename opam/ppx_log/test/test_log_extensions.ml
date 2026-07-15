@@ -4,6 +4,25 @@ open! Async
 let log_output = Log.Output.stdout ~format:`Sexp_hum ()
 let create_log ~level = Log.create ~level ~output:[ log_output ] ~on_error:`Raise ()
 
+let%expect_test "basic logging" =
+  Log.Global.set_time_source
+    (Time_source.create () ~now:Time_ns.epoch |> Time_source.to_synchronous);
+  [%log "test"];
+  [%log.debug "test" (1 : int)];
+  [%log.info "test" (2 : int)];
+  [%log.warn "test" (3 : int)];
+  [%log.error "test" (4 : int)];
+  let%bind () = Log.Global.flushed () in
+  [%expect
+    {|
+    1969-12-31 19:00:00.000000-05:00 test
+    1969-12-31 19:00:00.000000-05:00 Info (test(2 2))
+    1969-12-31 19:00:00.000000-05:00 Warn (test(3 3))
+    1969-12-31 19:00:00.000000-05:00 Error (test(4 4))
+    |}];
+  return ()
+;;
+
 let%expect_test "logging with extra attributes" =
   let time = Time_float.of_span_since_epoch (sec 1.) in
   let my_level = `Error in
@@ -151,7 +170,7 @@ let%expect_test "logging with raw_message and `Raw format" =
   [%expect
     {|
     ((hi (i 1))
-     ((source "ppx/ppx_log/test/test_log_extensions.ml:137 (Ppx_log_test)")))
+     ((source "ppx/ppx_log/test/test_log_extensions.ml:156 (Ppx_log_test)")))
     |}];
   return ()
 ;;
@@ -159,6 +178,13 @@ let%expect_test "logging with raw_message and `Raw format" =
 let%expect_test "sexp option" =
   let something = Some 5 in
   [%log (something : (int option[@sexp.option])) (None : (int option[@sexp.option]))];
+  [%expect {| (something 5) |}];
+  return ()
+;;
+
+let%expect_test "sexp or_null" =
+  let something = This 5 in
+  [%log (something : (int or_null[@sexp.or_null])) (Null : (int or_null[@sexp.or_null]))];
   [%expect {| (something 5) |}];
   return ()
 ;;
@@ -193,6 +219,17 @@ let%expect_test "optional tags are the same as sexp options" =
   return ()
 ;;
 
+let%expect_test "optional tags are the same as sexp or_nulls" =
+  [%log
+    ""
+      ~this:(This 1 : (int or_null[@sexp.or_null]))
+      ?this_opt:(This 1 : int or_null)
+      ~null:(Null : (int or_null[@sexp.or_null]))
+      ?null_opt:(Null : int or_null)];
+  [%expect {| ((this 1)(this_opt 1)) |}];
+  return ()
+;;
+
 let%expect_test "logging nothing" =
   [%log "" ~_:(None : int option)];
   [%expect {| () |}];
@@ -222,6 +259,17 @@ module%test [@name "json"] _ = struct
     Deferred.unit
   ;;
 
+  let%expect_test "with sexp or_null" =
+    (* note: [jsonaf_of] is not derived for [or_null], this test just shows the json
+       representation of the bare [t] which [@sexp.or_null] renders [This] to *)
+    let my_t = This { users = [ "me"; "you" ] } in
+    [%log (my_t : (t or_null[@j] [@sexp.or_null]))];
+    [%expect {| (my_t(Object((users(Array((String me)(String you))))))) |}];
+    [%log (Null : (t or_null[@j] [@sexp.or_null]))];
+    [%expect {| () |}];
+    Deferred.unit
+  ;;
+
   let%expect_test "optional tags" =
     let my_t : t option = Some { users = [ "us"; "them" ] } in
     [%log (my_t : (t option[@j]))];
@@ -236,5 +284,115 @@ module%test [@name "json"] _ = struct
     [%expect
       {| ((my_t(Object((users(Array((String us)(String them)))))))(null_t Null)) |}];
     Deferred.unit
+  ;;
+end
+
+module%test [@name "list attribute"] _ = struct
+  let%expect_test "[@list] with int list" =
+    let log = create_log ~level:`Info in
+    let foos = [ 1; 2; 3 ] in
+    [%log.t.info log "processing foos" (foos : (int list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp ("processing foos" (foos 1) (foos 2) (foos 3)))) (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] with Time_ns.t list" =
+    let log = create_log ~level:`Info in
+    let times = Time_ns.[ epoch; next epoch ] in
+    [%log.t.info log "" (times : (Time_ns.t list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message
+         (Sexp
+          ((times (1969-12-31 19:00:00.000000000-05:00))
+           (times (1969-12-31 19:00:00.000000001-05:00)))))
+        (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] with sexp types" =
+    let log = create_log ~level:`Info in
+    let pairs = [ 1, "one"; 2, "two" ] in
+    [%log.t.info log "listing pairs" (pairs : ((int * string) list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp ("listing pairs" (pairs (1 one)) (pairs (2 two)))))
+        (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] with empty list" =
+    let log = create_log ~level:`Info in
+    let foos : int list = [] in
+    [%log.t.info log "empty list" (foos : (int list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp "empty list")) (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] alongside other tags" =
+    let log = create_log ~level:`Info in
+    let foos = [ 1; 2 ] in
+    [%log.t.info log "mixed" ~label:"hello" (foos : (int list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp (mixed (label hello) (foos 1) (foos 2)))) (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] with multiple lists" =
+    let log = create_log ~level:`Info in
+    let xs = [ 1; 2 ] in
+    let ys = [ "a"; "b" ] in
+    [%log.t.info log "multi" (xs : (int list[@list])) (ys : (string list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp (multi (xs 1) (xs 2) (ys a) (ys b)))) (tags ())))
+      |}];
+    return ()
+  ;;
+
+  let%expect_test "[@list] with labels" =
+    let log = create_log ~level:`Info in
+    let not_the_tag_i_want = [ 1; 2 ] in
+    [%log.t.info
+      log
+        "labelled"
+        ~_:(not_the_tag_i_want : (int list[@list]))
+        ~x:(not_the_tag_i_want : (int list[@list]))];
+    let%bind () = Log.flushed log in
+    [%expect
+      {|
+      (V2
+       ((time (1969-12-31 19:00:00.000000-05:00)) (level (Info))
+        (message (Sexp (labelled 1 2 (x 1) (x 2)))) (tags ())))
+      |}];
+    return ()
   ;;
 end

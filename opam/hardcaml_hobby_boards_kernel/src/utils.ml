@@ -5,7 +5,7 @@ open Signal
 let generate_clear { Clock_and_reset.I.clock_100; reset_n } =
   let reset_chain =
     reg_fb
-      (Reg_spec.create ~clock:clock_100 ~reset:reset_n ~reset_edge:Falling ())
+      (Reg_spec.create ~clock:clock_100 ~reset:reset_n ~reset_level:Low ())
       ~reset_to:(Bits.ones 16)
       ~width:16
       ~f:(fun d -> sll d ~by:1)

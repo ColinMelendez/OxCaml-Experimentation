@@ -77,7 +77,7 @@ module Make_stable (Bound : Bound_stable) = struct
   module Stable = struct
     module V1 = struct
       type t = Bound.t Interval.Stable.V1.t
-      [@@deriving bin_io, compare, hash, sexp, stable_witness]
+      [@@deriving bin_io, compare, equal, hash, sexp, stable_witness]
     end
   end
 end
@@ -88,7 +88,7 @@ module Make_stable_with_sexp_grammar (Bound : Bound_stable_with_sexp_grammar) = 
   module Stable = struct
     module V1 = struct
       type t = Bound.t Interval.Stable.V1.t
-      [@@deriving bin_io, compare, hash, sexp, stable_witness, sexp_grammar]
+      [@@deriving bin_io, compare, equal, hash, sexp, stable_witness, sexp_grammar]
     end
   end
 end

@@ -1,6 +1,6 @@
 (library
  (name unique)
  (public_name unique)
- (libraries base basement portable.kernel)
+ (libraries basement)
  (preprocess
   (pps ppx_template)))

@@ -1,6 +1,6 @@
 open! Core
 open! Bonsai_web
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Form = Bonsai_web_form.With_automatic_view
 
 let tomato = `Hex "#FF6347"
 
@@ -53,4 +53,4 @@ let component (local_ graph) =
     [ toggle_button; Form.view_as_vdom color_form ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

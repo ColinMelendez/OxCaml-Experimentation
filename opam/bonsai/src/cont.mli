@@ -228,7 +228,7 @@ module Computation_status : sig
       [actor_with_input] in order to signal to their action-application functions that the
       state machine is inactive because an inactive state machine doesn't have access to
       its input. *)
-  type 'input t =
+  type 'input t = 'input Bonsai_private_base.Computation_status.t =
     | Active of 'input
     | Inactive
   [@@deriving sexp_of]
@@ -653,7 +653,7 @@ module Edge : sig
   val on_change
     :  here:[%call_pos]
     -> ?sexp_of_model:('a -> Sexp.t)
-    -> trigger:[ `Before_display | `After_display ]
+    -> ?trigger:[ `Before_display | `After_display ] (** defaults to `Before_display *)
     -> equal:('a -> 'a -> bool)
     -> 'a t
     -> callback:('a -> unit Effect.t) t
@@ -667,7 +667,7 @@ module Edge : sig
   val on_change'
     :  here:[%call_pos]
     -> ?sexp_of_model:('a -> Sexp.t)
-    -> trigger:[ `Before_display | `After_display ]
+    -> ?trigger:[ `Before_display | `After_display ] (** defaults to `Before_display *)
     -> equal:('a -> 'a -> bool)
     -> 'a t
     -> callback:('a option -> 'a -> unit Effect.t) t
@@ -917,6 +917,60 @@ module Dynamic_scope : sig
     -> f:(revert -> local_ graph -> 'r bonsai_t)
     -> local_ graph
     -> 'r bonsai_t
+
+  (** [Bulk_setter] allows setting multiple dynamic scope variables at once. This is
+      useful when you need to provide several dynamic scope values to a computation
+      without deeply nesting multiple [set] calls to potentially avoid stack overflows
+      when setting a large number of dynamically scopes vars.
+
+      The type ['a t] is a heterogeneous list (HList) of [(id, value)] pairs, where each
+      pair associates a [Dynamic_scope.t] with its corresponding value. The list syntax is
+      enabled by the [[]] and [(::)] constructors:
+
+      {[
+        let id1 = Dynamic_scope.create ~name:"id1" ~fallback:"" () in
+        let id2 = Dynamic_scope.create ~name:"id2" ~fallback:0 () in
+        Bulk_setter.set
+          [ id1, Bonsai.return "hello"; id2, Bonsai.return 42 ]
+          ~inside:(fun graph ->
+            let v1 = Dynamic_scope.lookup id1 graph in
+            let v2 = Dynamic_scope.lookup id2 graph in
+            ...)
+          graph
+      ]}
+
+      This is equivalent to nesting multiple [set] calls:
+
+      {[
+        Dynamic_scope.set id1 (Bonsai.return "hello")
+          ~inside:(fun graph ->
+            Dynamic_scope.set id2 (Bonsai.return 42)
+              ~inside:(fun graph -> ...)
+              graph)
+          graph
+      ]} *)
+  module Bulk_setter : sig
+    type 'a id := 'a t
+
+    (** A heterogeneous list of [(Dynamic_scope.t, value)] pairs. The type parameter
+        tracks the types of all the elements, e.g., [(string * (int * unit)) t] for a list
+        containing a string variable and an int variable. *)
+    type 'a t =
+      | [] : unit t
+      | ( :: ) : ('element id * 'element bonsai_t) * 'rem t -> ('element * 'rem) t
+
+    (** Sets all the dynamic scope variables in the list and evaluates the [~inside]
+        computation in that context. Lookups for the specified variables within [~inside]
+        will return the provided values; lookups outside will see their previous values
+        (or fallbacks). An empty list [[]] is valid and simply evaluates [~inside] without
+        modifying any dynamic scope variables. *)
+    val set
+      :  here:[%call_pos]
+      -> 'args t
+      -> inside:(local_ graph -> 'out bonsai_t)
+      -> local_ graph
+      -> 'out bonsai_t
+  end
 end
 
 module Incr : sig
@@ -1100,6 +1154,19 @@ module Debug : sig
     -> local_ graph
     -> 'a t
 
+  (** [debug_node] logs when a [Bonsai.t] changes. By default, output goes to stderr via
+      [Core.Debug.eprintf] (see [Debug_node_output]). When [sexp_of] is provided, the old
+      and new values are included in the log output, otherwise defaults to
+      [sexp_of_opaque]. [equal] defaults to [phys_equal] *)
+  val debug_node
+    :  here:[%call_pos]
+    -> name:string
+    -> ?equal:('a -> 'a -> bool)
+    -> ?sexp_of:('a -> Sexp.t)
+    -> 'a t
+    -> local_ graph
+    -> 'a t
+
   (** [memo_subscribers] prints the internal state for each query. *)
   val memo_subscribers : ('query, _) Memo.t -> 'query Path.Map.t
 end
@@ -1158,6 +1225,14 @@ module Let_syntax : sig
 
     val sub : here:[%call_pos] -> 'a -> f:local_ ('a -> 'b) -> 'b
     val delay : here:[%call_pos] -> f:(local_ graph -> 'a t) -> local_ graph -> 'a t
+
+    val debug_node
+      :  here:[%call_pos]
+      -> name:string
+      -> equal:('a -> 'a -> bool)
+      -> sexp_of:('a -> Sexp.t)
+      -> 'a t
+      -> 'a t
 
     include Mapn with type 'a t := 'a t
     include Arrn with type 'a t := 'a t
@@ -1469,7 +1544,7 @@ module For_proc : sig
   val on_change
     :  here:[%call_pos]
     -> ?sexp_of_model:('a -> Sexp.t)
-    -> trigger:[ `Before_display | `After_display ]
+    -> ?trigger:[ `Before_display | `After_display ] (** defaults to `Before_display *)
     -> equal:('a -> 'a -> bool)
     -> 'a t
     -> callback:('a -> unit Effect.t) t
@@ -1479,7 +1554,7 @@ module For_proc : sig
   val on_change'
     :  here:[%call_pos]
     -> ?sexp_of_model:('a -> Sexp.t)
-    -> trigger:[ `Before_display | `After_display ]
+    -> ?trigger:[ `Before_display | `After_display ] (** defaults to `Before_display *)
     -> equal:('a -> 'a -> bool)
     -> 'a t
     -> callback:('a option -> 'a -> unit Effect.t) t

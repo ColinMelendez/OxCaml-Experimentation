@@ -72,9 +72,9 @@ Lines 1-4, characters 1-24:
 Error: This variant or record definition does not match that of type
          Check__002_.t
        1. Constructors do not match:
-         A : ('a : value mod portable). 'a -> Check__002_.t
+         A : ('a : value mod portable). 'a -> t
        is not the same as:
-         A : 'a -> Check__002_.t
+         A : 'a -> t
        The type ('a : value mod portable) is not equal to the type
          ('b : value)
        because the layouts of their variables are different.
@@ -83,10 +83,9 @@ Error: This variant or record definition does not match that of type
        The layout of 'b is value
          because of the definition of t at lines 1-4, characters 1-24.
        2. Constructors do not match:
-         B : ('a : value mod portable).
-           'a Ppx_fuelproof_runtime.list -> Check__002_.t
+         B : ('a : value mod portable). 'a list -> t
        is not the same as:
-         B : 'a list -> Check__002_.t
+         B : 'a list -> t
        The type 'a list is not equal to the type 'b list
        because the layouts of their variables are different.
        The layout of 'a is value mod portable
@@ -94,10 +93,9 @@ Error: This variant or record definition does not match that of type
        The layout of 'b is value
          because of the definition of t at lines 1-4, characters 1-24.
        3. Constructors do not match:
-         C : ('a : value mod portable).
-           'a Ppx_fuelproof_runtime.Iarray.t -> Check__002_.t
+         C : ('a : value mod portable). 'a iarray -> t
        is not the same as:
-         C : 'a iarray -> Check__002_.t
+         C : 'a iarray -> t
        The type 'a iarray is not equal to the type 'b iarray
        because the layouts of their variables are different.
        The layout of 'a is value mod portable
@@ -133,11 +131,9 @@ type%fuelproof t : immutable_data = { x : float } [@@unboxed]
 ```mdx-error
 Line 1, characters 43-48:
 Error: Bad layout annotation:
-         The kind of float is
-             value mod forkable unyielding many stateless immutable
+         The layout of float is value
            because it is the primitive type float.
-         But the kind of float must be a subkind of
-             any mod forkable unyielding many stateless immutable non_float
+         But the layout of float must be a sublayout of any non_float
            because of the annotation on the wildcard _ at line 1, characters 43-48.
 ```
 
@@ -156,14 +152,71 @@ Lines 4-5, characters 7-54:
 Error: This variant or record definition does not match that of type
          Check__005_.t
        Constructors do not match:
-         A : ('a : value mod portable).
-           'a Ppx_fuelproof_runtime.list -> Check__005_.t
+         A : ('a : value mod portable). 'a list/2 -> t
        is not the same as:
-         A : ('a : value mod portable). 'a list -> Check__005_.t
+         A : ('a : value mod portable). 'a list/1 -> t
        The type 'a list/2 is not equal to the type 'a0 list/1
        File "_none_", line 1:
          Definition of type list/2
        Hint: The type list has been defined multiple times in this toplevel
          session. Some toplevel values still refer to old versions of this
          type. Did you try to redefine them?
+```
+
+Errors on using `non_float` with an unboxed record containing a float:
+
+```ocaml
+type%fuelproof t : value mod non_float = { x : float } [@@unboxed]
+```
+```mdx-error
+Line 1, characters 48-53:
+Error: Bad layout annotation:
+         The layout of float is value
+           because it is the primitive type float.
+         But the layout of float must be a sublayout of any non_float
+           because of the annotation on the wildcard _ at line 1, characters 48-53.
+```
+
+Errors on using `non_float` with an unboxed variant containing a float:
+
+```ocaml
+type%fuelproof t : value mod non_float = T of float [@@unboxed]
+```
+```mdx-error
+Line 1, characters 47-52:
+Error: Bad layout annotation:
+         The layout of float is value
+           because it is the primitive type float.
+         But the layout of float must be a sublayout of any non_float
+           because of the annotation on the wildcard _ at line 1, characters 47-52.
+```
+
+Errors on using `non_float` with an unboxed variant with inline record containing a float:
+
+```ocaml
+type%fuelproof t : value mod non_float = T of { x : float } [@@unboxed]
+```
+```mdx-error
+Line 1, characters 53-58:
+Error: Bad layout annotation:
+         The layout of float is value
+           because it is the primitive type float.
+         But the layout of float must be a sublayout of any non_float
+           because of the annotation on the wildcard _ at line 1, characters 53-58.
+```
+
+Errors on using `non_float` with an unboxed GADT with existential that doesn't have
+`non_float` annotation:
+
+```ocaml
+type _ u
+type%fuelproof t : value mod non_float = T : _ u -> t [@@unboxed]
+```
+```mdx-error
+Line 2, characters 48-51:
+Error: Bad layout annotation:
+         The layout of 'a u is value
+           because of the definition of u at line 1, characters 1-9.
+         But the layout of 'a u must be a sublayout of any non_float
+           because of the annotation on the wildcard _ at line 2, characters 48-51.
 ```

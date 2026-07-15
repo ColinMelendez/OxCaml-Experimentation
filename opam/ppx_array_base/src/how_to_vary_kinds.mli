@@ -9,16 +9,13 @@ end
 type t =
   { input : core_type Whether_to_vary.t
       (* if you do not vary input kinds, an input type needs to be specified *)
-  ; output : unit Whether_to_vary.t
+  ; output : unit Whether_to_vary.t * bool
+  (* does this function require separable output kinds? *)
   }
 
 (** [base_layouts] are the common, non-product layouts. Not to be confused with the [Base]
     library. *)
 val base_layouts : location -> expression
-
-(** [base_or_null_layouts] are the common, non-product layouts, using [value_or_null]
-    instead of [value]. *)
-val base_or_null_layouts : location -> expression
 
 (** {[
        let%template function_name : input_type ... -> = f

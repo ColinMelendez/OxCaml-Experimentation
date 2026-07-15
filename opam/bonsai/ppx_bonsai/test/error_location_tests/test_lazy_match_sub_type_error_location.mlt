@@ -71,8 +71,8 @@ let _component t (local_ _graph) =
 Line 64, characters 24-30:
 Error: The value _graph is local to the parent region
        but is expected to be global
-       because it is used inside the function at File "test_lazy_match_sub_type_error_location.mlt", line 64, characters 9-37
-       which is expected to be global.
+         because it is used inside the function at file "test_lazy_match_sub_type_error_location.mlt", line 64, characters 9-37
+         which is expected to be global.
 |}]
 
 (* Type errors in cases: *)

@@ -5,7 +5,7 @@ let cyclesim_maybe_wrap_waves ~always_wrap_waveterm ~(wave_mode : Wave_mode.t) s
   let simulator, waves =
     match wave_mode, always_wrap_waveterm with
     | _, true | Hardcamlwaveform, false ->
-      let waves, simulator = Hardcaml_waveterm.Waveform.create simulator in
+      let waves, simulator = Cyclesim.Waveform.create simulator in
       simulator, Some waves
     | None, false | Vcd _, false -> simulator, None
   in
@@ -22,5 +22,5 @@ let sanitize_test_name name =
   name
   |> String.strip
   |> String.map ~f:(fun c -> if Char.is_alphanum c then c else '_')
-  |> (Fn.flip String.prefix) 128
+  |> String.prefix _ 128
 ;;

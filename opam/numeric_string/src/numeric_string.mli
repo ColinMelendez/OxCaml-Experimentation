@@ -1,3 +1,5 @@
+@@ portable
+
 open Base
 
 (** Numeric string comparison, also sometimes called "natural comparison", is the string
@@ -28,5 +30,5 @@ open Base
     variety of contexts as possible. *)
 type t = string
 
-include Comparable.S with type t := t
+include Comparable.S [@mode local] with type t := t
 include Sexpable.S with type t := t

@@ -1,4 +1,5 @@
 open Core
+open! Import
 
 type _ t =
   | Only_on_exn : _ t
@@ -20,8 +21,8 @@ module Private = struct
     fun (type r) (errors : r t) : (r -> bool) Staged.t ->
     match errors with
     | Only_on_exn -> stage (fun _ -> false)
-    | Or_error -> stage Result.is_error
-    | Result -> stage Result.is_error
+    | Or_error -> stage (fun r -> Result.is_error r)
+    | Result -> stage (fun r -> Result.is_error r)
     | Or_error_or_error -> as_function Result_result
     | Result_or_error -> as_function Result_result
     | Or_error_result -> as_function Result_result
@@ -64,3 +65,7 @@ module Private = struct
     | Custom _ -> Is_error (unstage (as_function errors))
   ;;
 end
+
+let is_error (type r) (t : r t) (response : r) : bool =
+  unstage (Private.as_function t) response
+;;

@@ -1,6 +1,6 @@
 (library
  (name ppx_array_runtime)
  (public_name ppx_array.runtime)
- (libraries base)
+ (libraries)
  (preprocess
   (pps ppx_template)))

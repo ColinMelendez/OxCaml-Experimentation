@@ -7,7 +7,7 @@ type 'a t =
   | Pending
   | Error of Error.t
   | Ok of 'a
-[@@deriving bin_io, compare, diff, equal, quickcheck, sexp, variants]
+[@@deriving bin_io, compare ~localize, diff, equal ~localize, quickcheck, sexp, variants]
 
 val of_or_error : 'a Or_error.t -> 'a t
 val of_or_error_option : 'a Or_error.t option -> 'a t

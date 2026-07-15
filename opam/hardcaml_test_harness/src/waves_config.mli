@@ -28,6 +28,10 @@ type t = private
       { filename : string
       ; config : Wave_details.t
       }
+  | Callback_hardcamlwaveform of
+      { config : Wave_details.t
+      ; f : waveform_name:string -> Hardcaml_waveterm.Waveform.t -> unit
+      }
 [@@deriving sexp]
 
 (** Do not write out waveforms *)

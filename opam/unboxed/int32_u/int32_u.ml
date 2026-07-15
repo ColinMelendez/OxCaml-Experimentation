@@ -39,13 +39,35 @@ module Shared_derived = struct
     (I.sexp_of_t [@alloc stack] [@inlined hint]) (to_int32 t)
   ;;
 
-  include Bin_prot_unboxed_numbers.Int32_u
+  let bin_shape_t = Bin_prot_unboxed_numbers.Int32_u.bin_shape_t
 
+  [%%template
+  [@@@mode.default m = (global, local)]
+
+  let[@inline always] bin_size_t t =
+    (Bin_prot_unboxed_numbers.Int32_u.bin_size_t [@mode m] [@inlined]) t
+  ;;
+
+  let[@inline always] bin_write_t buf ~pos t =
+    (Bin_prot_unboxed_numbers.Int32_u.bin_write_t [@mode m] [@inlined]) buf ~pos t
+  ;;]
+
+  let[@inline always] bin_read_t buf ~pos_ref =
+    (Bin_prot_unboxed_numbers.Int32_u.bin_read_t [@inlined]) buf ~pos_ref
+  ;;
+
+  let __bin_read_t__ = Bin_prot_unboxed_numbers.Int32_u.__bin_read_t__
+  let bin_writer_t = Bin_prot_unboxed_numbers.Int32_u.bin_writer_t
+  let bin_reader_t = Bin_prot_unboxed_numbers.Int32_u.bin_reader_t
+  let bin_t = Bin_prot_unboxed_numbers.Int32_u.bin_t
   let[@inline] hash_fold_t state t = (I.hash_fold_t [@inlined hint]) state (to_int32 t)
   let[@inline] hash t = (I.hash [@inlined hint]) (to_int32 t)
   let typerep_of_t = Typerep_lib.Std.Typerep.Int32_u
   let[@inline] of_string x = of_int32 ((I.of_string [@inlined hint]) x)
-  let[@inline] to_string t = (I.to_string [@inlined hint]) (to_int32 t)
+
+  let%template[@alloc a = (heap, stack)] [@inline] to_string t =
+    (I.to_string [@alloc a] [@inlined hint]) (to_int32 t) [@exclave_if_stack a]
+  ;;
 
   let%template[@mode m = (global, local)] [@inline] [@zero_alloc] equal t1 t2 : bool =
     (I.equal [@mode m]) (to_int32 t1) (to_int32 t2)
@@ -104,8 +126,8 @@ let[@inline] to_string_hum ?delimiter t =
   (I.to_string_hum [@inlined hint]) ?delimiter (to_int32 t)
 ;;
 
-let[@inline] one () = of_int32 I.one
-let[@inline] minus_one () = of_int32 I.minus_one
+let one = of_int32 I.one
+let minus_one = of_int32 I.minus_one
 
 let[@inline] round ?dir t ~to_multiple_of:t2 =
   of_int32 ((I.round [@inlined hint]) ?dir (to_int32 t) ~to_multiple_of:(to_int32 t2))
@@ -217,14 +239,14 @@ module O = struct
   let[@inline] ( asr ) t x = of_int32 ((I.O.( asr ) [@inlined hint]) (to_int32 t) x)
   let[@inline] abs t = of_int32 ((I.O.abs [@inlined hint]) (to_int32 t))
   let[@inline] ( lsr ) t x = of_int32 ((I.O.(( lsr )) [@inlined hint]) (to_int32 t) x)
-  let[@inline] zero () = of_int32 I.zero
+  let zero = of_int32 I.zero
 end
 
 include O
 
 let num_bits = I.num_bits
-let[@inline] max_value () = of_int32 I.max_value
-let[@inline] min_value () = of_int32 I.min_value
+let max_value = of_int32 I.max_value
+let min_value = of_int32 I.min_value
 let[@inline] ( lsr ) t x = of_int32 ((I.(( lsr )) [@inlined hint]) (to_int32 t) x)
 let shift_right_logical = ( lsr )
 let[@inline] ceil_pow2 t = of_int32 ((I.ceil_pow2 [@inlined hint]) (to_int32 t))
@@ -352,60 +374,54 @@ end
 module Hex_unsigned = struct
   module Bytes = Base.Bytes
   module Nothing = Base.Nothing
+  module To_string_config = Int64_u.Hex_unsigned.To_string_config
   module Private = Int64_u.Hex_unsigned.Private
   module Sexp = Base.Sexp
 
-  let[@inline] max_digits () = #8L
-
-  module Local = struct
-    type nonrec t = t
-
-    let compare = Shared_derived.compare
-    let hash = Shared_derived.hash
-    let hash_fold_t = Shared_derived.hash_fold_t
-
-    let[@inline] of_string s =
-      let i64 = Int64_u.Hex_unsigned.Private.of_string s ~max_digits:(max_digits ()) in
-      let i32 = Int64_u.(select (i64 >= #0x8000_0000L) (i64 - #0x1_0000_0000L) i64) in
-      of_int64_u_exn i32
-    ;;
-
-    let[@inline] t_of_sexp (sexp : Sexp.t @ local) =
-      match sexp with
-      | Atom s -> of_string s
-      | List _ ->
-        (match Private.t_of_sexp_failed sexp with
-         | (_ : Nothing.t) -> .)
-    ;;
-
-    let[@inline never] to_string t = exclave_
-      let t = to_int64_u t in
-      let digits_to_process = Private.digits_to_process t ~max_digits:(max_digits ()) in
-      let bytes =
-        Bytes.create_local (Private.to_string_required_length ~digits_to_process)
-      in
-      Private.to_string_into t bytes ~digits_to_process;
-      Bytes.unsafe_to_string ~no_mutation_while_string_reachable:bytes
-    ;;
-
-    let[@inline] sexp_of_t t : Sexp.t = exclave_ Atom (to_string t)
-  end
+  let max_digits = #8L
 
   type nonrec t = t
 
-  let compare = Local.compare
+  let compare = Shared_derived.compare
   let hash = Shared_derived.hash
   let hash_fold_t = Shared_derived.hash_fold_t
-  let of_string = [%eta1 Local.of_string]
-  let t_of_sexp = [%eta1 Local.t_of_sexp]
 
-  let[@inline never] to_string t =
-    let t = to_int64_u t in
-    let digits_to_process = Private.digits_to_process t ~max_digits:(max_digits ()) in
-    let bytes = Bytes.create (Private.to_string_required_length ~digits_to_process) in
-    Private.to_string_into t bytes ~digits_to_process;
-    Bytes.unsafe_to_string ~no_mutation_while_string_reachable:bytes [@nontail]
+  let[@inline] of_string s =
+    let i64 = Int64_u.Hex_unsigned.Private.of_string s ~max_digits in
+    let i32 = Int64_u.(select (i64 >= #0x8000_0000L) (i64 - #0x1_0000_0000L) i64) in
+    of_int64_u_exn i32
   ;;
 
-  let[@inline] sexp_of_t t : Sexp.t = Atom (to_string t)
+  let[@inline] t_of_sexp (sexp : Sexp.t @ local) =
+    match sexp with
+    | Atom s -> of_string s
+    | List _ ->
+      (match Private.t_of_sexp_failed sexp with
+       | (_ : Nothing.t) -> .)
+  ;;
+
+  [%%template
+  [@@@alloc.default a = (heap, stack)]
+
+  let[@inline never] to_string_custom t ~config =
+    let t = to_int64_u t in
+    let digits_to_process = Private.digits_to_process t ~max_digits in
+    (let bytes =
+       (Bytes.create [@alloc a])
+         (Private.to_string_required_length ~config ~digits_to_process)
+     in
+     Private.to_string_into t (borrow_ bytes) ~config ~digits_to_process;
+     Bytes.unique_to_string bytes [@nontail])
+    [@exclave_if_stack a]
+  ;;
+
+  let[@inline] to_string t : string =
+    (to_string_custom [@alloc a])
+      t
+      ~config:To_string_config.(unbox default) [@exclave_if_stack a]
+  ;;
+
+  let[@inline] sexp_of_t t : Sexp.t =
+    Atom ((to_string [@alloc a]) t) [@exclave_if_stack a]
+  ;;]
 end

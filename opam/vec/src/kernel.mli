@@ -19,12 +19,16 @@ type%template 'a arr_impl = 'a I64.Array.t [@@kind bits64]
   = ( float32
     , bits64
     , immediate64
-    , value & value
-    , immediate64 & immediate64
-    , value & value & value
-    , immediate64 & immediate64 & immediate64
-    , value & value & value & value
-    , immediate64 & immediate64 & immediate64 & immediate64
+    , value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null
+    , immediate64_or_null & value_or_null
+    , value_or_null & value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null & immediate64_or_null
+    , value_or_null & value_or_null & value_or_null & value_or_null
+    , immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null
     , value )]
 
 type ('a : k) t : mutable_data with 'a
@@ -62,12 +66,16 @@ module With_structure_details : sig
       , bits64
       , value
       , immediate64
-      , value & value
-      , immediate64 & immediate64
-      , value & value & value
-      , immediate64 & immediate64 & immediate64
-      , value & value & value & value
-      , immediate64 & immediate64 & immediate64 & immediate64 )]
+      , value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null
+      , immediate64_or_null & value_or_null
+      , value_or_null & value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null & immediate64_or_null
+      , value_or_null & value_or_null & value_or_null & value_or_null
+      , immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null )]
 end
 
 val unsafe_set_imm : ('a : immediate64). 'a t -> int -> 'a -> unit

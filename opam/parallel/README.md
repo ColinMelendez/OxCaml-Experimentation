@@ -6,14 +6,13 @@
 To expose an opportunity for parallelism, user code calls a `fork_join` function, such as:
 
 ```ocaml
-(** [fork_join2 t f g] runs [f] and [g] as parallel tasks and returns their results. If
-    either task raises, this operation will reraise the leftmost exception after both
-    tasks have completed or raised. Child tasks must not block on each other or the parent
-    task, but they may take locks.
+(** [fork_join2 t f g] runs [f] and [g] as parallel subtasks and returns their results. If
+    either subtask raises, this operation will reraise the leftmost exception after both
+    subtasks have completed or raised.
 
     [f] and [g] are [shareable], so can capture both [shared] and [uncontended]
-    references. This allows the tasks to read (but not mutate) state from the environment.
-    [f] is also [forkable], so cannot capture capsule passwords. *)
+    references. This allows the subtasks to read (but not mutate) state from the
+    environment. [f] is also [forkable], so cannot capture capsule passwords. *)
 val fork_join2
   :  t @ local
   -> (t @ local -> 'a) @ forkable local once shareable
@@ -31,12 +30,20 @@ To receive a `Parallel.t`, a parallel computation must be submitted to a
 separate scheduler library. Schedulers provide the following function:
 
 ```ocaml
-  (** [parallel t ~f] creates an implementation of parallelism backed by [t], applies [f],
-      and waits for it to complete. *)
-  val parallel : t -> f:(parallel @ local -> 'a) @ once shareable -> 'a
+(** [with_parallel ?max_workers f] creates a scheduler that uses up to [max_workers]
+    worker threads, spawns [f] into it, and blocks the current thread until [f] is done
+    executing. Returns the result of [f].
+
+    Creating a scheduler is an expensive operation, and should ideally only happen at
+    process startup. Most users should use the functions in the [Parallel_command] library
+    to create their scheduler. *)
+val with_parallel
+  :  ?max_workers:int (* Default: [Multicore.max_domains ()] *)
+  -> (Parallel_kernel.t @ local -> 'a) @ once
+  -> 'a
 ```
 
-Calling `schedule` provides your parallel computation with a local `Parallel.t`
+Calling `with_parallel` provides your parallel computation with a local `Parallel.t`
 that represents the ability to run parallel tasks on this scheduler.
 
 The currently available schedulers are:
@@ -76,16 +83,9 @@ let rec fib parallel n =
     a + b
 ;;
 
-let fib_sequential n =
-  let scheduler = Parallel.Scheduler.Sequential.create () in
-  Parallel.Scheduler.Sequential.parallel scheduler ~f:(fun parallel ->
-    printf "%d" (fib parallel n))
-;;
+let fib_sequential n = printf "%d" (fib Parallel.sequential n)
 
 let fib_parallel n =
-  let scheduler = Parallel_scheduler.create () in
-  Parallel_scheduler.parallel scheduler ~f:(fun parallel ->
-    printf "%d" (fib parallel n));
-  Parallel_scheduler.stop scheduler
+  Parallel_scheduler.with_parallel (fun parallel -> printf "%d" (fib parallel n))
 ;;
 ```

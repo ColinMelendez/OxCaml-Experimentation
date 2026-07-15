@@ -24,6 +24,7 @@ module Key : sig
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val hash : t -> int
+  val sexp_of_t : t -> Sexp.t
 end
 
 val key : ('a : any). 'a t -> Key.t
@@ -40,6 +41,9 @@ module Uid : sig
 end
 
 val uid : ('a : any). 'a t -> Uid.t
+
+(** For debugging it is better to call [Key.sexp_of_t] as that'll include all the [name]s
+    of the type parameters of ['a], if any. *)
 val name : ('a : any). 'a t -> string
 
 module Tuple_l : sig
@@ -111,7 +115,20 @@ end
 module Make0 (X : Named_intf.S0) : S0 with type t := X.t
 
 [%%template:
-[@@@kind.default.explicit ka = (any, any mod separable, value, value_or_null, float64)]
+[@@@kind.default.explicit
+  ka
+  = ( any
+    , any mod separable
+    , value
+    , value_or_null
+    , float64
+    , immediate64_or_null
+    , immediate
+    , immediate64
+    , value mod external_
+    , value mod external64
+    , value_or_null mod external_
+    , value_or_null mod external64 )]
 
 module type S1 = sig @@ portable
   type ('a : ka) t : any

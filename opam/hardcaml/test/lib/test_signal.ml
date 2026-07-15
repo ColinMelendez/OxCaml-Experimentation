@@ -115,7 +115,7 @@ let reg_error
   ?clock
   ?clock_edge
   ?reset
-  ?reset_edge
+  ?reset_level
   ?reset_to
   ?clear
   ?clear_to
@@ -128,7 +128,7 @@ let reg_error
          ~clock:(Option.value clock ~default:g_clock)
          ?clock_edge
          ?reset
-         ?reset_edge
+         ?reset_level
          ?clear
          ())
       ?clear_to
@@ -275,6 +275,15 @@ let%expect_test "shift errors" =
   [%expect {| ("[rotl] got negative shift" -1) |}];
   require_does_raise (fun () -> rotr vdd ~by:(-1));
   [%expect {| ("[rotr] got negative shift" -1) |}]
+;;
+
+let%expect_test "pipeline errors" =
+  let spec = Reg_spec.create ~clock:gnd () in
+  require_does_raise (fun () -> ignore (pipeline spec ~n:(-1) gnd : t));
+  [%expect {| ("[Signal.pipeline] cannot accept a negative value" (n -1)) |}];
+  require_does_not_raise (fun () ->
+    [%test_result: int] (width (pipeline spec ~n:0 gnd)) ~expect:1);
+  [%expect {| |}]
 ;;
 
 let%expect_test "uextend and sextend" =

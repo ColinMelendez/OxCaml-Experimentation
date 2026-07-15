@@ -6,13 +6,13 @@ bug-reports: "https://github.com/janestreet/parallel/issues"
 dev-repo: "git+https://github.com/janestreet/parallel.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/parallel/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
   "ocaml" {>= "5.2.0"}
   "async"
-  "async_kernel"
   "await"
   "base"
   "base_bigstring"
@@ -22,6 +22,7 @@ depends: [
   "expect_test_helpers_core"
   "handled_effect"
   "portable"
+  "portable_mpmc_queue"
   "portable_ws_deque"
   "ppx_jane"
   "unboxed"
@@ -31,7 +32,10 @@ depends: [
   "base-threads"
   "dune"                     {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "OxCaml Parallelism"
 description: "
  Parallelism infrastructure.

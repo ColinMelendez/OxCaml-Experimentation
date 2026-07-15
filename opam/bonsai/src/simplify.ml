@@ -1,15 +1,12 @@
 open! Core
 open! Import
-module Free_variables = Type_id_set
+module Free_variables = Var_id.Set
 
 (* When executing the generated function, this Env is used to pass down any variables that
    were bound in a let%sub. *)
-module Env =
-  Univ_map.Make
-    (Univ_map.Type_id_key)
-    (struct
-      type 'a t = 'a [@@deriving sexp_of]
-    end)
+module Env = Var_id.Map.Make (struct
+    type 'a t = 'a [@@deriving sexp_of]
+  end)
 
 (* This is a tri-state option, where the third state is a function that permits the
    generation of the contained value, provided that all of the free variables that were
@@ -86,8 +83,8 @@ end
 let rec value_to_function
   : type key data result.
     result Value.t
-    -> key Type_equal.Id.t
-    -> data Type_equal.Id.t
+    -> key Var_id.t
+    -> data Var_id.t
     -> (key -> data -> result) Option_or_miss.t
   =
   fun value key_id data_id ->
@@ -101,7 +98,7 @@ let rec value_to_function
   | Exception _ -> None
   | Incr _ -> None
   | Named (_, id) ->
-    let same_name = Type_equal.Id.same_witness in
+    let same_name = Var_id.same_witness in
     (match same_name id key_id, same_name id data_id with
      | Some T, _ ->
        Some
@@ -189,8 +186,8 @@ let rec value_to_function
 let rec computation_to_function
   : type key data result.
     result Computation.t
-    -> key_id:key Type_equal.Id.t
-    -> data_id:data Type_equal.Id.t
+    -> key_id:key Var_id.t
+    -> data_id:data Var_id.t
     -> (Path.t -> key -> data -> result) Option_or_miss.t
   =
   fun computation ~key_id ~data_id ->
@@ -252,8 +249,8 @@ let rec computation_to_function
   | _ -> None
 ;;
 
-let computation_to_function t ~key_compare ~key_id ~data_id =
-  let make_path_element = Path.Elem.keyed ~compare:key_compare key_id |> unstage in
+let computation_to_function t ~key_id ~key_comparator ~data_id =
+  let make_path_element = Path.Elem.keyed ~comparator:key_comparator key_id |> unstage in
   match computation_to_function t ~key_id ~data_id |> Option_or_miss.squash with
   | Some
       { value = f

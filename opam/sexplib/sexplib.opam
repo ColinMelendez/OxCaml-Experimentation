@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/sexplib/issues"
 dev-repo: "git+https://github.com/janestreet/sexplib.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/sexplib/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -17,7 +18,10 @@ depends: [
   "dune"     {>= "3.17.0"}
   "num"
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Library for serializing OCaml values to and from S-expressions"
 description: "
 Part of Jane Street's Core library

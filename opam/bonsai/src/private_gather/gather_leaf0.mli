@@ -4,7 +4,7 @@ open! Bonsai_private_base
 
 val f
   :  model:'model Meta.Model.t
-  -> static_action:'action Type_equal.Id.t
+  -> static_action:'action Var_id.t
   -> time_source:Time_source.t
   -> apply_action:
        (inject:('action -> unit Effect.t)
@@ -19,5 +19,7 @@ val f
         -> time_source:Time_source.t
         -> 'model
         -> 'model)
+  -> action_name:string
+  -> sexp_of_action:('action -> Sexp.t) option
   -> here:Source_code_position.t
   -> ('model * ('action -> unit Effect.t), unit) Computation.packed_info Trampoline.t

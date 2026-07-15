@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Position = Bonsai_web_ui_element_size_hooks.Position_tracker.Position
+module Position = Bonsai_web_element_size_hooks.Position_tracker.Position
 
 module Progress = struct
   type t =
@@ -465,4 +465,4 @@ let component (local_ graph) =
     ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

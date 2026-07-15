@@ -11,7 +11,7 @@ open Await_kernel
     approach adds a bit of overhead over [Atomic] and [Awaitable], but should make [Atom]
     easier to use. *)
 
-type !'a t : value mod contended portable
+type !'a t : value mod contended non_float portable
 
 (** [make value] creates an atom with the given initial [value].
 
@@ -48,14 +48,14 @@ val poison : _ t -> unit
     @raise Poisoned if the atom was previously poisoned. *)
 val update
   :  'a t @ local
-  -> pure_f:('a @ contended portable -> 'a @ contended portable) @ portable
+  -> pure_f:('a @ contended portable -> 'a @ contended portable) @ global portable
   -> unit
 
 (** [get_and_update t ~pure_f] is like [update t ~pure_f], but also returns the old value
     of the atom. *)
 val get_and_update
   :  'a t @ local
-  -> pure_f:('a @ contended portable -> 'a @ contended portable) @ portable
+  -> pure_f:('a @ contended portable -> 'a @ contended portable) @ global portable
   -> 'a @ contended portable
 
 (** [wait w t ~until_phys_unequal_to] waits until the current value of [t] is physically

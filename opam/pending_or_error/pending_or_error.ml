@@ -30,7 +30,8 @@ module T = struct
     | Pending
     | Error of Error.t
     | Ok of 'a [@quickcheck.weight 10.]
-  [@@deriving bin_io, compare, diff, equal, quickcheck, sexp, variants]
+  [@@deriving
+    bin_io, compare ~localize, diff, equal ~localize, quickcheck, sexp, variants]
 
   let of_or_error : 'a Or_error.t -> 'a t = function
     | Ok x -> Ok x

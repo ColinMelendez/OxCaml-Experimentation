@@ -2,7 +2,7 @@ open! Core
 open! Async_kernel
 open! Async_unix
 open! Async_log_kernel.Ppx_log_syntax
-include Filesystem_types
+include Filesystem_types_unix
 
 open struct
   let time_ns_to_float time_ns = Time_ns.Span.to_sec (Time_ns.to_span_since_epoch time_ns)
@@ -90,6 +90,8 @@ include struct
     Unix.chmod (File_path.to_string path) ~perm:(File_permissions.to_int perm)
   ;;
 
+  external unbox_int64 : (int64[@local_opt]) -> (int64#[@unboxed]) = "%unbox_int64"
+
   let of_async_file_stats
     ({ dev; ino; kind; perm; nlink; uid; gid; rdev; size; atime; mtime; ctime } :
       Unix.Stats.t)
@@ -103,7 +105,7 @@ include struct
     ; user_id = uid
     ; group_id = gid
     ; file_device = rdev
-    ; size = Int63.of_int64_exn size
+    ; size = unbox_int64 size
     ; access_time = Time_ns.of_time_float_round_nearest atime
     ; modify_time = Time_ns.of_time_float_round_nearest mtime
     ; status_time = Time_ns.of_time_float_round_nearest ctime
@@ -141,7 +143,7 @@ include struct
       ]
       |> List.filter_opt
     in
-    Process.run_expect_no_output_exn ~prog:"rm" ~args ()
+    Process.run_expect_no_stdout_exn ~prog:"rm" ~args ()
   ;;
 end
 

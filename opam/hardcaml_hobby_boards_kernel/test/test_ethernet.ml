@@ -49,7 +49,7 @@ let test_rx_waves (data_lengths : int list) =
   let open Bits in
   let scope = Scope.create ~flatten_design:true () in
   let sim = Sim.create ~config:Cyclesim.Config.trace_all (Rx.create scope) in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
   inputs.clocking.clear := vdd;
@@ -162,7 +162,7 @@ let test_tx_waves (data_lengths : int list) ~with_data_gaps =
   let open Bits in
   let scope = Scope.create ~flatten_design:true () in
   let sim = Sim.create ~config:Cyclesim.Config.trace_all (Tx.create scope) in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
   inputs.clocking.clear := vdd;
@@ -207,7 +207,7 @@ let test_udp_packet_generator =
         { Tx.I.clocking = i.clocking; data_stream = udp_packet.axi_tx })
   in
   let open Bits in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   let config = get_config in
@@ -263,7 +263,7 @@ let test_udp_packet_decoder =
         { Udp_packet_decoder.I.clocking = i.clocking; axi_rx = rx.axi_tx })
   in
   let open Bits in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
   inputs.clocking.clear := vdd;
@@ -320,7 +320,7 @@ let test_loopback ?(rx_error = false) () =
         { clocking = i.clocking; data_stream = axi_udp_packet })
   in
   let open Bits in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs ~clock_edge:Before sim in
   inputs.clocking.clear := vdd;

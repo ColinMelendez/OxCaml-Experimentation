@@ -25,13 +25,23 @@ open Base
         ;;
       ]} *)
 
-type ('a, 'b, 'c) tag =
-  | Ok : ('a, 'b, 'a) tag
-  | Error : ('a, 'b, 'b) tag
+[%%template:
+[@@@kind.default k = (value & value, value)]
 
-type ('ok : value, 'err : value) t : immediate & value =
-  | T : #(('ok, 'err, 'c) tag * 'c) -> ('ok, 'err) t
-[@@unboxed] [@@deriving globalize, sexp ~stackify]
+type ('ok : k, 'err : k, 'payload : k) tag =
+  | Ok : (('ok, 'err, 'ok) tag[@kind k])
+  | Error : (('ok, 'err, 'err) tag[@kind k])
+
+type ('ok : k, 'err : k) t =
+  | T : #((('ok, 'err, 'payload) tag[@kind k]) * 'payload) -> (('ok, 'err) t[@kind k])
+[@@unboxed]
+[@@deriving
+  bin_io ~localize, compare ~localize, equal ~localize, globalize, hash, sexp ~stackify]
+
+[@@@mode.default m = (global, local)]
+
+val return : ('ok : k). 'ok @ m -> (('ok, _) t[@kind k]) @ m [@@zero_alloc]
+val fail : ('err : k). 'err @ m -> ((_, 'err) t[@kind k]) @ m [@@zero_alloc]]
 
 [%%template:
 [@@@mode.default m = (global, local)]
@@ -45,30 +55,14 @@ val match_
   -> err:('err @ m -> 'a @ m) @ local
   -> 'a @ m
 
-val fail : 'err @ m -> ('ok, 'err) t @ m [@@zero_alloc]
 val to_result : ('ok, 'err) t @ m -> ('ok, 'err) Result.t @ m
 val of_result : ('ok, 'err) Result.t @ m -> ('ok, 'err) t @ m [@@zero_alloc]
-
-val compare
-  :  ('ok @ m -> 'ok @ m -> int) @ local
-  -> ('err @ m -> 'err @ m -> int) @ local
-  -> ('ok, 'err) t @ m
-  -> ('ok, 'err) t @ m
-  -> int
-
-val equal
-  :  ('ok @ m -> 'ok @ m -> bool) @ local
-  -> ('err @ m -> 'err @ m -> bool) @ local
-  -> ('ok, 'err) t @ m
-  -> ('ok, 'err) t @ m
-  -> bool
 
 val bind
   :  ('ok1, 'err) t @ m
   -> f:('ok1 @ m -> ('ok2, 'err) t @ m) @ local
   -> ('ok2, 'err) t @ m
 
-val return : 'ok @ m -> ('ok, _) t @ m [@@zero_alloc]
 val ignore_m : (_, 'err) t @ m -> (unit, 'err) t @ m [@@zero_alloc]
 
 val invariant
@@ -108,12 +102,6 @@ val ok_if_true : bool -> error:'err @ m -> (unit, 'err) t @ m [@@zero_alloc]
 
 val is_ok : (_, _) t @ local -> bool [@@zero_alloc]
 val is_error : (_, _) t @ local -> bool [@@zero_alloc]
-
-val hash_fold_t
-  :  'ok Ppx_hash_lib.hash_fold
-  -> 'err Ppx_hash_lib.hash_fold
-  -> ('ok, 'err) t Ppx_hash_lib.hash_fold
-
 val ok_exn : ('ok, exn) t -> 'ok [@@zero_alloc]
 val ok_or_failwith : ('ok, string) t -> 'ok [@@zero_alloc]
 val try_with : (unit -> 'a) @ local -> ('a, exn) t

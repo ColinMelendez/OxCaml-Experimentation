@@ -2,5 +2,5 @@
  (name pending_or_error)
  (public_name pending_or_error)
  (preprocess
-  (pps ppx_diff.ppx_diff ppx_jane))
+  (pps ppx_diff.ppx_diff ppx_jane -compare-require-explicit-locality))
  (libraries core))

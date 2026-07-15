@@ -1,6 +1,7 @@
 (library
  (name float_u)
  (public_name unboxed.float_u)
+ (ocamlopt_flags :standard -O3)
  (libraries base bin_prot_unboxed_numbers core float_array int64_u
    ocaml_intrinsics_kernel)
  (preprocess

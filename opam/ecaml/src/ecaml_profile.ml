@@ -198,7 +198,7 @@ let () =
         | sexp -> sexp);
   (Profile.output_profile
    := fun string ->
-        (* If [output_profile] raises, then Nested_profile use [eprint_s] to print the
+        (* If [output_profile] raises, then Nested_profile uses [eprint_s] to print the
            exception, which doesn't work well in Emacs. So we do our own exception
            handling. *)
         try
@@ -209,7 +209,16 @@ let () =
               Current_buffer.inhibit_read_only Sync (fun () ->
                 Current_buffer.append_to string))
         with
-        | exn -> message_s [%message "unable to output profile" ~_:(exn : exn)]);
+        | exn ->
+          let bt = Backtrace.Exn.most_recent_for_exn exn in
+          let output_profile_bt = Backtrace.get () in
+          message_s
+            [%message.omit_nil
+              "unable to output profile"
+                [%here]
+                (exn : exn)
+                (bt : Backtrace.t option)
+                (output_profile_bt : Backtrace.t)]);
   Profile.tag_frames_with
   := Some
        (T
@@ -346,6 +355,9 @@ module Benchmarks = struct
 For testing the Ecaml profiler.
 
 Benchmark the Ecaml profiler's rendering of a large value.
+
+LARGE-DATA-STRUCTURE may be any Lisp value, but preferably one whose printed
+representation is quite large.
 |}
       (Returns Value.Type.unit)
       (let%map_open.Defun () = return ()

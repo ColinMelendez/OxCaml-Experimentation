@@ -18,7 +18,7 @@ let test_tx_waves ~num_udp_packets =
   let sim =
     Sim.create ~config:Cyclesim.Config.trace_all (Udp_packet_generator.create scope)
   in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   let config = get_random_config in

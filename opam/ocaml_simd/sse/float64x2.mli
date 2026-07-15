@@ -9,10 +9,10 @@ val unbox : float64x2 @ local -> t
 (* Creation *)
 
 (** Equivalent to [const1 #0.0]. *)
-val zero : unit -> t
+val zero : t
 
 (** Equivalent to [const1 #1.0]. *)
-val one : unit -> t
+val one : t
 
 (** [_mm_set1_pd] Compiles to shufpd. *)
 val set1 : float# -> t
@@ -42,8 +42,6 @@ module Raw = Load_store.Raw_Float64x2
 module String = Load_store.String_Float64x2
 module Bytes = Load_store.Bytes_Float64x2
 module Bigstring = Load_store.Bigstring_Float64x2
-module Float_array = Load_store.Float_array
-module Float_iarray = Load_store.Float_iarray
 module Floatarray = Load_store.Floatarray
 module Float_u_array = Load_store.Float_u_array
 
@@ -123,7 +121,7 @@ external blend
   -> t
   -> t
   = "ocaml_simd_sse_unreachable" "caml_sse41_vec128_blend_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 (** [_mm_shuffle_pd] Specify shuffle with ppx_simd: [%shuffle N, N], where each N is in
     [0,1]. Exposed as an external so user code can compile without cross-library inlining. *)
@@ -133,7 +131,7 @@ external shuffle
   -> t
   -> t
   = "ocaml_simd_sse_unreachable" "caml_sse2_vec128_shuffle_64"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 (* Math *)
 
@@ -187,8 +185,13 @@ val ( * ) : t -> t -> t
 
 (* Rounding *)
 
-(** [_mm_cvtpd_epi32] *)
+(** [_mm_cvtpd_epi32] If the argument is NaN or infinite or if the rounded value cannot be
+    represented, the result is unspecified. Uses the current rounding mode. *)
 val iround_current : t -> int32x4#
+
+(** [_mm_cvttpd_epi32] If the argument is NaN or infinite or if the rounded value cannot
+    be represented, the result is unspecified. *)
+val iround_trunc : t -> int32x4#
 
 (** [_mm_round_pd] *)
 val round_nearest : t -> t

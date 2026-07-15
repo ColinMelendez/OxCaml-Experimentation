@@ -1,5 +1,5 @@
 (library
- (name bonsai_tui_click_handler)
+ (name bonsai_term_click_handler)
  (public_name bonsai_term_components.click_handler)
  (libraries bonsai_term core)
  (preprocess

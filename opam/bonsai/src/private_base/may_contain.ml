@@ -1,29 +1,5 @@
 open! Core
-
-module Dependencies = struct
-  module Unit_data = struct
-    type 'a t = unit [@@deriving sexp_of]
-  end
-
-  include Univ_map.Make (Fix_id) (Unit_data)
-  include Univ_map.Merge (Fix_id) (Unit_data) (Unit_data) (Unit_data)
-
-  module Item = struct
-    type t = T : 'a Fix_id.t -> t
-  end
-
-  let merge a b =
-    let f ~key:_ = function
-      | `Both ((), ()) | `Left () | `Right () -> Some ()
-    in
-    merge a b ~f:{ f }
-  ;;
-
-  let fold t ~init ~f =
-    Map.fold (Type_equal.conv type_equal t) ~init ~f:(fun ~key:_ ~data:(T (k, ())) acc ->
-      f acc (Item.T k))
-  ;;
-end
+module Dependencies = Fix_id.Set
 
 type resolved = private Resolved [@@deriving sexp_of]
 type unresolved = private Unresolved [@@deriving sexp_of]
@@ -115,7 +91,7 @@ module Unresolved = struct
         ; lifecycle = Single.merge_unresolved ca.lifecycle cb.lifecycle
         ; input = Single.merge_unresolved ca.input cb.input
         }
-    ; recursive_dependencies = Dependencies.merge ra rb
+    ; recursive_dependencies = Dependencies.union ra rb
     }
   ;;
 
@@ -148,7 +124,7 @@ module Unresolved = struct
         ; lifecycle = Depends_on_recursion
         ; input = Depends_on_recursion
         }
-    ; recursive_dependencies = Dependencies.singleton fix_id ()
+    ; recursive_dependencies = Dependencies.singleton fix_id
     }
   ;;
 

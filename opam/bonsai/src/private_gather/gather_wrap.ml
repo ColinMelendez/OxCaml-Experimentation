@@ -68,7 +68,7 @@ let f
           ~inject
           ~schedule_event
           ~time_source
-          (Option.map input ~f:snd)
+          (Computation_status.map input ~f:snd)
           outer_model
           action_outer
       in
@@ -78,7 +78,7 @@ let f
         apply_action
           ~inject:(wrap_inner inject)
           ~schedule_event
-          (Option.map input ~f:fst)
+          (Computation_status.map input ~f:fst)
           inner_model
           action_inner
       in

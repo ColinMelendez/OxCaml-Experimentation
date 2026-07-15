@@ -1,6 +1,0 @@
-(library
- (name bonsai_extra_fixed_point)
- (public_name bonsai.extra.fixed_point)
- (preprocess
-  (pps ppx_jane js_of_ocaml-ppx ppx_bonsai))
- (libraries bonsai core))

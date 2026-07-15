@@ -165,11 +165,28 @@ module Client : sig
       server to send the entire response, rather than merely the diff from the previous
       response. In other words, clearing a client only affects speed/memory; it should
       have no effect on the results returned by subsequent calls to [dispatch] or
-      [redispatch]. *)
+      [redispatch].
+
+      [on_dispatch], if provided, is called synchronously immediately after the
+      [Forget_client] message is dispatched on the underlying RPC connection. *)
   val forget_on_server
-    :  ('query, 'response) t
+    :  ?on_dispatch:(unit -> unit)
+    -> ('query, 'response) t
     -> Rpc.Connection.t
     -> unit Deferred.Or_error.t
+
+  (** Same as [dispatch], but intended for one-shot use. After the dispatch completes, it
+      asks the server to forget any state associated with this client so the server can
+      free that memory immediately instead of waiting for the connection to close.
+
+      Cleanup failures are ignored, because forgetting only affects resource usage, not
+      the response returned by this call. Calling [dispatch] or [redispatch] afterward
+      still works; it will just behave like a fresh client on the server side. *)
+  val dispatch_and_forget
+    :  ('query, 'response) t
+    -> Rpc.Connection.t
+    -> 'query
+    -> 'response Deferred.Or_error.t
 
   (** Returns the most recent query. *)
   val query : ('query, _) t -> 'query option
@@ -191,6 +208,7 @@ module Client : sig
     (** Like [dispatch], but also returns the underlying diff sent over the wire. *)
     val dispatch_with_underlying_diff
       :  ?on_dispatch:(unit -> unit)
+      -> ?on_cancel_dispatch:(unit -> unit)
       -> ('query, 'response) t
       -> Rpc.Connection.t
       -> 'query
@@ -199,6 +217,7 @@ module Client : sig
     val dispatch_with_underlying_diff_as_sexp
       :  ?sexp_of_response:('response -> Sexp.t)
       -> ?on_dispatch:(unit -> unit)
+      -> ?on_cancel_dispatch:(unit -> unit)
       -> ('query, 'response) t
       -> Rpc.Connection.t
       -> 'query
@@ -235,7 +254,12 @@ module Expert : sig
             ~bin_query:Stable.V2.Query.bin_t
             (module Stable.V2.Response)
         ;;
-      ]} *)
+      ]}
+
+      - [preserve_legacy_versioned_polling_state_rpc_caller_identity] is a compatiblity
+        feature that ensures we conserve the same bin shapes when migrating from
+        [Versioned_polling_state_rpc] to [Polling_state_rpc.Expert/Babel]. It defaults to
+        [false]. *)
   val create
     :  ?preserve_legacy_versioned_polling_state_rpc_caller_identity:bool
     -> name:string

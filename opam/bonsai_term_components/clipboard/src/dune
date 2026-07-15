@@ -1,0 +1,6 @@
+(library
+ (name bonsai_term_clipboard)
+ (public_name bonsai_term_components.clipboard)
+ (libraries async base64 bonsai_term core xclip)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))

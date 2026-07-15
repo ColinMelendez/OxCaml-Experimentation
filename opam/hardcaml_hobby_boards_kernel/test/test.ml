@@ -111,11 +111,11 @@ module%test Generated_hierarchy = struct
           input [15:0] switches_i;
           output [15:0] leds_o;
 
-          wire [15:0] _2;
-          wire [15:0] _4;
-          assign _2 = switches_i;
-          assign _4 = ~ _2;
-          assign leds_o = _4;
+          wire [15:0] signal_wire;
+          wire [15:0] signal_not;
+          assign signal_wire = switches_i;
+          assign signal_not = ~ signal_wire;
+          assign leds_o = signal_not;
 
       endmodule
       module for_testing (
@@ -126,14 +126,14 @@ module%test Generated_hierarchy = struct
           input [15:0] switches;
           output [15:0] leds;
 
-          wire [15:0] _4;
-          wire [15:0] _2;
+          wire [15:0] signal_inst;
+          wire [15:0] signal_wire;
           inner
               inner
               ( .switches_i(switches),
-                .leds_o(_4[15:0]) );
-          assign _2 = _4;
-          assign leds = _2;
+                .leds_o(signal_inst[15:0]) );
+          assign signal_wire = signal_inst;
+          assign leds = signal_wire;
 
       endmodule
       |}]

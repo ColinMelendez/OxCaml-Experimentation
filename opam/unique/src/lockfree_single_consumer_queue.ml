@@ -1,9 +1,9 @@
-open Base
+open! Import
 
 (* SAFETY: This data structure must not expose operations that would duplicate elems. *)
 
 type 'a t =
-  { mutable head : 'a list Modes.Portended.t
+  { mutable head : 'a list portended
   ; tail : 'a Lockfree_stack.t
   }
 
@@ -23,14 +23,14 @@ let dequeue_or_null t =
   match t.head.portended with
   | x :: xs ->
     t.head <- { portended = xs };
-    This ((Obj.magic_unique [@mode contended portable]) x)
+    This (magic_unique__portended x)
   | [] ->
     if Lockfree_stack.is_empty t.tail
     then Null
     else (
       match rev_to [] (Lockfree_stack.pop_all t.tail) with
       | x :: xs ->
-        let xs = (Obj.magic_many [@mode contended portable]) xs in
+        let xs = magic_many xs in
         if not (phys_equal [] xs) then t.head <- { portended = xs };
         This x
       | [] -> Null)
@@ -49,7 +49,7 @@ let dequeue_all t =
   let head = t.head.portended in
   let tail = Lockfree_stack.pop_all t.tail in
   if not (phys_equal [] head) then t.head <- { portended = [] };
-  (Obj.magic_unique [@mode contended portable]) head @ rev_to [] tail
+  magic_unique__portended head @ rev_to [] tail
 ;;
 
 let[@inline] enqueue t x = Lockfree_stack.push t.tail x

@@ -23,14 +23,14 @@ module Parser = struct
   ;;
 
   let t = Expert.Parser.create parse_number
-  let run_angstrom parser_ = Angstrom.parse_string ~consume:All parser_
-  let run = run_angstrom t
-  let run_many = run_angstrom (Angstrom.many t)
+  let run_angstrom = [%eta2 Angstrom.parse_string ~consume:All]
+  let run = [%eta1 run_angstrom t]
+  let run_many = [%eta1 run_angstrom (Angstrom.many t)]
 end
 
 module Serializer = struct
   let serialize_number f n = Faraday.write_string f n
-  let serialize = Expert.Serializer.create serialize_number
+  let serialize t = Expert.Serializer.create serialize_number t
   let serialize_hum ~spaces = Expert.Serializer.create_hum ~spaces serialize_number
 
   let run t =

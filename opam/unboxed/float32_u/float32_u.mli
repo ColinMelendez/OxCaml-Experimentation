@@ -78,36 +78,33 @@ val pp : Formatter.t -> t -> unit
 
 val invariant : t -> unit
 
-(** {2 Constants}
+(** {2 Constants} *)
 
-    Unfortunately, these must be functions (for now), because module-level [float32]
-    constants are not yet supported. *)
-
-val nan : unit -> t [@@zero_alloc]
-val infinity : unit -> t
-val neg_infinity : unit -> t
+val nan : t
+val infinity : t
+val neg_infinity : t
 
 (** Equal to [infinity]. *)
-val max_value : unit -> t
+val max_value : t
 
 (** Equal to [neg_infinity]. *)
-val min_value : unit -> t
+val min_value : t
 
-val zero : unit -> t
-val one : unit -> t
-val minus_one : unit -> t
+val zero : t
+val one : t
+val minus_one : t
 
 (** The constant pi. *)
-val pi : unit -> t
+val pi : t
 
 (** The constant sqrt(pi). *)
-val sqrt_pi : unit -> t
+val sqrt_pi : t
 
 (** The constant sqrt(2 * pi). *)
-val sqrt_2pi : unit -> t
+val sqrt_2pi : t
 
 (** Euler-Mascheroni constant (γ). *)
-val euler_gamma_constant : unit -> t
+val euler_gamma_constant : t
 
 (** The difference between 1.0s and the smallest exactly representable float32 number
     greater than 1.0s. That is:
@@ -118,15 +115,15 @@ val euler_gamma_constant : unit -> t
     order of [x], the roundoff error is on the order of [x * float_epsilon].
 
     See also: {{:http://en.wikipedia.org/wiki/Machine_epsilon} Machine epsilon}. *)
-val epsilon_float : unit -> t
+val epsilon_float : t
 
-val max_finite_value : unit -> t
+val max_finite_value : t
 
 (** - [min_positive_subnormal_value = 2 ** -149]
     - [min_positive_normal_value    = 2 ** -126] *)
 
-val min_positive_subnormal_value : unit -> t
-val min_positive_normal_value : unit -> t
+val min_positive_subnormal_value : t
+val min_positive_normal_value : t
 
 (** {2 Rounding and integer conversion} *)
 
@@ -267,8 +264,8 @@ val iround_nearest_exn : t -> int
     compiler translates this call to CVTSS2SI. *)
 val iround_nearest_half_to_even : local_ t -> int64
 
-val iround_lbound : unit -> t
-val iround_ubound : unit -> t
+val iround_lbound : t
+val iround_ubound : t
 
 (** {2 Tests} *)
 
@@ -372,7 +369,7 @@ end
 val to_string : t -> string
 
 (** [of_string] is inverse to [to_string]. *)
-val of_string : string -> t
+val of_string : string @ local -> t
 
 (** Pretty print float32, for example [to_string_hum ~decimals:3 1234.1999s = "1_234.200"]
     [to_string_hum ~decimals:3 ~strip_zero:true 1234.1999s = "1_234.2" ]. No delimiters
@@ -700,7 +697,7 @@ module (Bigarray @@ nonportable) : sig
         [x]. [x] must be greater or equal than [0] and strictly less than [Array1.dim a]
         if [a] has C layout. If [a] has Fortran layout, [x] must be greater or equal than
         [1] and less or equal than [Array1.dim a]. Otherwise, [Invalid_argument] is
-        raised. *)
+            raised. *)
     val get : ('a, float32_elt, 'c) Array1.t -> int -> float32#
 
     (** [Array1.set a x v], also written [a.{x} <- v], stores the value [v] at index [x]

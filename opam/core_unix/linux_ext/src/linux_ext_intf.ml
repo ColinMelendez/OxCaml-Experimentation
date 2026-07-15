@@ -52,6 +52,44 @@ module type S = sig @@ portable
        -> int)
         Or_error.t
 
+  (** [copy_file_range ~fd_in ?off_in ~fd_out ?off_out ~len ()] copies up to [len] bytes
+      from file descriptor [fd_in] to file descriptor [fd_out], handling the data transfer
+      within the kernel. When [off_in] is [None], data is read starting at the file offset
+      of [fd_in], which is advanced by the number of bytes copied. When [off_in] is
+      [Some n], data is read starting at offset [n] without changing the file offset of
+      [fd_in]. [off_out] behaves analogously for [fd_out]. Returns the number of bytes
+      copied, which may be less than [len].
+
+      If [~min_len] is supplied, retries on partial copies and [EINTR] until at least
+      [min_len] bytes have been copied (or no more progress can be made). [min_len]
+      defaults to 0.
+
+      Raises [Unix_error] on failure. *)
+  val copy_file_range
+    : (fd_in:File_descr.t
+       -> ?off_in:int
+       -> fd_out:File_descr.t
+       -> ?off_out:int
+       -> len:int
+       -> ?min_len:int
+       -> unit
+       -> int)
+        Or_error.t
+
+  (** [really_copy_file_range ~fd_in ?off_in ~fd_out ?off_out ~len ()] is like
+      {!copy_file_range} but retries on partial copies and [EINTR] until exactly [len]
+      bytes have been copied or all the bytes from [fd_in] if it has <[len] bytes before
+      eof. Raises [Unix_error] on failure. *)
+  val really_copy_file_range
+    : (fd_in:File_descr.t
+       -> ?off_in:int
+       -> fd_out:File_descr.t
+       -> ?off_out:int
+       -> len:int
+       -> unit
+       -> unit)
+        Or_error.t
+
   (** Type for status of SO_BINDTODEVICE socket option. The socket may either restrict the
       traffic to a given (by name, e.g. "eth0") interface, or do no restriction at all. *)
   module Bound_to_interface : sig
@@ -87,6 +125,20 @@ module type S = sig @@ portable
         This option should not be used in code intended to be portable. *)
   [@@deriving sexp, bin_io]
 
+  type tcp_int_option =
+    | TCP_KEEPIDLE
+    (** (since Linux 2.4) The time (in seconds) the connection needs to remain idle before
+        TCP starts sending keepalive probes, if the socket option SO_KEEPALIVE has been
+        set on this socket. This option should not be used in code intended to be
+        portable. *)
+    | TCP_KEEPINTVL
+    (** (since Linux 2.4) The time (in seconds) between individual keepalive probes. This
+        option should not be used in code intended to be portable. *)
+    | TCP_KEEPCNT
+    (** (since Linux 2.4) The maximum number of keepalive probes TCP should send before
+        dropping the connection. This option should not be used in code intended to be
+        portable. *)
+
   type tcp_string_option =
     | TCP_CONGESTION
     (** (Since Linux 2.6.13) Get or set the congestion-control algorithm for this socket.
@@ -109,6 +161,14 @@ module type S = sig @@ portable
       [opt] for socket [sock] to value [v]. *)
   val settcpopt_bool : (File_descr.t -> tcp_bool_option -> bool -> unit) Or_error.t
 
+  (** [gettcpopt_int sock opt] Returns the current value of the int TCP socket option
+      [opt] for socket [sock]. *)
+  val gettcpopt_int : (File_descr.t -> tcp_int_option -> int) Or_error.t
+
+  (** [settcpopt_int sock opt v] sets the current value of the int TCP socket option [opt]
+      for socket [sock] to value [v]. *)
+  val settcpopt_int : (File_descr.t -> tcp_int_option -> int -> unit) Or_error.t
+
   (** [gettcpopt_string sock opt] Returns the current value of the string TCP socket
       option [opt] for socket [sock]. *)
   val gettcpopt_string : (File_descr.t -> tcp_string_option -> string) Or_error.t
@@ -116,6 +176,25 @@ module type S = sig @@ portable
   (** [settcpopt_string sock opt v] sets the current value of the string TCP socket option
       [opt] for socket [sock] to value [v]. *)
   val settcpopt_string : (File_descr.t -> tcp_string_option -> string -> unit) Or_error.t
+
+  type ip_int_option =
+    | IP_TOS
+    (** (since Linux 1.0) Set or receive the Type-Of-Service (TOS) field that is sent with
+        every IP packet originating from this socket. It is used to prioritize packets on
+        the network. TOS is a byte. There are some standard TOS flags defined:
+        IPTOS_LOWDELAY to minimize delays for interactive traffic, IPTOS_THROUGHPUT to
+        optimize throughput, IPTOS_RELIABILITY to optimize for reliability, IPTOS_MINCOST
+        should be used for "filler data" where slow transmission doesn't matter. At most
+        one of these TOS values can be specified. Other bits are invalid and shall be
+        cleared. Linux sends IPTOS_LOWDELAY datagrams first by default, but the exact
+        behavior depends on the configured queueing discipline. Some high priority levels
+        may require superuser privileges (the CAP_NET_ADMIN capability). The priority can
+        also be set in a protocol independent way by the (SOL_SOCKET, SO_PRIORITY) socket
+        option (see socket(7)). *)
+
+  (** [setipopt_int sock opt v] sets the current value of the integer IP socket option
+      [opt] for sock [sock]. *)
+  val setipopt_int : (File_descr.t -> ip_int_option -> int -> unit) Or_error.t
 
   (** [send_nonblocking_no_sigpipe sock ?pos ?len buf] tries to do a nonblocking send on
       socket [sock] given buffer [buf], offset [pos] and length [len]. Prevents [SIGPIPE],
@@ -492,6 +571,10 @@ module type S = sig @@ portable
   (** [online_cpus ()] returns the list of cores online for scheduling. *)
   val online_cpus : (unit -> int list) Or_error.t
 
+  (** [non_isolated_cpus ()] returns the list of online cores not marked as isolated. This
+      is exactly the set difference between [online_cpus] and [isolated_cpus]. *)
+  val non_isolated_cpus : (unit -> int list) Or_error.t
+
   (** [allowed_cpus ?include_offline ?pid ()] returns the list of cores allowed for
       scheduling for this particular PID. If no PID is specified, this checks the current
       PID. By default, this function automatically filters the returned list of cores to
@@ -513,7 +596,7 @@ module type S = sig @@ portable
       real-time) processes that have static priority zero. See [Unix.Scheduler.set] for
       setting the static priority. *)
   module Priority : sig
-    type t [@@deriving sexp]
+    type t : immediate [@@deriving sexp]
 
     val equal : t -> t -> bool
     val of_int : int -> t
@@ -590,6 +673,36 @@ module type S = sig @@ portable
       [setfsgid ~fsgid:(-1)] *)
   val getfsgid : (unit -> int) Or_error.t
 
+  (** For keeping your memory in RAM, i.e. preventing it from being swapped out. *)
+  module Mman : sig
+    module Mcl_flags : sig
+      type t =
+        | Current
+        (** Lock all pages which are currently mapped into the address space of the
+            process *)
+        | Future
+        (** Lock all pages which will become mapped into the address space of the process
+            in the future *)
+        | Onfault (** Lock pages only when they are faulted in (since Linux 4.4) *)
+      [@@deriving sexp]
+    end
+
+    (** [mlockall flags] locks all pages mapped into the address space of the calling
+        process. This includes the pages of the code, data and stack segment, as well as
+        shared libraries, user space kernel data, shared memory, and memory-mapped files.
+        All mapped pages are guaranteed to be resident in RAM when the call returns
+        successfully; the pages are guaranteed to stay in RAM until later unlocked.
+
+        Raises [Unix_error] on error. See [man 2 mlockall] for details. *)
+    val mlockall : (Mcl_flags.t list -> unit) Or_error.t
+
+    (** [munlockall ()] unlocks all pages mapped into the address space of the calling
+        process.
+
+        Raises [Unix_error] on error. See [man 2 munlockall] for details. *)
+    val munlockall : (unit -> unit) Or_error.t
+  end
+
   module Epoll : Epoll.S
 
   module Extended_file_attributes : sig
@@ -659,6 +772,56 @@ module type S = sig @@ portable
          -> value:string
          -> unit
          -> Set_attr_result.t)
+          Or_error.t
+
+    (** [listxattr] retrieves the list of extended attribute names associated with the
+        given path in the filesystem.
+
+        If the call succeeds, the attribute names are returned as [Ok (string list)].
+        Several common errors are returned as possible constructors, namely:
+        - [ERANGE]: The size of the internal buffer is too small to hold the result.
+        - [ENOTSUP]: Extended attributes are not supported by the filesystem, or are
+          disabled.
+        - [E2BIG]: The size of the result is larger than 64K, which means it is impossible
+          to retrieve the list of attributes due to a VFS limitation.
+
+        Many other errors are possible, and will raise an exception. See the man pages for
+        full details. *)
+
+    module List_attr_result : sig
+      type t =
+        | Ok of string list
+        | ERANGE
+        | ENOTSUP
+        | E2BIG
+      [@@deriving sexp_of]
+    end
+
+    val listxattr : (follow_symlinks:bool -> path:string -> List_attr_result.t) Or_error.t
+
+    (** [removexattr] removes the extended attribute identified by name and associated
+        with the given path in the filesystem.
+
+        If the call succeeds, [Ok] is returned. Otherwise, several common errors are
+        returned as possible constructors, namely:
+        - [ENOATTR]: The named attribute does not exist, or the process has no access to
+          this attribute.
+        - [ENOTSUP]: Extended attributes are not supported by the filesystem, or are
+          disabled.
+
+        Many other errors are possible, and will raise an exception. See the man pages for
+        full details. *)
+
+    module Remove_attr_result : sig
+      type t =
+        | Ok
+        | ENOATTR
+        | ENOTSUP
+      [@@deriving sexp_of]
+    end
+
+    val removexattr
+      : (follow_symlinks:bool -> path:string -> name:string -> Remove_attr_result.t)
           Or_error.t
   end
 end

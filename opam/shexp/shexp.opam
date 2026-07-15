@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/shexp/issues"
 dev-repo: "git+https://github.com/janestreet/shexp.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/shexp/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -15,9 +16,12 @@ depends: [
   "sexplib0"
   "base-threads"
   "dune"         {>= "3.17.0"}
-  "spawn"        {= "v0.15.1+ox"}
+  "spawn"        {>= "v0.15"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Process library and s-expression based shell"
 description: "
 Shexp is composed of two parts: a library providing a process monad

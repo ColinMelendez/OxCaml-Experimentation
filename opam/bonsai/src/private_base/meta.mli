@@ -10,8 +10,7 @@ module type Type_id = sig
 
   val same_witness : 'a t -> 'b t -> ('a, 'b) Type_equal.t option
   val same_witness_exn : 'a t -> 'b t -> ('a, 'b) Type_equal.t
-  val to_type_id : 'a t -> 'a Type_equal.Id.t
-  val to_sexp : 'a t -> 'a -> Sexp.t
+  val to_var_id : 'a t -> 'a Var_id.t
   val nothing : Nothing.t t
   val unit : unit t
 end
@@ -47,17 +46,17 @@ module Model : sig
 
   val map
     :  ('k, 'cmp) Comparator.Module.t
-    -> 'k Type_equal.Id.t
-    -> 'cmp Type_equal.Id.t
+    -> 'k Var_id.t
+    -> 'cmp Var_id.t
     -> 'a t
     -> ('k, 'a, 'cmp) Map.t t
 
   val map_on
     :  ('k, 'cmp) Comparator.Module.t
     -> ('k_io, 'cmp_io) Comparator.Module.t
-    -> 'k Type_equal.Id.t
-    -> 'k_io Type_equal.Id.t
-    -> 'cmp Type_equal.Id.t
+    -> 'k Var_id.t
+    -> 'k_io Var_id.t
+    -> 'cmp Var_id.t
     -> 'a t
     -> ('k, 'k_io * 'a, 'cmp) Map.t t
 
@@ -87,13 +86,7 @@ module Input : sig
   val same_witness_exn : 'a t -> 'b t -> ('a, 'b) Type_equal.t
   val unit : unit t
   val both : 'a t -> 'b t -> ('a * 'b) t
-
-  val map
-    :  'k Type_equal.Id.t
-    -> 'cmp Type_equal.Id.t
-    -> 'a t
-    -> ('k, 'a, 'cmp) Map.t option t
-
+  val map : 'k Var_id.t -> 'cmp Var_id.t -> 'a t -> ('k, 'a, 'cmp) Map.t t
   val create : ?name:string -> unit -> 'a t
 
   module Hidden : sig
@@ -108,6 +101,6 @@ module Input : sig
           -> 'key t
 
     val unit : unit t input
-    val int : int t option input
+    val int : int t input
   end
 end

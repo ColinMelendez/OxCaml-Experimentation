@@ -42,7 +42,11 @@ module Stable = struct
       | This v -> (some [@mode m]) v [@exclave_if_local m]
     ;;]
 
-    let sexp_of_t t = to_option t |> [%sexp_of: float option]
+    let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_t (t @ m) =
+      ((to_or_null [@mode m]) t |> ([%sexp_of: float or_null] [@alloc a]))
+      [@exclave_if_stack a]
+    ;;
+
     let t_of_sexp s = [%of_sexp: float option] s |> of_option
     let t_sexp_grammar = [%sexp_grammar: float option] |> Sexplib.Sexp_grammar.coerce
     let equal = [%compare.equal: float]
@@ -269,247 +273,20 @@ let to_string t = Sexp.to_string (sexp_of_t t)
 include Infix
 
 module Unboxed = struct
-  include (
-    Float_u :
-    sig
-    @@ portable
-      type t = float#
-
-      val globalize : local_ t -> t
-
-      include%template Bin_prot.Binable.S [@mode local] with type t := t
-
-      include Ppx_hash_lib.Hashable.S_any with type t := t
-
-      val typerep_of_t : t Typerep.t
-      val typename_of_t : t Typerep_lib.Typename.t
-    end)
-
-  let[@inline] [@zero_alloc] equal t1 t2 = [%compare.equal: Float_u.t] t1 t2
-
-  (* We use [compare.equal] here because, the float compare function have the behavior
-     that [compare nan nan = 0] (which is not the case for Float.equal). *)
-  let[@inline] [@zero_alloc] equal__local (local_ t1) (local_ t2) =
-    [%compare.equal: Float_u.t] t1 t2
-  ;;
-
-  let[@inline] [@zero_alloc] none () = Float_u.nan ()
-  let[@inline] [@zero_alloc] is_none (t : t) : bool = Float_u.is_nan (t :> float#)
-  let[@inline] unsafe_value (t : t) : float# = (t :> float#)
-
-  [%%template
-  [@@@mode.default m = (global, local)]
-
-  let[@inline] [@zero_alloc_if_local m] box (t @ m) =
-    Float_u.to_float t [@exclave_if_local m]
-  ;;
-
-  let[@inline] [@zero_alloc] unbox (t @ local) = Float_u.of_float t]
-
-  let[@inline] [@zero_alloc] is_some t = not (is_none t)
-  let[@inline] [@zero_alloc] const t = Float_u.of_float t
-  let[@inline] [@zero_alloc] abs t = Float_u.abs t
-  let[@inline] [@zero_alloc] select cond t1 t2 = Float_u.select cond t1 t2
-  let[@inline] [@zero_alloc] min t1 t2 = Float_u.min t1 t2
-  let[@inline] [@zero_alloc] unchecked_some v = v
-  let[@inline] [@zero_alloc] some_if b v = select b v (none ())
-
-  let[@zero_alloc] some v =
-    assert (is_some v);
-    unchecked_some v
-  ;;
-
-  let%template[@mode m = (global, local)] [@zero_alloc] of_option (opt @ m) =
-    match opt with
-    | None -> none ()
-    | Some x -> some (Float_u.of_float x)
-  ;;
-
-  let[@inline] [@zero_alloc] compare t1 t2 = Float_u.compare t1 t2
-  let[@inline] [@zero_alloc] first_some x y = Float_u.first_non_nan x y
-  let[@inline] [@zero_alloc] some_or x ~default = first_some x (unchecked_some default)
-
-  module Optional_syntax = struct
-    module Optional_syntax = struct
-      let[@zero_alloc] is_none t = is_none t
-      let[@zero_alloc] unsafe_value t = unsafe_value t
-    end
-  end
-
-  module Infix = struct
-    open Float_u.O
-
-    let ( + ) = [%eta2 ( + )]
-    let ( - ) = [%eta2 ( - )]
-    let ( * ) = [%eta2 ( * )]
-    let ( / ) = [%eta2 ( / )]
-    let ( = ) = [%eta2 equal]
-    let[@inline] [@zero_alloc] ( <> ) t1 t2 = not (equal t1 t2)
-
-    (* We need to check both operands, because: Float.nan ** 0. = 1.
-       1. ** Float.nan = 1. *)
-    let[@zero_alloc] ( ** ) t1 t2 =
-      if Bool.Non_short_circuiting.(is_none t1 || is_none t2) then none () else t1 ** t2
-    ;;
-  end
-
-  module Ieee_nan = struct
-    module Infix = struct
-      open Float_u.O
-      (* These functions return false if either operand is [nan]. *)
-
-      let ( < ) = [%eta2 ( < )]
-      let ( <= ) = [%eta2 ( <= )]
-      let ( > ) = [%eta2 ( > )]
-      let ( >= ) = [%eta2 ( >= )]
-    end
-
-    include Infix
-
-    (* Returns [none] if either operand is [none] *)
-    let max = [%eta2 Float_u.max]
-  end
-
-  include Infix
+  include Float_u.Option
 
   module O = struct
-    include Infix
-    open Float_u.O
+    include O
 
-    let abs t = abs t
-    let neg t = neg t
-    let unbox x = unbox x
+    let unbox x = Float_u.of_float x |> of_float_nan_as_none
 
     let%template[@mode m = (global, local)] box (t @ m) =
-      (box [@mode m]) t [@exclave_if_local m]
+      (t |> to_float_none_as_nan |> Float_u.to_float)
+      [@exclave_if_local m ~reasons:[ May_return_local ]]
     ;;
   end
 
-  let merge x y ~f =
-    let open Optional_syntax in
-    match%optional_u x, y with
-    | None, None -> none ()
-    | Some x, None -> x
-    | None, Some y -> y
-    | Some x, Some y -> f x y
-  ;;
-
-  let%template[@mode m = (global, local)] to_option t =
-    match%optional_u (t : t) with
-    | None -> None
-    | Some f ->
-      let f = Float_u.to_float f in
-      Some f [@exclave_if_local m]
-  ;;
-
-  let[@cold] raise__no_value (type a : float64) _ : a =
-    match raise_s [%message "None"] with
-    | (_ : Nothing.t) -> .
-  ;;
-
-  let value_exn t =
-    match%optional_u (t : t) with
-    | None -> raise__no_value t
-    | Some f -> f
-  ;;
-
-  let neg = [%eta1 Float_u.neg]
-  let zero = [%eta1 Float_u.zero]
-  let one = [%eta1 Float_u.one]
-  let[@inline] [@zero_alloc strict] of_float_nan_as_none (t : float#) : t = t
-  let[@inline] [@zero_alloc] to_float_none_as_nan (t : t) : float# = t
-  let[@zero_alloc] scale t flt = Infix.(t * of_float_nan_as_none flt)
-  let[@zero_alloc] div t flt = Infix.(t / of_float_nan_as_none flt)
-  let is_finite = [%eta1 Float_u.is_finite]
-  let is_inf = [%eta1 Float_u.is_inf]
-  let[@inline] [@zero_alloc] is_positive t = Ieee_nan.(t > zero ())
-  let[@inline] [@zero_alloc] is_non_negative t = Ieee_nan.(t >= zero ())
-  let[@inline] [@zero_alloc] is_negative t = Ieee_nan.(t < zero ())
-  let[@inline] [@zero_alloc] is_non_positive t = Ieee_nan.(t <= zero ())
-  let is_integer = [%eta1 Float_u.is_integer]
-  let t_of_sexp sexp = t_of_sexp sexp |> unbox
-  let sexp_of_t t = sexp_of_t (box t)
-  let to_string t = Sexp.to_string (sexp_of_t t)
-  let[@zero_alloc] value t ~default = select (is_some t) (to_float_none_as_nan t) default
-
-  let[@zero_alloc] divide_if_denominator_nonzero_else
-    ~(numerator : t)
-    ~(denominator : t)
-    ~(else_ : t)
-    =
-    let open Infix in
-    let is_denominator_nonzero = denominator <> zero () in
-    select is_denominator_nonzero Float_u.(numerator / denominator) else_
-  ;;
-
-  include struct
-    open Base_quickcheck
-
-    let quickcheck_generator =
-      (Generator.Via_thunk.map [@mode portable])
-        ((Generator.option [@mode portable]) Generator.float)
-        ~f:(fun f () -> of_option (f ()))
-    ;;
-
-    let quickcheck_observer =
-      (Observer.Via_thunk.unmap [@mode portable])
-        ((Observer.option [@mode portable]) Observer.float)
-        ~f:(fun f () -> to_option (f ()))
-    ;;
-
-    let quickcheck_shrinker = Shrinker.atomic
-  end
-
-  module Array = struct
-    let sexp_of_t' = sexp_of_t
-    let t_of_sexp' = t_of_sexp
-
-    include Float_u.Array
-
-    (* It's OK that [sexp_of_t] here differs from the [sexp_of_t] in [Float_u.Array],
-       because the equality between these types is not exposed by this module's interface. *)
-    let sexp_of_t t = custom_sexp_of_t sexp_of_t' t
-    let t_of_sexp sexp = custom_t_of_sexp t_of_sexp' sexp
-  end
-
-  module Ref = struct
-    include Float_u.Ref
-
-    let[@zero_alloc] create_local contents = exclave_ { contents }
-    let[@inline] create_none () = create (none ())
-    let[@inline] [@zero_alloc] set_none t = set t (none ())
-
-    let[@inline] [@zero_alloc] set_float_nan_as_none t flt =
-      set t (of_float_nan_as_none flt)
-    ;;
-  end
-
-  module Stable = struct
-    module V1 = struct
-      module F = Float_u.Stable.V1
-
-      type t = F.t [@@deriving globalize, stable_witness]
-
-      include (
-        F :
-        sig
-        @@ portable
-          include%template Bin_prot.Binable.S [@mode local] with type t := t
-
-          include Ppx_hash_lib.Hashable.S_any with type t := t
-
-          val typerep_of_t : t Typerep.t
-          val typename_of_t : t Typerep_lib.Typename.t
-          val equal : t -> t -> bool
-          val compare : t -> t -> int
-        end)
-
-      type sexp_repr = float option [@@deriving sexp]
-
-      let sexp_of_t t = to_option t |> [%sexp_of: sexp_repr]
-      let t_of_sexp s = [%of_sexp: sexp_repr] s |> of_option
-    end
-  end
+  include O
 end
 
 let[@inline] divide_if_denominator_nonzero_else

@@ -3,7 +3,7 @@ module String = Base.String
 module T = struct
   include Bin_prot.Md5
 
-  let%template[@mode local] equal = ([%compare.equal: t] [@mode local])
+  let%template[@mode local] equal = ([%compare.equal: t] [@mode.explicit local])
   let sexp_of_t t = t |> to_hex |> String.sexp_of_t
   let t_of_sexp s = s |> String.t_of_sexp |> of_hex_exn
   let t_sexp_grammar = Sexplib.Sexp_grammar.coerce String.t_sexp_grammar
@@ -118,7 +118,7 @@ let digest_string = Stable.digest_string
 let digest_bytes = Md5_lib.bytes
 
 external caml_sys_open
-  :  string
+  :  string @ local
   -> Stdlib.open_flag list
   -> perm:int
   -> int
@@ -128,7 +128,7 @@ external caml_sys_open
 external caml_sys_close : int -> unit @@ portable = "caml_sys_close"
 external digest_fd_blocking : int -> string @@ portable = "core_md5_fd"
 
-let digest_file_blocking path =
+let digest_file_blocking (path : string @ local) =
   of_binary_exn
     (Base.Exn.protectx
        (caml_sys_open path [ Open_rdonly; Open_binary ] ~perm:0o000)

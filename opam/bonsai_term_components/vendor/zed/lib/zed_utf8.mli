@@ -1,11 +1,11 @@
 (*
-   * zed_utf8.mli
+ * zed_utf8.mli
  * ------------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 open Core
 

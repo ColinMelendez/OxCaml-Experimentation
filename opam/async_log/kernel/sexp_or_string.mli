@@ -9,7 +9,7 @@ type t =
 
 module Stable : sig
   module V1 : sig
-    type nonrec t = t [@@deriving bin_io, sexp]
+    type nonrec t = t [@@deriving bin_io, sexp, stable_witness]
 
     val to_string : t -> string
   end

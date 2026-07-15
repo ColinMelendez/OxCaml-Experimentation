@@ -50,7 +50,7 @@ include%template Bin_prot.Binable.S [@mode local] with type t := t
 
 (** {3 For [hash]} *)
 
-include Ppx_hash_lib.Hashable.S_any with type t := t
+include Ppx_hash_lib.Hashable.S with type t := t
 
 (** {3 From [Typerep]} *)
 
@@ -58,8 +58,9 @@ val typerep_of_t : t Typerep_lib.Std.Typerep.t
 
 (** {3 Inlined from [Stringable]} *)
 
-val of_string : string -> t
-val to_string : t -> string
+val of_string : string @ local -> t
+
+val%template to_string : t -> string @ l [@@alloc a @ l = (heap @ global, stack @ local)]
 
 (** {3 Inlined from [Comparable]} *)
 
@@ -113,7 +114,7 @@ val invariant : t -> unit
 module Hex_unsigned : sig
   type nonrec t = t
 
-  include Ppx_hash_lib.Hashable.S_any with type t := t
+  include Ppx_hash_lib.Hashable.S with type t := t
 
   val compare : t -> t -> int
   val sexp_of_t : t -> Sexp.t
@@ -124,7 +125,7 @@ module Hex_unsigned : sig
   module Local : sig
     type nonrec t = t
 
-    include Ppx_hash_lib.Hashable.S_any with type t := t
+    include Ppx_hash_lib.Hashable.S with type t := t
 
     val compare : t -> t -> int
     val sexp_of_t : t -> Sexp.t @ local [@@zero_alloc]
@@ -139,8 +140,8 @@ val to_string_hum : ?delimiter:char -> t -> string
 
 (** {2 Infix operators and constants} *)
 
-val one : unit -> t
-val minus_one : unit -> t
+val one : t
+val minus_one : t
 
 (** {2 Other common functions} *)
 
@@ -232,10 +233,10 @@ val of_float_unchecked : float -> t
 val num_bits : nativeint
 
 (** The largest representable integer. *)
-val max_value : unit -> t
+val max_value : t
 
 (** The smallest representable integer. *)
-val min_value : unit -> t
+val min_value : t
 
 (** Shifts right, filling in with zeroes, which will not preserve the sign of the input. *)
 val shift_right_logical : t -> int -> t
@@ -343,7 +344,7 @@ module O : sig
   val abs : t -> t
 
   val neg : t -> t
-  val zero : unit -> t
+  val zero : t
 end
 
 include module type of O
@@ -439,7 +440,7 @@ module Stable : sig
     val t_of_sexp : Sexp.t -> t
 
     include Bin_prot.Binable.S with type t := t
-    include Ppx_hash_lib.Hashable.S_any with type t := t
+    include Ppx_hash_lib.Hashable.S with type t := t
 
     val typerep_of_t : t Typerep_lib.Std.Typerep.t
     val of_string : string -> t

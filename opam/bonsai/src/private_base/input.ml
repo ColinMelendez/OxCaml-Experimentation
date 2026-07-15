@@ -15,7 +15,11 @@ type 'input t =
 
 let dynamic input = Dynamic input
 let static = Static ()
-let static_none = Static None
+let static_dummy_for_assoc cmp = Static (Map.empty cmp)
+
+let static_dummy_for_switch =
+  Static (Meta.Input.Hidden.T { input = (); type_id = Meta.Input.unit; key = 0 })
+;;
 
 let map t ~f =
   match t with

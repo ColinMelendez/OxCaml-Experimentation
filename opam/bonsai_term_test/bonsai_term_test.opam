@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/bonsai_term_test/issues"
 dev-repo: "git+https://github.com/janestreet/bonsai_term_test.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/bonsai_term_test/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -25,10 +26,13 @@ depends: [
   "ppx_quick_test"
   "ppx_with"
   "dune"                     {>= "3.17.0"}
-  "notty-community"          {= "0.2.4+ox"}
-  "re"                       {= "1.14.0+ox"}
+  "notty-community"          {>= "0.2.4"}
+  "re"                       {>= "1.8.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "A library for building dynamic terminal apps, using bonsai"
 description: "
 Bonsai_term is a library for building reusable TUI componetns and apps inside an

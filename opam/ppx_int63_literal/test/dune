@@ -2,4 +2,4 @@
  (name ppx_int63_literal_test)
  (libraries base)
  (preprocess
-  (pps ppx_jane ppx_int63_literal)))
+  (pps ppx_jane -compare-require-explicit-locality ppx_int63_literal)))

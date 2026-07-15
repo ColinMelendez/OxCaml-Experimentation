@@ -3,7 +3,7 @@ open! Core
 (** See {!Nonempty_interval} below. *)
 
 module type S = sig
-  type t [@@deriving bin_io, sexp, compare, hash]
+  type t [@@deriving bin_io, sexp, compare, equal, hash]
   type bound
   type interval
 
@@ -51,7 +51,7 @@ module type S_stable = sig
 
   module Stable : sig
     module V1 : sig
-      type nonrec t = t [@@deriving bin_io, compare, sexp, stable_witness, hash]
+      type nonrec t = t [@@deriving bin_io, compare, equal, sexp, stable_witness, hash]
     end
   end
 end

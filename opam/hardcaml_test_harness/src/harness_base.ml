@@ -11,6 +11,7 @@ type 'a with_test_config =
   -> ?test_name_prefix:string
   -> ?test_name:string
   -> ?print_waves_after_test:(Waveform.t -> unit)
+  -> ?run_interactive:bool
   -> ?clock_mode:Cyclesim.Config.Clock_mode.t
   -> 'a
 
@@ -29,6 +30,7 @@ let run
   ?test_name_prefix
   ?test_name
   ?(print_waves_after_test : (Waveform.t -> unit) option)
+  ?(run_interactive = false)
   ?(clock_mode = Cyclesim.Config.Clock_mode.All_one_domain)
   ~(cycle_fn : sim -> unit)
   ~(create :
@@ -89,6 +91,9 @@ let run
     | Prefix { directory; config = { always_include_line_number; wavefile_format; _ } } ->
       of_prefix ~always_include_line_number ~format:wavefile_format directory |> Some
     | File { filename; _ } -> Some filename
+    | Callback_hardcamlwaveform
+        { config = { always_include_line_number; wavefile_format; _ }; _ } ->
+      of_prefix ~always_include_line_number ~format:wavefile_format "" |> Some
   in
   let sim_config =
     let base =
@@ -137,13 +142,22 @@ let run
         Out_channel.close out_channel
       in
       Wave_mode.Vcd { out_channel }, cleanup_fn
+    | Callback_hardcamlwaveform { config = { wavefile_format = Hardcamlwaveform; _ }; f }
+      ->
+      let waveform_name = Option.value_exn serialize_waves_to in
+      Wave_mode.Hardcamlwaveform, Option.iter ~f:(f ~waveform_name)
+    | Callback_hardcamlwaveform { config = { wavefile_format = Vcd; _ }; _ } ->
+      raise_s
+        [%message
+          "Waves_config.Callback_hardcamlwaveform cannot be combined with Vcd format; \
+           the callback only receives hardcaml waveforms"]
   in
   let sim, waves =
     let scope =
       Scope.create ~flatten_design:true ~auto_label_hierarchical_ports:true ()
     in
     create
-      ~always_wrap_waveterm:(Option.is_some print_waves_after_test)
+      ~always_wrap_waveterm:(Option.is_some print_waves_after_test || run_interactive)
       ~wave_mode
       sim_config
       scope
@@ -158,5 +172,6 @@ let run
         cycle_fn sim
       done;
       save_fn waves;
-      Option.iter print_waves_after_test ~f:(fun fn -> fn (Option.value_exn waves)))
+      Option.iter print_waves_after_test ~f:(fun fn -> fn (Option.value_exn waves));
+      if run_interactive then Hardcaml_waveterm_interactive.run (Option.value_exn waves))
 ;;

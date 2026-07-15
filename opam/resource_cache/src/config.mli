@@ -27,7 +27,7 @@ val create
 
 module Stable : sig
   module V3 : sig
-    type nonrec t = t [@@deriving bin_io, sexp]
+    type nonrec t = t [@@deriving bin_io, sexp, stable_witness]
   end
 
   module V2 : sig
@@ -38,7 +38,7 @@ module Stable : sig
       ; max_resource_reuse : int
       ; close_idle_resources_when_at_limit : bool
       }
-    [@@deriving bin_io, sexp]
+    [@@deriving bin_io, sexp, stable_witness]
 
     val to_v3 : t -> V3.t
   end
@@ -50,7 +50,7 @@ module Stable : sig
       ; max_resources_per_id : int
       ; max_resource_reuse : int
       }
-    [@@deriving bin_io, sexp]
+    [@@deriving bin_io, sexp, stable_witness]
 
     val to_v2 : t -> V2.t
   end

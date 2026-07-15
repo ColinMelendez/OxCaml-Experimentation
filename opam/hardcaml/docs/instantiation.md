@@ -8,7 +8,7 @@
 -->
 
 An
-[instantiation](https://github.com/janestreet/hardcaml/blob/with-extensions/src/instantiation.mli)
+[instantiation](https://github.com/janestreet/hardcaml/blob/oxcaml/src/instantiation.mli)
 creates a placeholder for a named sub-circuit with specified input and output ports.
 
 This placeholder can be later filled in with an implementation -- it could be a Verilog
@@ -26,8 +26,9 @@ design, a vendor macro or even another Hardcaml circuit.
 - : ?lib:string ->
     ?arch:string ->
     ?instance:string ->
-    ?parameters:Hardcaml.Parameter.t list ->
-    ?attributes:Hardcaml.Rtl_attribute.t list ->
+    ?parameters:Hardcaml_kernel.Parameter.t list ->
+    ?attributes:Hardcaml_kernel.Rtl_attribute.t list ->
+    ?user_metadata:(string, Sexp.t) Base.Hashtbl.t ->
     unit ->
     name:string ->
     inputs:(string * Signal.t) list ->
@@ -82,7 +83,7 @@ val parameter : Parameter.t =
 ```
 
 Each parameter is specified using a `name` and a `type` with a value. Various
-[types](https://github.com/janestreet/hardcaml/blob/with-extensions/src/parameter.mli) are
+[types](https://github.com/janestreet/hardcaml/blob/oxcaml/src/parameter.mli) are
 supported including `Int`, `String`, `Bool`, `Real` and various bit and vector types
 associated with Verilog and VHDL - `Bit`, `Std_logic_vector` etc.
 

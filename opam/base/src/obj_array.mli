@@ -6,7 +6,7 @@
 
 open! Import
 
-type t [@@deriving sexp_of]
+type t : value mod non_float [@@deriving sexp_of]
 
 include Blit.S with type t := t
 include Invariant.S with type t := t
@@ -24,14 +24,14 @@ val copy : local_ t -> t
 
 val singleton : Stdlib.Obj.t -> t
 val empty : t
-val get_empty : unit -> t
+val get_empty : unit -> t [@@zero_alloc]
 val length : local_ t @ contended -> int
 
 (** [get t i] and [unsafe_get t i] return the object at index [i]. [set t i o] and
     [unsafe_set t i o] set index [i] to [o]. In no case is the object copied. The
     [unsafe_*] variants omit the bounds check of [i]. *)
-val get : local_ t -> int -> Stdlib.Obj.t
-[@@zero_alloc]
+val%template get : local_ t @ c -> int -> Stdlib.Obj.t @ c
+[@@zero_alloc] [@@mode c = (uncontended, shared)]
 
 val unsafe_get : local_ t -> int -> Stdlib.Obj.t [@@zero_alloc]
 val set : local_ t -> int -> Stdlib.Obj.t -> unit

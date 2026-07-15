@@ -3,4 +3,4 @@
  (public_name insertion_ordered_map)
  (libraries core sexplib)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

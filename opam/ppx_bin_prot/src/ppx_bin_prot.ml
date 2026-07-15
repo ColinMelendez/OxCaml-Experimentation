@@ -119,7 +119,7 @@ module Sig = struct
   let mk_sig_generator combinators ~with_localize =
     let mk_sig ~ctxt (_rf, tds) ~localize ~unboxed ~portable =
       let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-      let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+      let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
       List.concat_map tds ~f:(fun td ->
         let td = name_type_params_in_td td in
         List.concat_map combinators ~f:(fun mk ->
@@ -259,13 +259,13 @@ module Sig = struct
       in
       Deriving.Generator.V2.make flags (fun ~ctxt (rf, tds) localize unboxed portable ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-        let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+        let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
         mk_named_sig ~ctxt (rf, tds) ~localize ~portable)
     | Some localize ->
       let flags = Deriving.Args.(empty +> flag "unboxed" +> flag "portable") in
       Deriving.Generator.V2.make flags (fun ~ctxt (rf, tds) unboxed portable ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-        let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+        let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
         mk_named_sig ~ctxt (rf, tds) ~localize ~portable)
   ;;
 
@@ -298,12 +298,10 @@ let let_ins loc bindings expr =
 ;;
 
 let alias_or_fun expr fct =
-  let is_id =
-    match expr.pexp_desc with
-    | Pexp_ident _ -> true
-    | _ -> false
-  in
-  if is_id then expr else fct
+  match expr.pexp_desc with
+  | Pexp_ident _ -> (* alias *) expr
+  | Pexp_function _ -> (* already a function *) expr
+  | _ -> (* eta expanded function *) fct
 ;;
 
 let td_is_nil td =
@@ -1161,71 +1159,90 @@ module Generate_bin_write = struct
           "bin_write_sum: too many alternatives (%d > 65536)"
           n_alts
     in
-    let matchings =
-      List.mapi alts ~f:(fun i cd ->
-        (match cd.pcd_res with
-         | None -> ()
-         | Some ty ->
-           Location.raise_errorf
-             ~loc:ty.ptyp_loc
-             "bin_write_sum: GADTs are not supported by bin_prot");
-        match cd.pcd_args with
-        | Pcstr_tuple [] ->
-          let loc = cd.pcd_loc in
-          case
-            ~lhs:(pconstruct cd None)
-            ~guard:None
-            ~rhs:(eapply ~loc write_tag [ eint ~loc i ])
-        | Pcstr_tuple args ->
-          let get_tp = Ppxlib_jane.Shim.Pcstr_tuple_arg.to_core_type in
-          let mk_patt loc v_name _ = pvar ~loc v_name in
-          let patts, write_args =
-            bin_write_args
-              full_type_name
-              loc
-              get_tp
-              Locality_modality.of_cstr_tuple_field
-              mk_patt
-              args
-              ~locality
-              ~portable
-          in
-          let args =
-            match patts with
-            | [ patt ] -> patt
-            | _ -> ppat_tuple ~loc patts
-          in
-          case
-            ~lhs:(pconstruct cd (Some args))
-            ~guard:None
-            ~rhs:
-              [%expr
-                let pos = [%e eapply ~loc write_tag [ eint ~loc i ]] in
-                [%e write_args]]
-        | Pcstr_record fields ->
-          let cnv_patts lbls = ppat_record ~loc lbls Closed in
-          let get_tp ld = ld.pld_type in
-          let mk_patt loc v_name ld = Located.map lident ld.pld_name, pvar ~loc v_name in
-          let patts, expr =
-            bin_write_args
-              full_type_name
-              loc
-              get_tp
-              Locality_modality.of_ld
-              mk_patt
-              fields
-              ~locality
-              ~portable
-          in
-          case
-            ~lhs:(pconstruct cd (Some (cnv_patts patts)))
-            ~guard:None
-            ~rhs:
-              [%expr
-                let pos = [%e eapply ~loc write_tag [ eint ~loc i ]] in
-                [%e expr]])
-    in
-    `Match matchings
+    List.iter alts ~f:(fun cd ->
+      match cd.pcd_res with
+      | None -> ()
+      | Some ty ->
+        Location.raise_errorf
+          ~loc:ty.ptyp_loc
+          "bin_write_sum: GADTs are not supported by bin_prot");
+    (* When all constructors are immediate (no payloads), we separate the tag computation
+       from the write call. The compiler can see the match arms assign sequential integers
+       0, 1, 2, ... and optimize the match into reading the runtime tag directly, avoiding
+       a jump table. *)
+    let all_atoms = List.length (atoms_in_variant alts) = n_alts in
+    if all_atoms && n_alts > 1
+    then (
+      let tag_matchings =
+        List.mapi alts ~f:(fun i cd ->
+          case ~lhs:(pconstruct cd None) ~guard:None ~rhs:(eint ~loc:cd.pcd_loc i))
+      in
+      `Fun
+        [%expr
+          fun buf ~pos v ->
+            [%e eapply ~loc write_tag [ pexp_match ~loc [%expr v] tag_matchings ]]])
+    else (
+      let matchings =
+        List.mapi alts ~f:(fun i cd ->
+          match cd.pcd_args with
+          | Pcstr_tuple [] ->
+            let loc = cd.pcd_loc in
+            case
+              ~lhs:(pconstruct cd None)
+              ~guard:None
+              ~rhs:(eapply ~loc write_tag [ eint ~loc i ])
+          | Pcstr_tuple args ->
+            let get_tp = Ppxlib_jane.Shim.Pcstr_tuple_arg.to_core_type in
+            let mk_patt loc v_name _ = pvar ~loc v_name in
+            let patts, write_args =
+              bin_write_args
+                full_type_name
+                loc
+                get_tp
+                Locality_modality.of_cstr_tuple_field
+                mk_patt
+                args
+                ~locality
+                ~portable
+            in
+            let args =
+              match patts with
+              | [ patt ] -> patt
+              | _ -> ppat_tuple ~loc patts
+            in
+            case
+              ~lhs:(pconstruct cd (Some args))
+              ~guard:None
+              ~rhs:
+                [%expr
+                  let pos = [%e eapply ~loc write_tag [ eint ~loc i ]] in
+                  [%e write_args]]
+          | Pcstr_record fields ->
+            let cnv_patts lbls = ppat_record ~loc lbls Closed in
+            let get_tp ld = ld.pld_type in
+            let mk_patt loc v_name ld =
+              Located.map lident ld.pld_name, pvar ~loc v_name
+            in
+            let patts, expr =
+              bin_write_args
+                full_type_name
+                loc
+                get_tp
+                Locality_modality.of_ld
+                mk_patt
+                fields
+                ~locality
+                ~portable
+            in
+            case
+              ~lhs:(pconstruct cd (Some (cnv_patts patts)))
+              ~guard:None
+              ~rhs:
+                [%expr
+                  let pos = [%e eapply ~loc write_tag [ eint ~loc i ]] in
+                  [%e expr]])
+      in
+      `Match matchings)
   ;;
 
   let make_fun ~loc ?(don't_expand = false) fun_or_match =
@@ -1389,14 +1406,14 @@ module Generate_bin_write = struct
       Deriving.Args.(empty +> flag "localize" +> flag "unboxed" +> flag "portable")
     in
     Deriving.Generator.make flags (fun ~loc ~path (rf, tds) localize unboxed portable ->
-      let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+      let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
       bin_write ~f_sharp_compatible:false ~loc ~path (rf, tds) ~localize ~portable)
   ;;
 
   let gen_local =
     let flags = Deriving.Args.(empty +> flag "unboxed" +> flag "portable") in
     Deriving.Generator.make flags (fun ~loc ~path (rf, tds) unboxed portable ->
-      let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+      let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
       bin_write_local ~loc ~path (rf, tds) ~portable)
   ;;
 
@@ -2023,7 +2040,7 @@ module Generate_bin_read = struct
 
   (* Generate code from type definitions *)
   let bin_read ~f_sharp_compatible ~loc ~path (rec_flag, tds) ~portable ~util ~unboxed =
-    let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+    let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
     let tds = List.map tds ~f:name_type_params_in_td in
     let rec_flag = really_recursive rec_flag tds in
     let should_omit_type_params = should_omit_type_params ~f_sharp_compatible tds in
@@ -2178,7 +2195,7 @@ module Generate_tp_class = struct
     Deriving.Generator.make
       Deriving.Args.(empty +> flag "unboxed" +> flag "portable")
       (fun ~loc ~path (rf, tds) unboxed portable ->
-        let tds = Ppx_helpers.with_implicit_unboxed_records ~loc ~unboxed tds in
+        let tds = Ppx_helpers.with_implicit_unboxed_types ~loc ~unboxed tds in
         bin_tp_class ~loc ~path (rf, tds) ~portable)
   ;;
 

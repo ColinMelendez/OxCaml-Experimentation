@@ -7,9 +7,11 @@ type t =
   ; label_is_optional : bool
   ; data : Tag_data.t loc
   }
-[@@deriving fields ~getters]
+[@@deriving fields ~getters ~local_getters]
 
-let compare_label = Comparable.lift [%compare: string] ~f:label
+let%template[@mode m = (local, global)] compare_label =
+  (Comparable.lift [@mode m]) ([%compare: string] [@mode.explicit m]) ~f:(label [@mode m])
+;;
 
 let sexp_of_t { label; label_is_optional; data } =
   let label = if label_is_optional then "?" ^ label else label in
@@ -49,7 +51,12 @@ let render_list ts ~loc =
         [%expr
           match [%e data], [%e acc] with
           | None, tl -> tl
-          | Some data, tl -> { Ppx_log_types.Log_tag.name = [%e label]; data } :: tl])
+          | Some data, tl -> { Ppx_log_types.Log_tag.name = [%e label]; data } :: tl]
+      | `Tag_list, data ->
+        [%expr
+          List.map [%e data] ~f:(fun data ->
+            { Ppx_log_types.Log_tag.name = [%e label]; data })
+          @ [%e acc]])
 ;;
 
 let%expect_test "parsing / rendering examples" =
@@ -80,7 +87,8 @@ let%expect_test "parsing / rendering examples" =
     ((x (Type_constrained "some ~expr" t)))
     [{
        Ppx_log_types.Log_tag.name = "x";
-       data = (Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
+       data =
+         (Ppx_log_types.Tag_data.Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
      }]
     |}];
   test [%expr "unused" ~x];
@@ -95,7 +103,8 @@ let%expect_test "parsing / rendering examples" =
     (("some ~expr" (Type_constrained "some ~expr" t)))
     [{
        Ppx_log_types.Log_tag.name = "some ~expr";
-       data = (Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
+       data =
+         (Ppx_log_types.Tag_data.Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
      }]
     |}];
   test [%expr "unused" (some ~expr)];
@@ -116,7 +125,8 @@ let%expect_test "parsing / rendering examples" =
     (("" (Type_constrained "some ~expr" t)))
     [{
        Ppx_log_types.Log_tag.name = "";
-       data = (Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
+       data =
+         (Ppx_log_types.Tag_data.Sexp (((sexp_of_t)[@merlin.hide ]) (some ~expr)))
      }]
     |}];
   test
@@ -132,10 +142,7 @@ let%expect_test "parsing / rendering examples" =
     { Ppx_log_types.Log_tag.name = "y"; data = (String y) } ::
     (match ((match z with
              | None -> None
-             | Some value ->
-                 Some
-                   (Ppx_log_types.Tag_data.Sexp
-                      (((sexp_of_int)[@merlin.hide ]) value))),
+             | Some value -> Some (Ppx_log_types.Tag_data.Int value)),
              (match ((match ((sexp_of_t)[@merlin.hide ]) t with
                       | Sexp.List [] -> None
                       | sexp -> Some (Ppx_log_types.Tag_data.Sexp sexp)),
@@ -155,10 +162,7 @@ let%expect_test "parsing / rendering examples" =
     ((?z (Type_constrained z "int option")))
     match ((match z with
             | None -> None
-            | Some value ->
-                Some
-                  (Ppx_log_types.Tag_data.Sexp
-                     (((sexp_of_int)[@merlin.hide ]) value))), [])
+            | Some value -> Some (Ppx_log_types.Tag_data.Int value)), [])
     with
     | (None, tl) -> tl
     | (Some data, tl) -> { Ppx_log_types.Log_tag.name = "z"; data } :: tl
@@ -172,6 +176,28 @@ let%expect_test "parsing / rendering examples" =
        data =
          ([%ocaml.error
             "Do not specify both [@sexp.option] and an optional label (?label)."])
+     }]
+    |}];
+  test [%expr "unused" ?z:(z : int or_null)];
+  [%expect
+    {|
+    ((?z (Type_constrained z "int or_null")))
+    match ((match z with
+            | Null -> None
+            | This value -> Some (Ppx_log_types.Tag_data.Int value)), [])
+    with
+    | (None, tl) -> tl
+    | (Some data, tl) -> { Ppx_log_types.Log_tag.name = "z"; data } :: tl
+    |}];
+  test [%expr "unused" ?z:(z : (int or_null[@sexp.or_null]))];
+  [%expect
+    {|
+    ((?z (Type_constrained z "((int or_null)[@sexp.or_null ])")))
+    [{
+       Ppx_log_types.Log_tag.name = "z";
+       data =
+         ([%ocaml.error
+            "Do not specify both [@sexp.or_null] and an optional label (?label)."])
      }]
     |}]
 ;;

@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/ppx_pattern_bind/issues"
 dev-repo: "git+https://github.com/janestreet/ppx_pattern_bind.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/ppx_pattern_bind/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -15,9 +16,12 @@ depends: [
   "ppx_let"
   "ppxlib_jane"
   "dune"        {>= "3.17.0"}
-  "ppxlib"      {= "0.33.0+ox"}
+  "ppxlib"      {>= "0.33.0" & < "0.36.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "A ppx for writing fast incremental bind nodes in a pattern match"
 description: "
 A ppx rewriter that is intended for use with Incremental. It makes it

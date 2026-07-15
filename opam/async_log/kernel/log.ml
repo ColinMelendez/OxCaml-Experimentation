@@ -52,8 +52,8 @@ let push_message t msg ~level ~time ~tags =
     ~legacy_tags:tags
 ;;
 
-let sexp ?level ?time ?tags t sexp =
-  if would_log t level then push_message t (`Sexp sexp) ~level ~time ~tags
+let sexp ?level ?time ?tags t the_sexp =
+  if would_log t level then push_message t (`Sexp the_sexp) ~level ~time ~tags
 ;;
 
 let string ?level ?time ?tags t s =
@@ -63,6 +63,13 @@ let string ?level ?time ?tags t s =
 let structured_message ?level ?time ?tags t data source =
   if would_log t level
   then push_message_event t data source ~level ~time ~legacy_tags:tags
+;;
+
+let enqueue_structured_message ?level ?time ?tags t data source =
+  if would_log t level
+  then (
+    let tags = Option.value tags ~default:[] in
+    enqueue_message_request t data source ~level ~time ~legacy_tags:tags)
 ;;
 
 let printf ?level ?time ?tags t fmt =
@@ -117,20 +124,20 @@ let surroundf_gen
         Exn.reraise exn msg))
 ;;
 
-let surround_s ~on_subsequent_errors ?level ?time ?tags t msg f =
+let surround_s ?on_subsequent_errors ?level ?time ?tags t msg f =
   surround_s_gen
     ?tags
-    ~try_with:(Monitor.try_with ~run:`Schedule ~rest:on_subsequent_errors)
+    ~try_with:(Monitor.try_with ~run:`Schedule ?rest:on_subsequent_errors)
     ~map_return:Deferred.map
     ~log_sexp:(fun ?tags s -> sexp ?tags ?level ?time t s)
     ~f
     msg
 ;;
 
-let surroundf ~on_subsequent_errors ?level ?time ?tags t fmt =
+let surroundf ?on_subsequent_errors ?level ?time ?tags t fmt =
   surroundf_gen
     ?tags
-    ~try_with:(Monitor.try_with ~run:`Schedule ~rest:on_subsequent_errors)
+    ~try_with:(Monitor.try_with ~run:`Schedule ?rest:on_subsequent_errors)
     ~map_return:Deferred.map
     ~log_string:(fun ?tags -> string ?tags ?level ?time t)
     fmt
@@ -154,10 +161,12 @@ let set_level_via_param_lazy log ~default =
 let raw ?time ?tags t fmt = printf ?time ?tags t fmt
 let debug ?time ?tags t fmt = printf ~level:`Debug ?time ?tags t fmt
 let info ?time ?tags t fmt = printf ~level:`Info ?time ?tags t fmt
+let warn ?time ?tags t fmt = printf ~level:`Warn ?time ?tags t fmt
 let error ?time ?tags t fmt = printf ~level:`Error ?time ?tags t fmt
 let raw_s ?time ?tags t the_sexp = sexp ?time ?tags t the_sexp
 let debug_s ?time ?tags t the_sexp = sexp ~level:`Debug ?time ?tags t the_sexp
 let info_s ?time ?tags t the_sexp = sexp ~level:`Info ?time ?tags t the_sexp
+let warn_s ?time ?tags t the_sexp = sexp ~level:`Warn ?time ?tags t the_sexp
 let error_s ?time ?tags t the_sexp = sexp ~level:`Error ?time ?tags t the_sexp
 
 module For_testing = struct

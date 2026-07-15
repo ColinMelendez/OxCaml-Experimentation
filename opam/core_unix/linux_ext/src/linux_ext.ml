@@ -32,7 +32,14 @@ type tcp_bool_option =
   | TCP_QUICKACK
 [@@deriving sexp, bin_io]
 
+type tcp_int_option =
+  | TCP_KEEPIDLE
+  | TCP_KEEPINTVL
+  | TCP_KEEPCNT
+[@@deriving sexp, bin_io]
+
 type tcp_string_option = TCP_CONGESTION [@@deriving sexp, bin_io]
+type ip_int_option = IP_TOS
 
 module Bound_to_interface = struct
   type t =
@@ -42,7 +49,7 @@ module Bound_to_interface = struct
 end
 
 module Priority : sig @@ portable
-  type t [@@deriving sexp]
+  type t : immediate [@@deriving sexp]
 
   val equal : t -> t -> bool
   val of_int : int -> t
@@ -163,6 +170,13 @@ let isolated_cpus =
 
 let online_cpus = memo (fun () -> cpu_list_of_file_exn "/sys/devices/system/cpu/online")
 
+let non_isolated_cpus =
+  memo (fun () ->
+    let online = online_cpus () |> Int.Set.of_list in
+    let isolated = isolated_cpus () |> Int.Set.of_list in
+    Set.diff online isolated |> Set.to_list)
+;;
+
 let allowed_cpus ?(include_offline = false) ?pid () =
   let status_path =
     match pid with
@@ -201,6 +215,7 @@ module Null_toplevel = struct
   let cpu_list_of_string_exn = cpu_list_of_string_exn
   let isolated_cpus = u "Linux_ext.isolated_cores"
   let online_cpus = u "Linux_ext.online_cores"
+  let non_isolated_cpus = u "Linux_ext.non_isolated_cpus"
   let allowed_cpus = u "Linux_ext.allowed_cores"
   let cpus_local_to_nic = u "Linux_ext.cpus_local_to_nic"
   let file_descr_realpath = u "Linux_ext.file_descr_realpath"
@@ -210,6 +225,7 @@ module Null_toplevel = struct
   let get_bind_to_interface = u "Linux_ext.get_bind_to_interface"
   let get_terminal_size = u "Linux_ext.get_terminal_size"
   let gettcpopt_bool = u "Linux_ext.gettcpopt_bool"
+  let gettcpopt_int = u "Linux_ext.gettcpopt_int"
   let gettcpopt_string = u "Linux_ext.gettcpopt_string"
   let setpriority = u "Linux_ext.setpriority"
   let getpriority = u "Linux_ext.getpriority"
@@ -225,14 +241,31 @@ module Null_toplevel = struct
   let send_no_sigpipe = u "Linux_ext.send_no_sigpipe"
   let send_nonblocking_no_sigpipe = u "Linux_ext.send_nonblocking_no_sigpipe"
   let sendfile = u "Linux_ext.sendfile"
+  let copy_file_range = u "Linux_ext.copy_file_range"
+  let really_copy_file_range = u "Linux_ext.really_copy_file_range"
   let sendmsg_nonblocking_no_sigpipe = u "Linux_ext.sendmsg_nonblocking_no_sigpipe"
   let settcpopt_bool = u "Linux_ext.settcpopt_bool"
+  let settcpopt_int = u "Linux_ext.settcpopt_int"
   let settcpopt_string = u "Linux_ext.settcpopt_string"
+  let setipopt_int = u "Linux_ext.setipopt_int"
   let peer_credentials = u "Linux_ext.peer_credentials"
   let setfsuid = u "Linux_ext.setfsuid"
   let setfsgid = u "Linux_ext.setfsgid"
   let getfsuid = u "Linux_ext.getfsuid"
   let getfsgid = u "Linux_ext.getfsgid"
+
+  module Mman = struct
+    module Mcl_flags = struct
+      type t =
+        | Current
+        | Future
+        | Onfault
+      [@@deriving sexp]
+    end
+
+    let mlockall = u "Linux_ext.Mman.mlockall"
+    let munlockall = u "Linux_ext.Mman.munlockall"
+  end
 
   module Epoll = Epoll.Impl
 end
@@ -243,8 +276,16 @@ module Null : Linux_ext_intf.S = struct
     | TCP_QUICKACK
   [@@deriving sexp, bin_io]
 
+  type nonrec tcp_int_option = tcp_int_option =
+    | TCP_KEEPIDLE
+    | TCP_KEEPINTVL
+    | TCP_KEEPCNT
+  [@@deriving sexp, bin_io]
+
   type nonrec tcp_string_option = tcp_string_option = TCP_CONGESTION
   [@@deriving sexp, bin_io]
+
+  type nonrec ip_int_option = ip_int_option = IP_TOS
 
   module Bound_to_interface = struct
     type t = Bound_to_interface.t =
@@ -425,6 +466,29 @@ module Null : Linux_ext_intf.S = struct
     end
 
     let setxattr = Or_error.unimplemented "Linux_ext.Extended_file_attributes.setxattr"
+
+    module List_attr_result = struct
+      type t =
+        | Ok of string list
+        | ERANGE
+        | ENOTSUP
+        | E2BIG
+      [@@deriving sexp_of]
+    end
+
+    let listxattr = Or_error.unimplemented "Linux_ext.Extended_file_attributes.listxattr"
+
+    module Remove_attr_result = struct
+      type t =
+        | Ok
+        | ENOATTR
+        | ENOTSUP
+      [@@deriving sexp_of]
+    end
+
+    let removexattr =
+      Or_error.unimplemented "Linux_ext.Extended_file_attributes.removexattr"
+    ;;
   end
 
   include Null_toplevel
@@ -854,6 +918,58 @@ let sendfile ?(pos = 0) ?len ~fd sock =
   sendfile ~sock ~fd ~pos ~len
 ;;
 
+external copy_file_range
+  :  fd_in:file_descr
+  -> off_in:int option
+  -> fd_out:file_descr
+  -> off_out:int option
+  -> len:int
+  -> int
+  @@ portable
+  = "core_linux_copy_file_range_stub"
+
+let copy_file_range_raw = copy_file_range
+
+let copy_file_range ~fd_in ?off_in ~fd_out ?off_out ~len ?min_len () =
+  if len < 0 then raise_s [%message "[copy_file_range] [len] is negative" (len : int)];
+  let min_len =
+    match min_len with
+    | None -> 0
+    | Some min_len ->
+      if min_len > len
+      then invalid_arg (sprintf "copy_file_range: min_len (%d) > len (%d)" min_len len)
+      else if min_len < 0
+      then invalid_arg (sprintf "copy_file_range: min_len (%d) < 0" min_len)
+      else min_len
+  in
+  let rec loop ~off_in ~off_out ~remaining ~total_copied =
+    match copy_file_range_raw ~fd_in ~off_in ~fd_out ~off_out ~len:remaining with
+    | exception Unix.Unix_error (EINTR, _, _) ->
+      loop ~off_in ~off_out ~remaining ~total_copied
+    | 0 ->
+      (* A return value of 0 means there was nothing left to copy. On interrupt we either
+         get EINTR (above) or a positive number of bytes copied (below). *)
+      total_copied
+    | n ->
+      let total_copied = total_copied + n in
+      if total_copied >= min_len
+      then total_copied
+      else (
+        (* If we passed in [None] in the original call, then [copy_file_range] will
+           advance the internal offset in the file descriptor. So we don't have to do
+           anything. But if we passed an offset in, then we have to update the offset for
+           recursive calls. *)
+        let off_in = Option.map off_in ~f:(( + ) n) in
+        let off_out = Option.map off_out ~f:(( + ) n) in
+        loop ~off_in ~off_out ~remaining:(remaining - n) ~total_copied)
+  in
+  loop ~off_in ~off_out ~remaining:len ~total_copied:0
+;;
+
+let really_copy_file_range ~fd_in ?off_in ~fd_out ?off_out ~len () =
+  ignore (copy_file_range ~fd_in ?off_in ~fd_out ?off_out ~len ~min_len:len () : int)
+;;
+
 (* Raw result of sysinfo syscall *)
 module Raw_sysinfo = struct
   type t =
@@ -916,6 +1032,21 @@ external settcpopt_bool
   @@ portable
   = "core_linux_settcpopt_bool_stub"
 
+external gettcpopt_int
+  :  file_descr
+  -> tcp_int_option
+  -> int
+  @@ portable
+  = "core_linux_gettcpopt_int_stub"
+
+external settcpopt_int
+  :  file_descr
+  -> tcp_int_option
+  -> int
+  -> unit
+  @@ portable
+  = "core_linux_settcpopt_int_stub"
+
 external gettcpopt_string
   :  file_descr
   -> tcp_string_option
@@ -930,6 +1061,14 @@ external settcpopt_string
   -> unit
   @@ portable
   = "core_linux_settcpopt_string_stub"
+
+external setipopt_int
+  :  file_descr
+  -> ip_int_option
+  -> int
+  -> unit
+  @@ portable
+  = "core_linux_setipopt_int_stub"
 
 external peer_credentials
   :  file_descr
@@ -1160,11 +1299,31 @@ external setfsgid : gid:int -> int @@ portable = "core_linux_setfsgid"
 let getfsuid () = setfsuid ~uid:(-1)
 let getfsgid () = setfsgid ~gid:(-1)
 
+module Mman = struct
+  module Mcl_flags = struct
+    type t =
+      (* Do not change the ordering of this type without also changing the C stub. *)
+      | Current
+      | Future
+      | Onfault
+    [@@deriving sexp]
+  end
+
+  external unix_mlockall : Mcl_flags.t array -> unit @@ portable = "core_unix_mlockall"
+  external unix_munlockall : unit -> unit @@ portable = "core_unix_munlockall"
+
+  let mlockall_raw flags = unix_mlockall (List.to_array flags)
+  let munlockall_raw = unix_munlockall
+  let mlockall = Ok mlockall_raw
+  let munlockall = Ok munlockall_raw
+end
+
 module Epoll = Epoll.Impl
 
 let cores = Ok cores
 let isolated_cpus = Ok isolated_cpus
 let online_cpus = Ok online_cpus
+let non_isolated_cpus = Ok non_isolated_cpus
 let allowed_cpus = Ok allowed_cpus
 let cpus_local_to_nic = Ok cpus_local_to_nic
 let file_descr_realpath = Ok file_descr_realpath
@@ -1174,6 +1333,7 @@ let bind_to_interface = Ok bind_to_interface
 let get_bind_to_interface = Ok get_bind_to_interface
 let get_terminal_size = Ok get_terminal_size
 let gettcpopt_bool = Ok gettcpopt_bool
+let gettcpopt_int = Ok gettcpopt_int
 let gettcpopt_string = Ok gettcpopt_string
 let setpriority = Ok setpriority
 let getpriority = Ok getpriority
@@ -1189,9 +1349,13 @@ let sched_setaffinity_this_thread = Ok sched_setaffinity_this_thread
 let send_no_sigpipe = Ok send_no_sigpipe
 let send_nonblocking_no_sigpipe = Ok send_nonblocking_no_sigpipe
 let sendfile = Ok sendfile
+let copy_file_range = Ok copy_file_range
+let really_copy_file_range = Ok really_copy_file_range
 let sendmsg_nonblocking_no_sigpipe = Ok sendmsg_nonblocking_no_sigpipe
 let settcpopt_bool = Ok settcpopt_bool
+let settcpopt_int = Ok settcpopt_int
 let settcpopt_string = Ok settcpopt_string
+let setipopt_int = Ok setipopt_int
 let peer_credentials = Ok peer_credentials
 let setfsuid = Ok setfsuid
 let setfsgid = Ok setfsgid
@@ -1263,8 +1427,45 @@ module Extended_file_attributes = struct
     setxattr follow_symlinks path name value flags
   ;;
 
+  module List_attr_result = struct
+    type t =
+      | Ok of string list
+      | ERANGE
+      | ENOTSUP
+      | E2BIG
+    [@@deriving sexp_of]
+  end
+
+  external listxattr
+    :  bool
+    -> string
+    -> List_attr_result.t
+    @@ portable
+    = "core_linux_listxattr"
+
+  let listxattr ~follow_symlinks ~path = listxattr follow_symlinks path
+
+  module Remove_attr_result = struct
+    type t =
+      | Ok
+      | ENOATTR
+      | ENOTSUP
+    [@@deriving sexp_of]
+  end
+
+  external removexattr
+    :  bool
+    -> string
+    -> string
+    -> Remove_attr_result.t
+    @@ portable
+    = "core_linux_removexattr"
+
+  let removexattr ~follow_symlinks ~path ~name = removexattr follow_symlinks path name
   let getxattr = Ok getxattr
   let setxattr = Ok setxattr
+  let listxattr = Ok listxattr
+  let removexattr = Ok removexattr
 end
 
 [%%else]

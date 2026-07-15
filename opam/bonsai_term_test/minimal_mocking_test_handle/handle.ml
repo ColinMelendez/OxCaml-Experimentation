@@ -10,8 +10,8 @@ module Frame_status = struct
     | Frame_finished
 end
 
-type 'exit t =
-  { driver : 'exit Driver.t
+type ('result, 'exit, 'incoming) t =
+  { driver : ('result, 'exit, 'incoming) Driver.t
   ; stdin_writer : string Pipe.Writer.t
   ; stdout_reader : string Pipe.Reader.t
   ; time_source : Async.Time_source.t
@@ -37,6 +37,8 @@ let with_handle_with_exit
   ?(cap = Bonsai_term_test.Capability.Ansi)
   ?(file_descriptors = File_descriptors.create_default_for_testing)
   ~(dimensions : Dimensions.t)
+  ~get_view_and_handler
+  ~handle_incoming
   app
   f
   =
@@ -72,6 +74,8 @@ let with_handle_with_exit
          ~for_mocking:(Some for_mocking)
          ~optimize
          ~target_frames_per_second
+         ~get_view_and_handler
+         ~handle_incoming
          app
      in
      Driver.compute_first_frame driver;
@@ -112,7 +116,15 @@ let with_handle
     ?cap
     ?file_descriptors
     ~dimensions
-    (Bonsai_term.Private.For_testing.make_app_exit_on_ctrlc app)
+    ~get_view_and_handler:Fn.id
+    ~handle_incoming:(fun _ incoming -> Nothing.unreachable_code incoming)
+    (fun ~exit ~dimensions (local_ graph) ->
+      let app ~exit ~dimensions (local_ graph) =
+        Bonsai_term.Private.For_testing.make_app_exit_on_ctrlc app ~exit ~dimensions graph
+      in
+      let ~view, ~handler = app ~exit ~dimensions graph in
+      let%arr.Bonsai view and handler in
+      ~view, ~handler)
     f
 ;;
 
@@ -168,7 +180,7 @@ module Box = struct
   ;;
 end
 
-let show_mocked : here:[%call_pos] -> 'exit t -> unit =
+let show_mocked : here:[%call_pos] -> ('result, 'exit, 'incoming) t -> unit =
   fun ~(here : [%call_pos]) t ->
   let%with view = with_previous_image ~here t in
   print_endline
@@ -213,7 +225,7 @@ let do_frame t =
 let do_frame_and_continue ~(here : [%call_pos]) t =
   match%map do_frame t with
   | Continue -> ()
-  | Stdin_closed ->
+  | Incoming_events_pipe_closed ->
     Expect_test_helpers_core.print_cr
       ~here
       [%message "Expected bonsai app to continue, but stdin was closed."]
@@ -225,7 +237,7 @@ let do_frame_and_continue ~(here : [%call_pos]) t =
 
 let do_frame_and_expect_shutdown ~(here : [%call_pos]) t =
   match%map do_frame t with
-  | Exit _ | Stdin_closed -> ()
+  | Exit _ | Incoming_events_pipe_closed -> ()
   | Continue ->
     Expect_test_helpers_core.print_cr
       ~here
@@ -240,7 +252,7 @@ let finish_frame_and_continue ~(here : [%call_pos]) finish_frame =
       ~here
       [%message "Error expected app to continue after this frame, but [exit] was called!"];
     Deferred.return ()
-  | Stdin_closed ->
+  | Incoming_events_pipe_closed ->
     Expect_test_helpers_core.print_cr
       ~here
       [%message "Error expected app to continue after this frame, but stdin was closed!"];
@@ -251,7 +263,7 @@ let finish_frame_and_continue ~(here : [%call_pos]) finish_frame =
 let finish_frame_and_expect_shutdown ~(here : [%call_pos]) finish_frame =
   let%bind (`Frame_finished continue_or_shutdown) = finish_frame in
   match continue_or_shutdown with
-  | Frame_outcome.Exit _ | Stdin_closed -> Deferred.return ()
+  | Frame_outcome.Exit _ | Incoming_events_pipe_closed -> Deferred.return ()
   | Continue ->
     Expect_test_helpers_core.print_cr
       ~here
@@ -266,4 +278,8 @@ let time_source t = t.time_source
 let change_dimensions t dimensions =
   t.current_dimensions := dimensions;
   Bvar.broadcast t.window_changed_bvar ()
+;;
+
+let send_incoming_event t incoming_event =
+  Driver.send_incoming_event t.driver incoming_event
 ;;

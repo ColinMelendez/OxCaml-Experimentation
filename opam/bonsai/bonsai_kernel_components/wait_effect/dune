@@ -1,0 +1,6 @@
+(library
+ (name bonsai_kernel_wait_effect)
+ (public_name bonsai.kernel_components.wait_effect)
+ (preprocess
+  (pps ppx_jane ppx_bonsai))
+ (libraries bonsai core))

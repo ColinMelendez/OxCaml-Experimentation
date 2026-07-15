@@ -627,6 +627,98 @@ and arr ~(expand_with : label) (location_behavior : Location_behavior.t) : (modu
 
 let arr = arr ~expand_with:"arr"
 
+let arr_debug (location_behavior : Location_behavior.t) : (module Ext) =
+  let (module Arr) = arr location_behavior in
+  let module Arr_debug : Ext = struct
+    let name = "arr_debug"
+
+    (* Reuse [%arr]'s unchanged functions *)
+    let with_location = Arr.with_location
+    let prevent_tail_call = Arr.prevent_tail_call
+    let disallow_expression = Arr.disallow_expression
+    let destruct = Arr.destruct
+
+    let name_of_pattern (pat : pattern) : string =
+      match Ppxlib_jane.Shim.Pattern_desc.of_parsetree pat.ppat_desc with
+      | Ppat_var { txt; _ }
+      | Ppat_constraint ({ ppat_desc = Ppat_var { txt; _ }; _ }, _, _) -> txt
+      | _ -> Format.asprintf "%a" Pprintast.pattern pat
+    ;;
+
+    let wrap_with_debug_node ~(loc : location) ~modul ~name expr =
+      let debug_node_op = eoperator ~loc ~modul "debug_node" in
+      let here_arg =
+        match location_behavior with
+        | Location_of_callsite -> Ppx_here_expander.lift_position ~loc:expr.pexp_loc
+        | Location_in_scope -> evar ~loc:expr.pexp_loc "here"
+      in
+      [%expr
+        [%e debug_node_op]
+          ~here:[%e here_arg]
+          ~name:[%e estring ~loc name]
+          ~equal:Base.phys_equal
+          ~sexp_of:Sexplib0.Sexp_conv.sexp_of_opaque
+          [%e expr]]
+    ;;
+
+    let is_simple_var_pattern (pat : pattern) : bool =
+      match Ppxlib_jane.Shim.Pattern_desc.of_parsetree pat.ppat_desc with
+      | Ppat_var _ -> true
+      | Ppat_constraint ({ ppat_desc = Ppat_var _; _ }, _, _) -> true
+      | _ -> false
+    ;;
+
+    let expand_value_binding ~loc ~modul (vb : value_binding) : value_binding list =
+      let make_wrapped_value_binding vb =
+        { vb with
+          pvb_expr =
+            wrap_with_debug_node
+              ~loc
+              ~modul
+              ~name:(name_of_pattern vb.pvb_pat)
+              vb.pvb_expr
+        }
+      in
+      if is_simple_var_pattern vb.pvb_pat
+      then [ make_wrapped_value_binding vb ]
+      else
+        project_pattern_variables ~assume_exhaustive:true ~modul ~with_location [ vb ]
+        |> List.map ~f:(fun { txt = projected_vb; loc = _ } ->
+          make_wrapped_value_binding projected_vb)
+    ;;
+
+    let wrap_expansion ~loc ~modul value_bindings expression ~expand =
+      let value_bindings =
+        List.concat_map value_bindings ~f:(expand_value_binding ~loc ~modul)
+      in
+      Arr.wrap_expansion ~loc ~modul value_bindings expression ~expand
+    ;;
+
+    let expand_match
+      ~extension_kind:_
+      ~(match_kind : Match_kind.t)
+      ~loc
+      ~modul:_
+      ~locality:_
+      _expr
+      _cases
+      =
+      let syntax =
+        match match_kind with
+        | Match -> "match"
+        | If_ -> "if"
+      in
+      Location.error_extensionf
+        ~loc
+        "%s%%arr_debug is not implemented yet. Use let%%arr_debug for now."
+        syntax
+      |> pexp_extension ~loc
+    ;;
+  end
+  in
+  (module Arr_debug : Ext)
+;;
+
 let sub (location_behavior : Location_behavior.t) : (module Ext) =
   let module Sub : Ext = struct
     let name = "sub"
@@ -650,13 +742,30 @@ let sub (location_behavior : Location_behavior.t) : (module Ext) =
         String.equal attribute.attr_name.txt "nontail")
     ;;
 
+    (* We need to make sure [@nontail] goes on the actual tailcall.
+       [let pat = expr in body [@nontail]] is not equivalent to
+       [(let pat = expr in body) [@nontail]]. *)
+    let rec maybe_add_nontail ~loc body =
+      let copy_attrs desc =
+        { body with
+          pexp_desc = Ppxlib_jane.Shim.Expression_desc.to_parsetree ~loc desc
+        ; pexp_loc = { body.pexp_loc with loc_ghost = true }
+        }
+      in
+      match Ppxlib_jane.Shim.Expression_desc.of_parsetree ~loc body.pexp_desc with
+      | Pexp_let (mut_flag, rec_flag, bindings, tail) ->
+        copy_attrs (Pexp_let (mut_flag, rec_flag, bindings, maybe_add_nontail ~loc tail))
+      | Pexp_sequence (head, tail) ->
+        copy_attrs (Pexp_sequence (head, maybe_add_nontail ~loc tail))
+      | _ ->
+        (match already_has_nontail body with
+         | false -> nontail ~loc body
+         | true -> body)
+    ;;
+
     let sub_return ~loc ~modul ~lhs ~rhs ~body =
       let returned_rhs = qualified_return ~loc ~modul rhs in
-      let body =
-        match already_has_nontail body with
-        | false -> nontail ~loc body
-        | true -> body
-      in
+      let body = maybe_add_nontail ~loc body in
       bind_apply
         ~prevent_tail_call
         ~op_name:name

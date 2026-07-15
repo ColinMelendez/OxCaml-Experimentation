@@ -224,10 +224,10 @@ let ptyp_var l = ptyp_var l drop
 let type_declaration = type_declaration ~jkind_annotation:drop
 
 let value_binding ~pat ~expr =
-  value_binding ~pat ~expr ~modes:drop
+  value_binding ~pat ~expr ~modes:drop ~is_poly:drop
 
 let value_description ~name ~type_ ~prim =
-  value_description ~name ~type_ ~modalities:drop ~prim
+  value_description ~name ~type_ ~modalities:drop ~prim ~poly:drop
 
 let ppat_constraint pat cty =
   ppat_constraint pat (some cty) drop

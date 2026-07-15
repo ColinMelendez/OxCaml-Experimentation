@@ -357,6 +357,65 @@ module%test [@name "diff_weekdays"] _ = struct
   let%test _ = diff_weekend_days (c 2014 Jan 14) (c 2014 Jan 1) = 4
 end
 
+module%test [@name "diff_business_days"] _ = struct
+  let c y m d = create_exn ~y ~m ~d
+
+  (* Jan 1 2014 is a Wednesday *)
+  let%test "2014 Jan 1 is a Wednesday" =
+    Day_of_week.( = ) (day_of_week (c 2014 Jan 1)) Day_of_week.Wed
+  ;;
+
+  let ( = ) = Int.( = )
+
+  (* No holidays: should equal diff_weekdays *)
+  let no_holiday _ = false
+  let%test _ = diff_business_days (c 2014 Jan 1) (c 2014 Jan 1) ~is_holiday:no_holiday = 0
+  let%test _ = diff_business_days (c 2014 Jan 2) (c 2014 Jan 1) ~is_holiday:no_holiday = 1
+  let%test _ = diff_business_days (c 2014 Jan 5) (c 2014 Jan 1) ~is_holiday:no_holiday = 3
+  let%test _ = diff_business_days (c 2014 Jan 7) (c 2014 Jan 1) ~is_holiday:no_holiday = 4
+
+  let%test _ =
+    diff_business_days (c 2014 Jan 14) (c 2014 Jan 1) ~is_holiday:no_holiday = 9
+  ;;
+
+  (* With a weekday holiday: Jan 2 (Thu) is a holiday *)
+  let jan2_holiday d = Date.equal d (c 2014 Jan 2)
+
+  let%test _ =
+    diff_business_days (c 2014 Jan 3) (c 2014 Jan 1) ~is_holiday:jan2_holiday = 1
+  ;;
+
+  let%test _ =
+    diff_business_days (c 2014 Jan 7) (c 2014 Jan 1) ~is_holiday:jan2_holiday = 3
+  ;;
+
+  (* Holiday on weekend has no effect *)
+  let jan4_holiday d = Date.equal d (c 2014 Jan 4)
+
+  let%test _ =
+    diff_business_days (c 2014 Jan 6) (c 2014 Jan 1) ~is_holiday:jan4_holiday = 3
+  ;;
+
+  (* Negative direction *)
+  let%test _ =
+    diff_business_days (c 2014 Jan 1) (c 2014 Jan 7) ~is_holiday:no_holiday = -4
+  ;;
+
+  (* Custom weekday: Fri/Sat are weekend instead of Sat/Sun *)
+  (* [Jan 1, Jan 5): standard = 3 (Wed, Thu, Fri), custom = 2 (Wed, Thu) *)
+  let is_weekday_sun_to_thu dow = Day_of_week.(not (equal dow Fri || equal dow Sat))
+  let%test _ = diff_business_days (c 2014 Jan 5) (c 2014 Jan 1) ~is_holiday:no_holiday = 3
+
+  let%test _ =
+    diff_business_days
+      ~is_weekday:is_weekday_sun_to_thu
+      (c 2014 Jan 5)
+      (c 2014 Jan 1)
+      ~is_holiday:no_holiday
+    = 2
+  ;;
+end
+
 module%test [@name "dates in a month"] _ = struct
   let sexp_of_year year =
     Dynamic.with_temporarily Sexp.of_int_style `No_underscores ~f:(fun () ->
@@ -851,3 +910,77 @@ let%test_unit "compare" =
             (d0 : Date.t)
             (d1 : Date.t)])
 ;;
+
+module%test Days = struct
+  (* We're testing [Days], so we want to construct our inputs without using [Days]. This
+     rules out [Date.between] and [Date.add_days], among others. We compute all dates
+     exhaustively from their components, rather than using arithmetic from some start or
+     end point. *)
+  let all_dates =
+    (let open List.Let_syntax in
+     let%bind year = List.range 0000 9999 ~stop:`inclusive in
+     let%bind month = Month.all in
+     let%map day = List.range 1 (Date.days_in_month ~year ~month) ~stop:`inclusive in
+     Date.create_exn ~y:year ~m:month ~d:day)
+    |> Iarray.of_list
+  ;;
+
+  let%expect_test "total number of dates is tractable" =
+    print_s [%sexp (Iarray.length all_dates : int)];
+    [%expect {| 3_652_425 |}]
+  ;;
+
+  let%expect_test "[of_date] / [to_date]" =
+    require_does_not_raise (fun () ->
+      Iarray.iter all_dates ~f:(fun date ->
+        let days = Date.Days.of_date date in
+        let date_round_trip = Date.Days.to_date days in
+        if Date.( <> ) date date_round_trip
+        then
+          raise_s
+            [%message "did not round-trip" (date : Date.t) (date_round_trip : Date.t)]));
+    [%expect {| |}]
+  ;;
+
+  let iter_adjacent_dates ~f =
+    for pos = 0 to Iarray.length all_dates - 2 do
+      f (Iarray.get all_dates (pos + 0)) (Iarray.get all_dates (pos + 1))
+    done
+  ;;
+
+  (* Testing [Date.Days.diff] via [Date.diff]. *)
+  let%expect_test "[diff]" =
+    require_does_not_raise (fun () ->
+      iter_adjacent_dates ~f:(fun date1 date2 ->
+        let pos_diff = Date.diff date2 date1 in
+        let neg_diff = Date.diff date1 date2 in
+        if Int.( <> ) pos_diff 1 || Int.( <> ) neg_diff (-1)
+        then
+          raise_s
+            [%message
+              "did not get expected diff(s)"
+                (date1 : Date.t)
+                (date2 : Date.t)
+                (pos_diff : int)
+                (neg_diff : int)]));
+    [%expect {| |}]
+  ;;
+
+  (* Testing [Date.Days.add_days] via [Date.add_days]. *)
+  let%expect_test "[add_days]" =
+    require_does_not_raise (fun () ->
+      iter_adjacent_dates ~f:(fun date1 date2 ->
+        let date1_round_trip = Date.add_days date2 (-1) in
+        let date2_round_trip = Date.add_days date1 1 in
+        if Date.( <> ) date1 date1_round_trip || Date.( <> ) date2 date2_round_trip
+        then
+          raise_s
+            [%message
+              "date(s) did not round-trip"
+                (date1 : Date.t)
+                (date1_round_trip : Date.t)
+                (date2 : Date.t)
+                (date2_round_trip : Date.t)]));
+    [%expect {| |}]
+  ;;
+end

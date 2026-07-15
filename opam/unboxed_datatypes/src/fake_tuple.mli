@@ -9,9 +9,15 @@ module%template T2 : sig
     { fst : 'a
     ; snd : 'b
     }
-  [@@deriving sexp, equal, compare, globalize]
+  [@@deriving sexp, equal ~localize, compare ~localize, globalize]
 
-  val create : ('a : ka) ('b : kb). 'a -> 'b -> (('a, 'b) t[@kind ka kb])
+  val create : ('a : ka) ('b : kb). 'a @ m -> 'b @ m -> (('a, 'b) t[@kind ka kb]) @ m
+  [@@alloc _ @ m = (heap_global, stack_local)]
+
+  [@@@mode.default m = (global, local)]
+
+  val get1 : ('a : ka) ('b : kb). (('a, 'b) t[@kind ka kb]) @ m -> 'a @ m
+  val get2 : ('a : ka) ('b : kb). (('a, 'b) t[@kind ka kb]) @ m -> 'b @ m
 end
 
 module%template T3 : sig
@@ -24,13 +30,16 @@ module%template T3 : sig
     ; snd : 'b
     ; trd : 'c
     }
-  [@@deriving sexp, equal, compare, globalize]
+  [@@deriving sexp, equal ~localize, compare ~localize, globalize]
 
   val create
     : ('a : ka) ('b : kb) ('c : kc).
-    'a -> 'b -> 'c -> (('a, 'b, 'c) t[@kind ka kb kc])
+    'a @ m -> 'b @ m -> 'c @ m -> (('a, 'b, 'c) t[@kind ka kb kc]) @ m
+  [@@alloc _ @ m = (heap_global, stack_local)]
 
-  val get1 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'a
-  val get2 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'b
-  val get3 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'c
+  [@@@mode.default m = (global, local)]
+
+  val get1 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) @ m -> 'a @ m
+  val get2 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) @ m -> 'b @ m
+  val get3 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) @ m -> 'c @ m
 end

@@ -191,9 +191,7 @@ val round_up : local_ t -> t
 (** Rounds half integers up. *)
 val round_nearest : local_ t -> t
 
-(** Rounds a float32 to an integer float32 using the current rounding mode. The default
-    rounding mode is "round half to even", and we expect that no program will change the
-    rounding mode. The amd64 flambda-backend compiler translates this call to ROUNDSS. *)
+(** Rounds half integers to the even integer. *)
 val round_nearest_half_to_even : local_ t -> t
 
 val iround_towards_zero : local_ t -> int option
@@ -205,11 +203,8 @@ val iround_down_exn : local_ t -> int
 val iround_up_exn : local_ t -> int
 val iround_nearest_exn : local_ t -> int
 
-(** Rounds a float32 to an int64 using the current rounding mode. The default rounding
-    mode is "round half to even", and we expect that no program will change the rounding
-    mode. If the argument is NaN, infinite, or otherwise cannot be represented, no
-    exception is raised and the result is an unspecified int64. The amd64 flambda-backend
-    compiler translates this call to CVTSS2SI. *)
+(** If the argument is NaN, infinite, or otherwise cannot be represented, no exception is
+    raised and the result is an unspecified int64. *)
 val iround_nearest_half_to_even : local_ t -> int64
 
 (** If [f < iround_lbound || f > iround_ubound], then [iround*] functions will refuse to
@@ -584,7 +579,7 @@ module Terse : sig
 
   [@@@end]
 
-  include Stringable.S_local_input with type t := t
+  include Stringable.S [@mode local] with type t := t
 end
 
 (**/**)
@@ -669,7 +664,7 @@ module Bigarray : sig
         [x]. [x] must be greater or equal than [0] and strictly less than [Array1.dim a]
         if [a] has C layout. If [a] has Fortran layout, [x] must be greater or equal than
         [1] and less or equal than [Array1.dim a]. Otherwise, [Invalid_argument] is
-        raised. *)
+            raised. *)
     external get
       :  ('a, float32_elt, 'c) Array1.t
       -> int
@@ -804,5 +799,7 @@ module Stable : sig
       , sexp ~stackify
       , stable_witness
       , string]
+
+    include Stringable.S [@mode local] with type t := t
   end
 end

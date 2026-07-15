@@ -9,7 +9,9 @@ type%template ('a : k) t =
     , void
     , value_or_null & void
     , value_or_null & value_or_null
-    , (value_or_null & value_or_null) & value_or_null )]
+    , (value_or_null & value_or_null) & value_or_null
+    , word
+    , word & value_or_null )]
 [@@deriving
   compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar, hash]
 
@@ -24,7 +26,9 @@ let%template[@inline] completed_exn : (_ t[@kind k]) -> _ = function
     , void
     , value_or_null & void
     , value_or_null & value_or_null
-    , (value_or_null & value_or_null) & value_or_null )]
+    , (value_or_null & value_or_null) & value_or_null
+    , word
+    , word & value_or_null )]
 ;;
 
 include Monad.Make [@mode local] [@modality portable] (struct
@@ -48,8 +52,9 @@ let never_completed = function
 module Exn = struct
   exception Canceled
 
-  let%template[@inline] catch (f @ local once) : (_ t[@kind k]) @ u =
-    match f () with
+  let%template[@inline] catch (f : (_ -> _ @ l p u) @ local once) : (_ t[@kind k]) @ l p u
+    =
+    match[@exclave_if_local l ~reasons:[ Will_return_unboxed ]] f #() with
     | value -> Completed value
     | exception Canceled -> Canceled
   [@@kind
@@ -58,7 +63,9 @@ module Exn = struct
       , void
       , value_or_null & void
       , value_or_null & value_or_null
-      , (value_or_null & value_or_null) & value_or_null )]
-  [@@mode u = (aliased, unique)]
+      , (value_or_null & value_or_null) & value_or_null
+      , word
+      , word & value_or_null )]
+  [@@mode u = (aliased, unique), l = (global, local), p = (nonportable, portable)]
   ;;
 end

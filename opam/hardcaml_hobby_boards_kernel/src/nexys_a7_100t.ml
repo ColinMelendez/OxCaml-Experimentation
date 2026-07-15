@@ -273,6 +273,98 @@ module Ethernet = struct
       (O)
 end
 
+module Pmod_ja = struct
+  module T = struct
+    type 'a t =
+      { pin1 : 'a [@rtlname "1"]
+      ; pin2 : 'a [@rtlname "2"]
+      ; pin3 : 'a [@rtlname "3"]
+      ; pin4 : 'a [@rtlname "4"]
+      ; pin7 : 'a [@rtlname "7"]
+      ; pin8 : 'a [@rtlname "8"]
+      ; pin9 : 'a [@rtlname "9"]
+      ; pin10 : 'a [@rtlname "10"]
+      }
+    [@@deriving hardcaml ~rtlprefix:"JA"]
+  end
+
+  include
+    Make_T
+      (struct
+        let core = "pmod_ja"
+      end)
+      (T)
+end
+
+module Pmod_jb = struct
+  module T = struct
+    type 'a t =
+      { pin1 : 'a [@rtlname "1"]
+      ; pin2 : 'a [@rtlname "2"]
+      ; pin3 : 'a [@rtlname "3"]
+      ; pin4 : 'a [@rtlname "4"]
+      ; pin7 : 'a [@rtlname "7"]
+      ; pin8 : 'a [@rtlname "8"]
+      ; pin9 : 'a [@rtlname "9"]
+      ; pin10 : 'a [@rtlname "10"]
+      }
+    [@@deriving hardcaml ~rtlprefix:"JB"]
+  end
+
+  include
+    Make_T
+      (struct
+        let core = "pmod_jb"
+      end)
+      (T)
+end
+
+module Pmod_jc = struct
+  module T = struct
+    type 'a t =
+      { pin1 : 'a [@rtlname "1"]
+      ; pin2 : 'a [@rtlname "2"]
+      ; pin3 : 'a [@rtlname "3"]
+      ; pin4 : 'a [@rtlname "4"]
+      ; pin7 : 'a [@rtlname "7"]
+      ; pin8 : 'a [@rtlname "8"]
+      ; pin9 : 'a [@rtlname "9"]
+      ; pin10 : 'a [@rtlname "10"]
+      }
+    [@@deriving hardcaml ~rtlprefix:"JC"]
+  end
+
+  include
+    Make_T
+      (struct
+        let core = "pmod_jc"
+      end)
+      (T)
+end
+
+module Pmod_jd = struct
+  module T = struct
+    type 'a t =
+      { pin1 : 'a [@rtlname "1"]
+      ; pin2 : 'a [@rtlname "2"]
+      ; pin3 : 'a [@rtlname "3"]
+      ; pin4 : 'a [@rtlname "4"]
+      ; pin7 : 'a [@rtlname "7"]
+      ; pin8 : 'a [@rtlname "8"]
+      ; pin9 : 'a [@rtlname "9"]
+      ; pin10 : 'a [@rtlname "10"]
+      }
+    [@@deriving hardcaml ~rtlprefix:"JD"]
+  end
+
+  include
+    Make_T
+      (struct
+        let core = "pmod_jd"
+      end)
+      (T)
+end
+
 let part_info =
   Xml_pins.Part_and_pins.t_of_sexp
     (Parsexp.Single.parse_string_exn Board_info.nexys_a7_100t_dot_sexp)

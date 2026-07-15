@@ -33,6 +33,7 @@ include struct
 
   type jkind_annotation = Shim.jkind_annotation
   type mode = Shim.Mode.t = Mode of string [@@unboxed]
+  type modes = Shim.Modes.t
   type modality = Shim.Modality.t = Modality of string [@@unboxed]
 end
 
@@ -47,10 +48,12 @@ include struct
   include Sexp_conv
 end
 
-(* Re-export from [Import] to shadow [Result] from [open Stdppx] *)
-module Result = Result
+(* Re-export from [Import] to shadow modules from [open Stdppx] *)
+module Result = Result_with_helpers
+module List = List_with_helpers
 
 (* Convenience functions *)
+let map_fst (x, y) ~f = f x, y
 let map_snd (x, y) ~f = x, f y
 
 (* Make [Sexp.t] constructors always in scope *)

@@ -5,7 +5,7 @@ open! Bonsai_private_base
 val f
   :  model:'model Meta.Model.t
   -> input_id:'input Meta.Input.t
-  -> dynamic_action:'action Type_equal.Id.t
+  -> dynamic_action:'action Var_id.t
   -> input:'input Value.t
   -> time_source:Time_source.t
   -> reset:
@@ -18,9 +18,11 @@ val f
        (inject:('action -> unit Effect.t)
         -> schedule_event:(unit Effect.t -> unit)
         -> time_source:Time_source.t
-        -> 'input option
+        -> 'input Computation_status.t
         -> 'model
         -> 'action
         -> 'model)
+  -> action_name:string
+  -> sexp_of_action:('action -> Sexp.t) option
   -> here:Source_code_position.t
   -> ('model * ('action -> unit Effect.t), unit) Computation.packed_info Trampoline.t

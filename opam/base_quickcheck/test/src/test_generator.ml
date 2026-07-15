@@ -482,28 +482,31 @@ let%expect_test "result" =
   [%expect {| (generator exhaustive) |}]
 ;;
 
-let%template map_t_m = (Generator.map_t_m [@mode p]) [@@mode p = (nonportable, portable)]
+[%%template
+[@@@mode.default p = (nonportable, portable)]
 
-let%template map_tree_using_comparator = (Generator.map_tree_using_comparator [@mode p])
-[@@mode p = (nonportable, portable)]
-;;
+let map_t_m = (Generator.map_t_m [@mode p])
+let map_tree_using_comparator = (Generator.map_tree_using_comparator [@mode p])
 
 let%expect_test "map_t_m" =
   test_generator
-    (Generator.map_t_m (module Bool) Generator.bool Generator.bool)
+    ((Generator.map_t_m [@mode p]) (module Bool) Generator.bool Generator.bool)
     (m_map (module Bool) m_bool m_bool);
   [%expect {| (generator "generated 9 distinct values in 10_000 iterations") |}]
-;;
+;;]
 
-let set_t_m = Generator.set_t_m
-let set_tree_using_comparator = Generator.set_tree_using_comparator
+[%%template
+[@@@mode.default p = (nonportable, portable)]
+
+let set_t_m = (Generator.set_t_m [@mode p])
+let set_tree_using_comparator = (Generator.set_tree_using_comparator [@mode p])
 
 let%expect_test "set_t_m" =
   test_generator
-    (Generator.set_t_m (module Bool) Generator.bool)
+    ((Generator.set_t_m [@mode p]) (module Bool) Generator.bool)
     (m_set (module Bool) m_bool);
   [%expect {| (generator exhaustive) |}]
-;;
+;;]
 
 let small_positive_or_zero_int = Generator.small_positive_or_zero_int
 
@@ -1949,7 +1952,9 @@ let%expect_test "list_with_length" =
     |}]
 ;;
 
-let fold_until = Generator.fold_until
+let%template fold_until = (Generator.fold_until [@mode p])
+[@@mode p = (nonportable, portable)]
+;;
 
 let%expect_test "fold_until" =
   test_generator
@@ -1995,6 +2000,13 @@ let%template array = (Generator.array [@mode p]) [@@mode p = (nonportable, porta
 
 let%expect_test "array" =
   test_generator (Generator.array Generator.bool) (m_array m_bool);
+  [%expect {| (generator "generated 2_248 distinct values in 10_000 iterations") |}]
+;;
+
+let%template iarray = (Generator.iarray [@mode p]) [@@mode p = (nonportable, portable)]
+
+let%expect_test "iarray" =
+  test_generator (Generator.iarray Generator.bool) (m_iarray m_bool);
   [%expect {| (generator "generated 2_248 distinct values in 10_000 iterations") |}]
 ;;
 

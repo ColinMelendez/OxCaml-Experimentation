@@ -5,7 +5,7 @@ module Offset_units = struct
     { encoding : [ `UTF_8 | `UTF_16 | `UTF_32 ]
     ; units : [ `Bytes | `Uchars | `Code_units ]
     }
-  [@@deriving equal, sexp_of, quickcheck]
+  [@@deriving equal ~localize, sexp_of, quickcheck]
 
   let length t uchar =
     match t with
@@ -166,7 +166,7 @@ let%expect_test "Counting by uchars" =
     actual_offsets expected_uchar_offsets ~from_units:`Uchars ~to_units:`Bytes
   in
   let test ~expected ~actual =
-    match [%equal: int list] expected actual with
+    match ([%equal: int list] [@mode local]) expected actual with
     | true -> print_s [%sexp (actual : int list)]
     | false ->
       print_s

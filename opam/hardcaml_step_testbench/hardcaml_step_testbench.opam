@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/hardcaml_step_testbench/issues"
 dev-repo: "git+https://github.com/janestreet/hardcaml_step_testbench.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/hardcaml_step_testbench/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -15,13 +16,15 @@ depends: [
   "handled_effect"
   "hardcaml"
   "hardcaml_event_driven_sim"
-  "hardcaml_waveterm"
   "ppx_jane"
   "stdio"
   "unique"
   "dune"                      {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Hardcaml Testbench Monad"
 description: "
 A monad for interacting with Hardcaml.Cyclesim based simulations.

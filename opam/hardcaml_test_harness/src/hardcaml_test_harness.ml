@@ -1,4 +1,5 @@
 module Cyclesim_harness = Cyclesim_harness
+module Lws_harness = Lws_harness
 
 module Step_harness = struct
   module Functional = Step_harness_functional

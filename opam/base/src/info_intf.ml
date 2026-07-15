@@ -57,7 +57,7 @@ module Definitions = struct
       | Tag_arg of string * Sexp.t * t
       | Of_list of int option * t list
       | With_backtrace of t * string (** The second argument is the backtrace *)
-    [@@deriving sexp_of]
+    [@@deriving sexp_of ~stackify]
 
     val of_info : local_ info -> t
 
@@ -71,7 +71,8 @@ module Definitions = struct
     type info
 
     type t = info Modes.Portable.t
-    [@@deriving compare ~localize, equal ~localize, globalize, hash, sexp, sexp_grammar]
+    [@@deriving
+      compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
 
     val create_s : Sexp.t -> t
     val of_string : string -> t
@@ -104,7 +105,8 @@ module Definitions = struct
   module type S0 = sig @@ portable
     (** Serialization and comparison force the lazy message. *)
     type t : value mod contended global
-    [@@deriving compare ~localize, equal ~localize, globalize, hash, sexp, sexp_grammar]
+    [@@deriving
+      compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
 
     type info := t
 
@@ -176,6 +178,13 @@ module Definitions = struct
     val%template tag_s : t @ p -> tag:Sexp.t -> t @ p
     [@@mode p = (portable, nonportable)]
 
+    (** Adds a lazy string to the front. *)
+    val tag_lazy : t -> tag:string Lazy.t -> t
+
+    (** Adds a portable lazy string to the front. *)
+    val%template tag_portable_lazy : t @ p -> tag:string Portable_lazy.t -> t @ p
+    [@@mode p = (portable, nonportable)]
+
     (** Adds a lazy sexp to the front. *)
     val tag_s_lazy : t -> tag:Sexp.t Lazy.t -> t
 
@@ -231,7 +240,7 @@ module Definitions = struct
         using escape sequences.
 
         [1] this will be true in most cases except when created out of [of_string], which
-        simply gets stored as a string, not a sexp. *)
+            simply gets stored as a string, not a sexp. *)
     module Utf8 : sig
       (** [to_string_hum] forces the lazy message, which might be an expensive operation.
 

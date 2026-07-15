@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/protocol_version_header/issues"
 dev-repo: "git+https://github.com/janestreet/protocol_version_header.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/protocol_version_header/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -16,7 +17,10 @@ depends: [
   "ppx_stable_witness"
   "dune"               {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Protocol versioning"
 description: "
 This library offers a lightweight way for applications protocols to

@@ -1,11 +1,12 @@
 open! Import
 
 module T = struct
-  type t = unit [@@deriving enumerate, globalize, hash, sexp ~stackify, sexp_grammar]
+  type t = unit
+  [@@deriving enumerate, globalize, hash, sexp ~stackify ~unboxed, sexp_grammar]
 
   let compare _ _ = 0
-  let compare__local _ _ = 0
-  let equal__local _ _ = true
+  let%template[@mode local] compare _ _ = 0
+  let%template[@mode local] equal _ _ = true
 
   let of_string = function
     | "()" -> ()

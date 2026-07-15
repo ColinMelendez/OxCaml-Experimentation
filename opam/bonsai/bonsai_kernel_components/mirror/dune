@@ -1,0 +1,6 @@
+(library
+ (name bonsai_kernel_mirror)
+ (public_name bonsai.kernel_components.mirror)
+ (preprocess
+  (pps ppx_jane js_of_ocaml-ppx ppx_bonsai))
+ (libraries bonsai core))

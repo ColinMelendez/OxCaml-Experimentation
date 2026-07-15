@@ -7,16 +7,16 @@ val f
   -> recursive_scopes:Computation.Recursive_scopes.t
   -> time_source:Time_source.t
   -> wrapper_model:'model Meta.Model.t
-  -> action_id:'action Type_equal.Id.t
+  -> action_id:'action Var_id.t
   -> result_id:'result Meta.Input.t
-  -> inject_id:('action -> unit Effect.t) Type_equal.Id.t
-  -> model_id:'model Type_equal.Id.t
+  -> inject_id:('action -> unit Effect.t) Var_id.t
+  -> model_id:'model Var_id.t
   -> inner:'result Computation.t
   -> dynamic_apply_action:
        (inject:('action -> unit Effect.t)
         -> schedule_event:(unit Effect.t -> unit)
         -> time_source:Time_source.t
-        -> 'result option
+        -> 'result Computation_status.t
         -> 'model
         -> 'action
         -> 'model)

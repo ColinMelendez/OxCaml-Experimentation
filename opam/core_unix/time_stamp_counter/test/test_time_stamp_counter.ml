@@ -1,13 +1,9 @@
-[%%import "config.h"]
-
 open! Core
 open! Import
 open! Time_stamp_counter
 open! Time_stamp_counter.Private
 
 module%test _ = struct
-  [%%ifdef JSC_ARCH_SIXTYFOUR]
-
   let%expect_test "time moves backwards" =
     (* even if the system time goes backwards, we don't acknowledge this change. *)
     let y2000 =
@@ -130,7 +126,7 @@ module%test _ = struct
 
   let test_time_and_cycles samples_file ~error_limit ~alpha ~verbose =
     let samples = Samples.load samples_file in
-    let init_samples, samples = List.split_n samples 3 in
+    let #(init_samples, samples) = List.split_n samples 3 in
     let calibrator = Calibrator.create () in
     let scale_us_abs t = Float.abs (t *. 1_000_000.) in
     Calibrator.Private.initialize calibrator init_samples;
@@ -191,7 +187,7 @@ module%test _ = struct
   (* Test error magnitude in pre-sampled data. *)
   let test_time_and_cycles_nanos samples_file ~error_limit ~alpha ~verbose =
     let samples = Samples.load samples_file in
-    let init_samples, samples = List.split_n samples 3 in
+    let #(init_samples, samples) = List.split_n samples 3 in
     let calibrator = Calibrator.create () in
     let scale_us_abs t = Float.abs (t *. 0.001) in
     Calibrator.Private.initialize calibrator init_samples;
@@ -278,6 +274,4 @@ module%test _ = struct
     ignore (Expect_test_helpers_core.require_no_allocation (fun () -> now ()) : t);
     [%expect {| |}]
   ;;
-
-  [%%endif]
 end

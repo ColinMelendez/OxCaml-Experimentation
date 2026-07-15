@@ -1,7 +1,0 @@
-(library
- (name bonsai_tui_bar_chart)
- (public_name bonsai_term_components.bar_chart)
- (libraries bonsai_term bonsai_tui_border_box bonsai_tui_catppuccin
-   bonsai_tui_typography core)
- (preprocess
-  (pps ppx_jane bonsai.ppx_bonsai)))

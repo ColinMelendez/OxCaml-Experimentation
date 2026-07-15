@@ -1,0 +1,31 @@
+{
+    "ocaml.sandbox": {
+        "kind": "opam",
+        "switch": "5.2.0+ox"
+    },
+    "cSpell.words": [
+        "bytesrw",
+        "docv",
+        "failwith",
+        "getenv",
+        "Httpz",
+        "iteri",
+        "Jsont",
+        "keychainable",
+        "Madhavapeddy",
+        "mapi",
+        "Mkcol",
+        "msgf",
+        "notrace",
+        "Propfind",
+        "Proppatch",
+        "ptime",
+        "reshare",
+        "restli",
+        "segs",
+        "sprintf",
+        "Tomlt",
+        "typesense",
+        "vflag"
+    ]
+}

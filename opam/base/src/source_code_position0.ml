@@ -10,7 +10,7 @@ module T = struct
     ; pos_bol : int
     ; pos_cnum : int
     }
-  [@@deriving compare ~localize, hash, sexp_of ~stackify]
+  [@@deriving compare ~localize, hash, sexp_of]
 end
 
 include T
@@ -18,18 +18,40 @@ include T
 include%template Comparator.Make [@modality portable] (T)
 
 (* This is the same function as Ppx_here.lift_position_as_string. *)
-let make_location_string ~pos_fname ~pos_lnum ~pos_cnum ~pos_bol =
-  String.concat
-    [ pos_fname; ":"; Int.to_string pos_lnum; ":"; Int.to_string (pos_cnum - pos_bol) ]
+let%template[@alloc a = (heap, stack)] make_location_string
+  ~pos_fname
+  ~pos_lnum
+  ~pos_cnum
+  ~pos_bol
+  =
+  (String.concat [@alloc a])
+    [ pos_fname
+    ; ":"
+    ; (Int.to_string [@alloc a]) pos_lnum
+    ; ":"
+    ; (Int.to_string [@alloc a]) (pos_cnum - pos_bol)
+    ] [@exclave_if_stack a]
 ;;
 
-let to_string { Stdlib.Lexing.pos_fname; pos_lnum; pos_cnum; pos_bol } =
-  make_location_string ~pos_fname ~pos_lnum ~pos_cnum ~pos_bol
+let%template[@alloc a = (heap, stack)] to_string
+  { Stdlib.Lexing.pos_fname; pos_lnum; pos_cnum; pos_bol }
+  =
+  (make_location_string [@alloc a])
+    ~pos_fname
+    ~pos_lnum
+    ~pos_cnum
+    ~pos_bol [@exclave_if_stack a]
 ;;
 
-let sexp_of_t t = Sexp.Atom (to_string t)
-let equal__local (local_ a) (local_ b) = equal_int (compare__local a b) 0
-let equal = [%eta2 equal__local]
+let%template[@alloc a = (heap, stack)] sexp_of_t t =
+  Sexp.Atom ((to_string [@alloc a]) t) [@exclave_if_stack a]
+;;
+
+let%template[@mode local] equal (local_ a) (local_ b) =
+  equal_int ((compare [@mode local]) a b) 0
+;;
+
+let%template equal = [%eta2 equal [@mode local]]
 
 let of_pos (pos_fname, pos_lnum, pos_cnum, _) =
   { pos_fname; pos_lnum; pos_cnum; pos_bol = 0 }
@@ -41,4 +63,4 @@ let here_or_there ~(here : [%call_pos]) there =
   | Some there -> there
 ;;
 
-let is_dummy (local_ t) = equal__local Stdlib.Lexing.dummy_pos t
+let%template is_dummy (local_ t) = (equal [@mode local]) Stdlib.Lexing.dummy_pos t

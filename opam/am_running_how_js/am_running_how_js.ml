@@ -1,16 +1,18 @@
 open! Core
 open Js_of_ocaml
 
-let am_running_how
-  : [ `Browser
-    | `Browser_test
-    | `Browser_benchmark
-    | `Node
-    | `Node_benchmark
-    | `Node_test
-    | `Node_jsdom_test
-    ]
-  =
+type t =
+  [ `Browser
+  | `Browser_test
+  | `Browser_benchmark
+  | `Node
+  | `Node_benchmark
+  | `Node_test
+  | `Node_jsdom_test
+  ]
+[@@deriving equal ~localize]
+
+let am_running_how : t =
   let is_in_screenshot_test = Option.is_some (Sys.getenv "AM_RUNNING_SCREENSHOT_TEST") in
   match is_in_screenshot_test with
   | true -> `Browser_test
@@ -40,14 +42,14 @@ let am_running_how
     else `Browser
 ;;
 
-let am_in_browser =
-  match am_running_how with
+let am_in_browser t =
+  match t with
   | `Browser | `Browser_test | `Browser_benchmark -> true
   | `Node | `Node_benchmark | `Node_test | `Node_jsdom_test -> false
 ;;
 
-let am_in_browser_like_api =
-  match am_running_how with
+let am_in_browser_like_api t =
+  match t with
   | `Browser | `Browser_test | `Browser_benchmark | `Node_jsdom_test -> true
   | `Node | `Node_benchmark | `Node_test -> false
 ;;

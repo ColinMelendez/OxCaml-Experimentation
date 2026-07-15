@@ -4,7 +4,6 @@
 
 open! Import
 open Hardcaml_waveterm_kernel
-open Hardcaml_waveterm_cyclesim
 
 module I = struct
   type 'a t =
@@ -66,31 +65,32 @@ let display_rules =
 let fill_then_empty ?(wave_width = 1) (waves, sim) =
   let inputs : _ I.t = Cyclesim.inputs sim in
   let outputs : _ O.t = Cyclesim.outputs sim in
-  inputs.clear := Bits.vdd;
+  let open Cyclesim.Sim_bits in
+  inputs.clear <-- vdd;
   Cyclesim.cycle sim;
-  inputs.clear := Bits.gnd;
-  inputs.wr := Bits.vdd;
+  inputs.clear <-- gnd;
+  inputs.wr <-- vdd;
   let rec write i =
-    if not (Bits.to_bool !(outputs.full))
+    if not (to_bool outputs.full)
     then (
-      inputs.d := Bits.of_int_trunc ~width:32 ((i + 1) * 10);
+      inputs.d <-- of_int_trunc ~width:32 ((i + 1) * 10);
       Cyclesim.cycle sim;
       write (i + 1))
     else i
   in
   let wr_count = write 0 in
-  inputs.wr := Bits.gnd;
-  inputs.d := Bits.of_int_trunc ~width:32 0;
+  inputs.wr <-- gnd;
+  inputs.d <-- of_int_trunc ~width:32 0;
   Cyclesim.cycle sim;
-  inputs.rd := Bits.vdd;
+  inputs.rd <-- vdd;
   let rd_count = ref 0 in
   let timeout = ref 100 in
   while !rd_count <> wr_count && !timeout <> 0 do
-    if not (Bits.to_bool !(outputs.empty)) then Int.incr rd_count;
+    if not (to_bool outputs.empty) then Int.incr rd_count;
     Cyclesim.cycle sim;
     Int.decr timeout
   done;
-  inputs.rd := Bits.gnd;
+  inputs.rd <-- gnd;
   Cyclesim.cycle sim;
   Cyclesim.cycle sim;
   Waveform.print ~display_width:87 ~wave_width ~display_rules waves
@@ -98,9 +98,9 @@ let fill_then_empty ?(wave_width = 1) (waves, sim) =
 
 let%expect_test "classic" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create ~showahead:false ())
+  wrap ~create_fn:(Fifo.create ~showahead:false ~scope:(Scope.create ()) ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -136,9 +136,9 @@ let%expect_test "classic" =
 
 let%expect_test "showahead" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create ~showahead:true ())
+  wrap ~create_fn:(Fifo.create ~showahead:true ~scope:(Scope.create ()) ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -174,9 +174,9 @@ let%expect_test "showahead" =
 
 let%expect_test "classic with reg" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create_classic_with_extra_reg ())
+  wrap ~create_fn:(Fifo.create_classic_with_extra_reg ~scope:(Scope.create ()) ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -212,9 +212,9 @@ let%expect_test "classic with reg" =
 
 let%expect_test "showahead from classic" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create_showahead_from_classic ())
+  wrap ~create_fn:(Fifo.create_showahead_from_classic ~scope:(Scope.create ()) ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -250,9 +250,9 @@ let%expect_test "showahead from classic" =
 
 let%expect_test "showahead with extra reg" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create_showahead_with_extra_reg ())
+  wrap ~create_fn:(Fifo.create_showahead_with_extra_reg ~scope:(Scope.create ()) ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -288,9 +288,16 @@ let%expect_test "showahead with extra reg" =
 
 let%expect_test "non-default nearly empty/full threshold values" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~create_fn:(Fifo.create ~showahead:true ~nearly_empty:2 ~nearly_full:1 ())
+  wrap
+    ~create_fn:
+      (Fifo.create
+         ~showahead:true
+         ~nearly_empty:2
+         ~nearly_full:1
+         ~scope:(Scope.create ())
+         ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty;
   [%expect
     {|
@@ -326,9 +333,15 @@ let%expect_test "non-default nearly empty/full threshold values" =
 
 let%expect_test "showahead with read_latency" =
   let module Sim = Cyclesim.With_interface (I) (O) in
-  wrap ~capacity:3 ~create_fn:(Fifo.create_showahead_with_read_latency ~read_latency:5 ())
+  wrap
+    ~capacity:3
+    ~create_fn:
+      (Fifo.create_showahead_with_read_latency
+         ~read_latency:5
+         ~scope:(Scope.create ())
+         ())
   |> Sim.create
-  |> Waveform.create
+  |> Cyclesim.Waveform.create
   |> fill_then_empty ~wave_width:0;
   [%expect
     {|
@@ -417,6 +430,7 @@ module%test Typed_tests = struct
       =
       (if cut_through then Fifo.cut_through_typed_fifo else Fifo.typed_fifo)
         (module Data_entry)
+        ~scope:(Scope.create ())
         ~capacity
         ~clocking:{ clock = i.clock; clear = i.clear }
         ~input:{ valid = i.wr; value = { Data_entry.field_a = i.a; field_b = i.b } }
@@ -440,24 +454,25 @@ module%test Typed_tests = struct
 
   let fill_while_reading ?(wave_width = 1) (waves, sim) =
     let inputs : _ I.t = Cyclesim.inputs sim in
-    inputs.clear := Bits.vdd;
+    let open Cyclesim.Sim_bits in
+    inputs.clear <-- vdd;
     Cyclesim.cycle sim;
-    inputs.clear := Bits.gnd;
-    inputs.wr := Bits.vdd;
-    inputs.rd := Bits.vdd;
+    inputs.clear <-- gnd;
+    inputs.wr <-- vdd;
+    inputs.rd <-- vdd;
     let rec write i =
       if i < 10
       then (
-        inputs.a := Bits.of_int_trunc ~width:16 ((i + 1) * 10);
-        inputs.b := Bits.of_int_trunc ~width:16 (150 - ((i + 1) * 10));
+        inputs.a <--. (i + 1) * 10;
+        inputs.b <--. 150 - ((i + 1) * 10);
         Cyclesim.cycle sim;
         write (i + 1))
       else ()
     in
     write 0;
-    inputs.wr := Bits.gnd;
-    inputs.a := Bits.of_int_trunc ~width:16 0;
-    inputs.b := Bits.of_int_trunc ~width:16 0;
+    inputs.wr <-- gnd;
+    inputs.a <--. 0;
+    inputs.b <--. 0;
     (* The typed fifo currently does not handle read delays so we don't need to worry
        about counting reads, they should all flush in a few cycles. *)
     Cyclesim.cycle ~n:3 sim;
@@ -469,33 +484,34 @@ module%test Typed_tests = struct
   let fill_then_empty ?(wave_width = 1) (waves, sim) =
     let inputs : _ I.t = Cyclesim.inputs sim in
     let outputs : _ O.t = Cyclesim.outputs sim in
-    inputs.clear := Bits.vdd;
+    let open Cyclesim.Sim_bits in
+    inputs.clear <-- vdd;
     Cyclesim.cycle sim;
-    inputs.clear := Bits.gnd;
-    inputs.wr := Bits.vdd;
+    inputs.clear <-- gnd;
+    inputs.wr <-- vdd;
     let rec write i =
-      if not (Bits.to_bool !(outputs.full))
+      if not (to_bool outputs.full)
       then (
-        inputs.a := Bits.of_int_trunc ~width:16 ((i + 1) * 10);
-        inputs.b := Bits.of_int_trunc ~width:16 (150 - ((i + 1) * 10));
+        inputs.a <--. (i + 1) * 10;
+        inputs.b <--. 150 - ((i + 1) * 10);
         Cyclesim.cycle sim;
         write (i + 1))
       else i
     in
     let wr_count = write 0 in
-    inputs.wr := Bits.gnd;
-    inputs.a := Bits.of_int_trunc ~width:16 0;
-    inputs.b := Bits.of_int_trunc ~width:16 0;
+    inputs.wr <-- gnd;
+    inputs.a <--. 0;
+    inputs.b <--. 0;
     Cyclesim.cycle sim;
-    inputs.rd := Bits.vdd;
+    inputs.rd <-- vdd;
     let rd_count = ref 0 in
     let timeout = ref 100 in
     while !rd_count <> wr_count && !timeout <> 0 do
-      if not (Bits.to_bool !(outputs.empty)) then Int.incr rd_count;
+      if not (to_bool outputs.empty) then Int.incr rd_count;
       Cyclesim.cycle sim;
       Int.decr timeout
     done;
-    inputs.rd := Bits.gnd;
+    inputs.rd <-- gnd;
     Cyclesim.cycle sim;
     Cyclesim.cycle sim;
     Waveform.print ~display_width:87 ~wave_width ~display_rules waves
@@ -503,7 +519,7 @@ module%test Typed_tests = struct
 
   let%expect_test "typed fifo fill then empty" =
     let module Sim = Cyclesim.With_interface (I) (O) in
-    wrap ~cut_through:false |> Sim.create |> Waveform.create |> fill_then_empty;
+    wrap ~cut_through:false |> Sim.create |> Cyclesim.Waveform.create |> fill_then_empty;
     [%expect
       {|
       ┌Signals───────────┐┌Waves────────────────────────────────────────────────────────────┐
@@ -550,7 +566,7 @@ module%test Typed_tests = struct
 
   let%expect_test "typed fifo fill then empty (cut through) " =
     let module Sim = Cyclesim.With_interface (I) (O) in
-    wrap ~cut_through:true |> Sim.create |> Waveform.create |> fill_then_empty;
+    wrap ~cut_through:true |> Sim.create |> Cyclesim.Waveform.create |> fill_then_empty;
     [%expect
       {|
       ┌Signals───────────┐┌Waves────────────────────────────────────────────────────────────┐
@@ -597,7 +613,10 @@ module%test Typed_tests = struct
 
   let%expect_test "typed fifo fill while reading" =
     let module Sim = Cyclesim.With_interface (I) (O) in
-    wrap ~cut_through:false |> Sim.create |> Waveform.create |> fill_while_reading;
+    wrap ~cut_through:false
+    |> Sim.create
+    |> Cyclesim.Waveform.create
+    |> fill_while_reading;
     [%expect
       {|
       ┌Signals───────────┐┌Waves────────────────────────────────────────────────────────────┐
@@ -644,7 +663,7 @@ module%test Typed_tests = struct
 
   let%expect_test "typed fifo fill while reading (cut through)" =
     let module Sim = Cyclesim.With_interface (I) (O) in
-    wrap ~cut_through:true |> Sim.create |> Waveform.create |> fill_while_reading;
+    wrap ~cut_through:true |> Sim.create |> Cyclesim.Waveform.create |> fill_while_reading;
     [%expect
       {|
       ┌Signals───────────┐┌Waves────────────────────────────────────────────────────────────┐

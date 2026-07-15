@@ -2,6 +2,6 @@
  (name filesystem_async)
  (public_name filesystem.async)
  (libraries async_kernel async_log.kernel async_unix core file_path
-   core_unix.filename_unix filesystem filesystem_core filesystem_types)
+   core_unix.filename_unix filesystem filesystem_core filesystem_types_unix)
  (preprocess
   (pps ppx_jane)))

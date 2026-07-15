@@ -8,7 +8,7 @@ val define
   -> time_source:Time_source.t
   -> fix_id:'a Fix_id.t
   -> initial_input:'b Value.t
-  -> input_id:'b Type_equal.Id.t
+  -> input_id:'b Var_id.t
   -> result:'a Computation.t
   -> here:Source_code_position.t
   -> ('a, unit) Computation.packed_info Trampoline.t
@@ -16,7 +16,7 @@ val define
 val recurse
   :  recursive_scopes:Computation.Recursive_scopes.t
   -> input:'a Value.t
-  -> input_id:'a Type_equal.Id.t
+  -> input_id:'a Var_id.t
   -> fix_id:'b Fix_id.t
   -> here:Source_code_position.t
   -> ('b, unit) Computation.packed_info Trampoline.t

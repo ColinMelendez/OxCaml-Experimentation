@@ -3,4 +3,4 @@
  (public_name bonsai_term_components.zed)
  (libraries core react sexplib)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

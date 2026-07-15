@@ -95,6 +95,10 @@ and copy_expression_desc :
       Ast_500.Parsetree.Pexp_match (copy_expression x0, List.map copy_case x1)
   | Ast_999.Parsetree.Pexp_try (x0, x1) ->
       Ast_500.Parsetree.Pexp_try (copy_expression x0, List.map copy_case x1)
+  | Ast_999.Parsetree.Pexp_unboxed_unit ->
+      Ast_500.Parsetree.Pexp_unboxed_unit
+  | Ast_999.Parsetree.Pexp_unboxed_bool x ->
+      Ast_500.Parsetree.Pexp_unboxed_bool x
   | Ast_999.Parsetree.Pexp_tuple x0 ->
       Ast_500.Parsetree.Pexp_tuple (copy_tuple_components ~f:copy_expression x0)
   | Ast_999.Parsetree.Pexp_unboxed_tuple x0 ->
@@ -212,14 +216,14 @@ and copy_expression_desc :
       Ast_500.Parsetree.Pexp_splice (copy_expression x0)
   | Ast_999.Parsetree.Pexp_hole ->
       Ast_500.Parsetree.Pexp_hole
+  | Ast_999.Parsetree.Pexp_borrow x0 ->
+      Ast_500.Parsetree.Pexp_borrow (copy_expression x0)
 
 and copy_block_access :
     Ast_999.Parsetree.block_access -> Ast_500.Parsetree.block_access
   = function
     | Baccess_field lid ->
       Baccess_field (copy_loc copy_Longident_t lid)
-    | Baccess_array (mut, ik, e) ->
-      Baccess_array (copy_mutable_flag mut, copy_index_kind ik, copy_expression e)
     | Baccess_block (mut, e) ->
       Baccess_block (copy_mutable_flag mut, copy_expression e)
 
@@ -338,7 +342,7 @@ and copy_jkind_annotation_desc :
   Ast_999.Parsetree.jkind_annotation_desc -> Ast_500.Parsetree.jkind_annotation_desc =
   function
   | Pjk_default -> Pjk_default
-  | Pjk_abbreviation x0 -> Pjk_abbreviation x0
+  | Pjk_abbreviation (x0, x1) -> Pjk_abbreviation (x0, x1)
   | Pjk_mod (x0, x1) -> Pjk_mod (copy_jkind_annotation x0, copy_modes x1)
   | Pjk_with (x0, x1, x2) -> Pjk_with (copy_jkind_annotation x0, copy_core_type x1, copy_modalities x2)
   | Pjk_kind_of x0 -> Pjk_kind_of (copy_core_type x0)
@@ -346,13 +350,21 @@ and copy_jkind_annotation_desc :
 
 and copy_jkind_annotation :
   Ast_999.Parsetree.jkind_annotation -> Ast_500.Parsetree.jkind_annotation =
-  fun { pjkind_desc; pjkind_loc } ->
-  { pjkind_desc = copy_jkind_annotation_desc pjkind_desc;
-    pjkind_loc = copy_location pjkind_loc;
+  fun { pjka_desc; pjka_loc } ->
+  { pjka_desc = copy_jkind_annotation_desc pjka_desc;
+    pjka_loc = copy_location pjka_loc;
   }
 
 and copy_bound_var (var, jkind) =
   copy_loc (fun x -> x) var, Option.map copy_jkind_annotation jkind
+
+and copy_jkind_declaration :
+  Ast_999.Parsetree.jkind_declaration -> Ast_500.Parsetree.jkind_declaration =
+  fun { pjkind_name; pjkind_manifest; pjkind_attributes; pjkind_loc } ->
+  { pjkind_name = copy_loc (fun x -> x) pjkind_name;
+    pjkind_manifest = Option.map copy_jkind_annotation pjkind_manifest;
+    pjkind_attributes = copy_attributes pjkind_attributes;
+    pjkind_loc = copy_location pjkind_loc }
 
 and copy_direction_flag :
     Ast_999.Asttypes.direction_flag -> Ast_500.Asttypes.direction_flag =
@@ -375,6 +387,7 @@ and copy_case : Ast_999.Parsetree.case -> Ast_500.Parsetree.case =
 and copy_value_binding :
     Ast_999.Parsetree.value_binding -> Ast_500.Parsetree.value_binding =
  fun {
+       Ast_999.Parsetree.pvb_is_poly;
        Ast_999.Parsetree.pvb_pat;
        Ast_999.Parsetree.pvb_expr;
        Ast_999.Parsetree.pvb_constraint;
@@ -456,6 +469,8 @@ and copy_value_binding :
               | Ptyp_quote core_type -> Ptyp_quote (loop core_type)
               | Ptyp_splice core_type -> Ptyp_splice (loop core_type)
               | Ptyp_of_kind x1 -> Ptyp_of_kind x1
+              | Ptyp_repr (vars, core_type) -> Ptyp_repr (vars, loop core_type)
+              | Ptyp_newlayout (vars, core_type) -> Ptyp_newlayout (vars, loop core_type)
               | Ptyp_extension (s, arg) -> Ptyp_extension (s, arg)
             in
             { t with ptyp_desc = desc }
@@ -544,6 +559,7 @@ and copy_value_binding :
     | _ -> (pvb_pat, pvb_expr)
   in
   {
+    Ast_500.Parsetree.pvb_is_poly;
     Ast_500.Parsetree.pvb_pat;
     Ast_500.Parsetree.pvb_expr;
     Ast_500.Parsetree.pvb_modes = copy_modes pvb_modes;
@@ -576,6 +592,8 @@ and copy_pattern_desc :
       Ast_500.Parsetree.Ppat_constant (copy_constant x0)
   | Ast_999.Parsetree.Ppat_interval (x0, x1) ->
       Ast_500.Parsetree.Ppat_interval (copy_constant x0, copy_constant x1)
+  | Ast_999.Parsetree.Ppat_unboxed_unit -> Ast_500.Parsetree.Ppat_unboxed_unit
+  | Ast_999.Parsetree.Ppat_unboxed_bool x -> Ast_500.Parsetree.Ppat_unboxed_bool x
   | Ast_999.Parsetree.Ppat_tuple (x0, x1) ->
       Ast_500.Parsetree.Ppat_tuple
         (copy_tuple_components ~f:copy_pattern x0, copy_closed_flag x1)
@@ -695,10 +713,15 @@ and copy_core_type_desc loc :
       Ast_500.Parsetree.Ptyp_splice (copy_core_type x0)
   | Ast_999.Parsetree.Ptyp_of_kind x0 ->
       Ast_500.Parsetree.Ptyp_of_kind (copy_jkind_annotation x0)
+  | Ast_999.Parsetree.Ptyp_repr (x0, x1) ->
+      Ast_500.Parsetree.Ptyp_repr (x0, copy_core_type x1)
   | Ast_999.Parsetree.Ptyp_extension x0 ->
       Ast_500.Parsetree.Ptyp_extension (copy_extension x0)
   | Ast_999.Parsetree.Ptyp_open (x0, x1) ->
       migration_error loc "module open in types"
+  | Ast_999.Parsetree.Ptyp_newlayout (x0, x1) ->
+      Ast_500.Parsetree.Ptyp_newlayout (List.map (copy_loc (fun x -> x)) x0,
+      copy_core_type x1)
 
 and copy_package_type :
     Ast_999.Parsetree.package_type -> Ast_500.Parsetree.package_type =
@@ -819,8 +842,8 @@ and copy_structure_item_desc :
       Ast_500.Parsetree.Pstr_attribute (copy_attribute x0)
   | Ast_999.Parsetree.Pstr_extension (x0, x1) ->
       Ast_500.Parsetree.Pstr_extension (copy_extension x0, copy_attributes x1)
-  | Ast_999.Parsetree.Pstr_kind_abbrev (x0, x1) ->
-      Ast_500.Parsetree.Pstr_kind_abbrev (x0, copy_jkind_annotation x1)
+  | Ast_999.Parsetree.Pstr_jkind x0 ->
+      Ast_500.Parsetree.Pstr_jkind (copy_jkind_declaration x0)
 
 and copy_include_declaration :
     Ast_999.Parsetree.include_declaration ->
@@ -1079,6 +1102,9 @@ and copy_with_constraint :
   | Ast_999.Parsetree.Pwith_modtype (x0, x1) ->
       Ast_500.Parsetree.Pwith_modtype
         (copy_loc copy_Longident_t x0, copy_module_type x1)
+  | Ast_999.Parsetree.Pwith_jkind (x0, x1) ->
+      Ast_500.Parsetree.Pwith_jkind
+        (copy_loc copy_Longident_t x0, copy_jkind_declaration x1)
   | Ast_999.Parsetree.Pwith_modtypesubst (x0, x1) ->
       Ast_500.Parsetree.Pwith_modtypesubst
         (copy_loc copy_Longident_t x0, copy_module_type x1)
@@ -1088,6 +1114,9 @@ and copy_with_constraint :
   | Ast_999.Parsetree.Pwith_modsubst (x0, x1) ->
       Ast_500.Parsetree.Pwith_modsubst
         (copy_loc copy_Longident_t x0, copy_loc copy_Longident_t x1)
+  | Ast_999.Parsetree.Pwith_jkindsubst (x0, x1) ->
+      Ast_500.Parsetree.Pwith_jkindsubst
+        (copy_loc copy_Longident_t x0, copy_jkind_declaration x1)
 
 and copy_signature : Ast_999.Parsetree.signature -> Ast_500.Parsetree.signature
     =
@@ -1148,8 +1177,8 @@ and copy_signature_item_desc :
       Ast_500.Parsetree.Psig_attribute (copy_attribute x0)
   | Ast_999.Parsetree.Psig_extension (x0, x1) ->
       Ast_500.Parsetree.Psig_extension (copy_extension x0, copy_attributes x1)
-  | Ast_999.Parsetree.Psig_kind_abbrev (x0, x1) ->
-      Ast_500.Parsetree.Psig_kind_abbrev (x0, copy_jkind_annotation x1)
+  | Ast_999.Parsetree.Psig_jkind x0 ->
+      Ast_500.Parsetree.Psig_jkind (copy_jkind_declaration x0)
 
 and copy_class_type_declaration :
     Ast_999.Parsetree.class_type_declaration ->
@@ -1580,18 +1609,10 @@ and copy_variance : Ast_999.Asttypes.variance -> Ast_500.Asttypes.variance =
   | Ast_999.Asttypes.Contravariant -> Ast_500.Asttypes.Contravariant
   | Ast_999.Asttypes.NoVariance -> Ast_500.Asttypes.NoVariance
 
-and copy_index_kind : Ast_999.Asttypes.index_kind -> Ast_500.Asttypes.index_kind =
-  function
-  | Ast_999.Asttypes.Index_int -> Ast_500.Asttypes.Index_int
-  | Ast_999.Asttypes.Index_unboxed_int64 -> Ast_500.Asttypes.Index_unboxed_int64
-  | Ast_999.Asttypes.Index_unboxed_int32 -> Ast_500.Asttypes.Index_unboxed_int32
-  | Ast_999.Asttypes.Index_unboxed_int16 -> Ast_500.Asttypes.Index_unboxed_int16
-  | Ast_999.Asttypes.Index_unboxed_int8 -> Ast_500.Asttypes.Index_unboxed_int8
-  | Ast_999.Asttypes.Index_unboxed_nativeint -> Ast_500.Asttypes.Index_unboxed_nativeint
-
 and copy_value_description :
     Ast_999.Parsetree.value_description -> Ast_500.Parsetree.value_description =
  fun {
+       Ast_999.Parsetree.pval_poly;
        Ast_999.Parsetree.pval_name;
        Ast_999.Parsetree.pval_type;
        Ast_999.Parsetree.pval_modalities;
@@ -1600,6 +1621,7 @@ and copy_value_description :
        Ast_999.Parsetree.pval_loc;
      } ->
   {
+    Ast_500.Parsetree.pval_poly;
     Ast_500.Parsetree.pval_name = copy_loc (fun x -> x) pval_name;
     Ast_500.Parsetree.pval_type = copy_core_type pval_type;
     Ast_500.Parsetree.pval_modalities =

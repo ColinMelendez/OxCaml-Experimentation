@@ -1,5 +1,6 @@
 open Core
 open Async_kernel
+open! Import
 open Util
 module P = Protocol
 module Description = Description
@@ -678,7 +679,7 @@ module Streaming_rpc = struct
       { P.Query.Validated.tag = t.tag
       ; version = t.version
       ; id
-      ; metadata = None
+      ; metadata = Null
       ; data = `Abort
       }
     in

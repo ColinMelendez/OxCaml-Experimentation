@@ -18,7 +18,7 @@ let test_tx_waves
   let open Bits in
   let scope = Scope.create ~flatten_design:true () in
   let sim = Sim.create ~config:Cyclesim.Config.trace_all (Tx.create scope) in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   inputs.clocking.clear := vdd;
@@ -151,7 +151,7 @@ let test_rx
   let open Bits in
   let scope = Scope.create ~flatten_design:true () in
   let sim = Sim.create ~config:Cyclesim.Config.trace_all (Rx.create_internal scope) in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let _outputs = Cyclesim.outputs sim in
   inputs.clocking.clear := vdd;
@@ -240,7 +240,7 @@ let test_tx_rx
       in
       rx)
   in
-  let waves, sim = Waveform.create sim in
+  let waves, sim = Cyclesim.Waveform.create sim in
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
   inputs.clocking.clear := vdd;

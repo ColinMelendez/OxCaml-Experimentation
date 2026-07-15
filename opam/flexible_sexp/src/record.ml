@@ -5,7 +5,8 @@ module Stable = struct
   module Tags = struct
     module V1 = struct
       type t = Sexp.V1.t Map.V1.M(String.V1).t
-      [@@deriving compare ~localize, sexp, sexp_grammar, stable_witness]
+      [@@deriving
+        bin_shape, compare ~localize, sexp ~stackify, sexp_grammar, stable_witness]
 
       open! Core
       open! Import
@@ -56,6 +57,10 @@ module Stable = struct
       module Private__for_flexible_sexp_unit_tests_only = struct
         let of_map = Fn.id
         let to_map = Fn.id
+      end
+
+      module Private__for_ppx_flexible_sexp = struct
+        let eq = Type_equal.T
       end
     end
 
@@ -221,13 +226,13 @@ module Stable = struct
 
   module Make = struct
     module%template
-      [@modality p = (portable, nonportable)] V1
+      [@mode m = (global, local)] [@modality p = (portable, nonportable)] V1
         (T : sig
          @@ p
            open! Core
            open! Import
 
-           type t [@@deriving compare, sexp]
+           type t [@@deriving (compare [@mode.explicit m]), sexp]
 
            module Fields : sig
              val names : string list

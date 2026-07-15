@@ -168,7 +168,7 @@ module Id_location_hashmap = struct
   module Key = struct
     module T = struct
       type t =
-        [ `Named of Type_equal.Id.Uid.t
+        [ `Named of Var_id.Packed.t
         | `Incr of Incremental.For_analyzer.Node_id.t
         ]
       [@@deriving compare, hash, sexp_of]
@@ -209,70 +209,27 @@ module Id_location_hashmap = struct
   ;;
 end
 
-module Type_id_location_map = struct
-  module Data = struct
-    type 'a t = Source_code_positions.finalized Source_code_positions.t
-    [@@deriving sexp_of]
-  end
+module Var_id_location_map = struct
+  include Var_id.Map.Make (struct
+      type 'a t = Source_code_positions.finalized Source_code_positions.t
+      [@@deriving sexp_of]
+    end)
 
-  module T = Univ_map.Make (Univ_map.Type_id_key) (Data)
-  module Merge = Univ_map.Merge (Univ_map.Type_id_key) (Data) (Data) (Data)
-
-  type t = T.t
-
-  type 'acc folder =
-    { f :
-        'a 'b.
-        'acc
-        -> 'a Type_equal.Id.t
-        -> Source_code_positions.finalized Source_code_positions.t
-        -> 'acc
-    }
-
-  type 'b mapper =
-    { f :
-        'a.
-        'a Type_equal.Id.t
-        -> Source_code_positions.finalized Source_code_positions.t
-        -> 'b
-    }
-
-  let set = T.set
-  let empty = T.empty
-  let singleton = T.singleton
-  let find = T.find
-  let remove = T.remove
+  let set = add_overwriting
 
   let merge a b =
-    Merge.merge
+    merge
       b
       a
-      ~f:
-        { f =
-            (fun ~key:_ -> function
-              | `Left left -> Some left
-              | `Right right -> Some right
-              | `Both (Source_code_positions.Finalized a, Finalized b) ->
-                Some
-                  (Source_code_positions.Finalized
-                     { dependency_definitions =
-                         Set.union a.dependency_definitions b.dependency_definitions
-                     ; depended_on_at = Set.union a.depended_on_at b.depended_on_at
-                     ; watchers =
-                         Source_code_positions.merge_watchers a.watchers b.watchers
-                     }))
-        }
-  ;;
-
-  let fold t ~init ({ f } : _ folder) =
-    Map.fold
-      (Type_equal.conv T.type_equal t)
-      ~init
-      ~f:(fun ~key:_ ~data:(T (key, data)) acc -> f acc key data)
-  ;;
-
-  let map_to_list t ({ f } : _ mapper) =
-    List.map (T.to_alist t) ~f:(fun (T (key, data)) -> f key data)
+      { combine =
+          (fun ~key:_ (Source_code_positions.Finalized a) (Finalized b) ->
+            Source_code_positions.Finalized
+              { dependency_definitions =
+                  Set.union a.dependency_definitions b.dependency_definitions
+              ; depended_on_at = Set.union a.depended_on_at b.depended_on_at
+              ; watchers = Source_code_positions.merge_watchers a.watchers b.watchers
+              })
+      }
   ;;
 end
 

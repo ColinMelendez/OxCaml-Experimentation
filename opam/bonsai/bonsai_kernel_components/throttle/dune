@@ -1,0 +1,6 @@
+(library
+ (name bonsai_kernel_throttle)
+ (public_name bonsai.kernel_components.throttle)
+ (libraries bonsai core)
+ (preprocess
+  (pps ppx_bonsai ppx_jane)))

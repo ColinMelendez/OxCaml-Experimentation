@@ -84,9 +84,15 @@ let tmp_out_channel ~unlink ext =
   name, Out_channel.create name
 ;;
 
-let write_tmp_yosys_script ?passes verilog_design ~json_file =
+let write_tmp_yosys_script ?(verbose = false) ?passes verilog_design ~json_file =
   let script_name, script = tmp_out_channel ~unlink:true ".yosys" in
-  Out_channel.output_string script (yosys_script ?passes verilog_design ~json_file);
+  let yosys_script = yosys_script ?passes verilog_design ~json_file in
+  Out_channel.output_string script yosys_script;
+  if verbose
+  then (
+    Out_channel.print_endline "YOSYS script:";
+    Out_channel.print_string yosys_script;
+    Out_channel.flush stdout);
   Out_channel.close script;
   script_name
 ;;
@@ -96,7 +102,7 @@ let run_yosys ?(verbose = false) args =
   let command =
     String.concat
       ~sep:" "
-      (List.concat [ [ Hardcaml.Tools_config.yosys ]; args; verbose ])
+      (List.concat [ [ Hardcaml_tools_config.yosys ]; args; verbose ])
   in
   match Unix.system command with
   | WEXITED 0 -> Ok ()
@@ -104,7 +110,7 @@ let run_yosys ?(verbose = false) args =
 ;;
 
 let to_json_file ?verbose ?passes verilog_design ~json_file =
-  let script_name = write_tmp_yosys_script ?passes verilog_design ~json_file in
+  let script_name = write_tmp_yosys_script ?verbose ?passes verilog_design ~json_file in
   run_yosys ?verbose [ "-s"; script_name ]
 ;;
 

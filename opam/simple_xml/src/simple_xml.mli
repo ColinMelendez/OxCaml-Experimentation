@@ -40,7 +40,7 @@ module Tag : sig
     { ns : string
     ; tag : string
     }
-  [@@deriving sexp_of, compare, equal, hash, quickcheck]
+  [@@deriving sexp_of, compare ~localize, equal ~localize, hash, quickcheck]
 
   val of_tuple : string * string -> t
 end
@@ -51,7 +51,7 @@ module Attribute : sig
     ; key : string
     ; value : string
     }
-  [@@deriving sexp_of, compare, equal, hash, quickcheck]
+  [@@deriving sexp_of, compare ~localize, equal ~localize, hash, quickcheck]
 
   val of_tuple : (string * string) * string -> t
 end
@@ -65,7 +65,7 @@ type element =
 and t =
   | Element of element
   | Text of string
-[@@deriving sexp_of, compare, equal, hash, quickcheck]
+[@@deriving sexp_of, compare ~localize, equal ~localize, hash, quickcheck]
 
 val parse_input : Xmlm.input -> element
 
@@ -138,12 +138,16 @@ module Raise_on_namespace = Raise_on_namespace
 
 module Stable : sig
   module V2 : sig
-    type nonrec t = t [@@deriving sexp, bin_io, compare, hash, stable_witness]
-    type nonrec element = element [@@deriving sexp, bin_io, compare, hash, stable_witness]
+    type nonrec t = t [@@deriving sexp, bin_io, compare ~localize, hash, stable_witness]
+
+    type nonrec element = element
+    [@@deriving sexp, bin_io, compare ~localize, hash, stable_witness]
   end
 
   module V1 : sig
-    type nonrec t = t [@@deriving sexp, bin_io, compare, hash, stable_witness]
-    type nonrec element = element [@@deriving sexp, bin_io, compare, hash, stable_witness]
+    type nonrec t = t [@@deriving sexp, bin_io, compare ~localize, hash, stable_witness]
+
+    type nonrec element = element
+    [@@deriving sexp, bin_io, compare ~localize, hash, stable_witness]
   end
 end

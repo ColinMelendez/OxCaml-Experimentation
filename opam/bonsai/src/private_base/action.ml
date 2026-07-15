@@ -12,7 +12,12 @@ type ('key, 'inner) assoc = private Assoc
 type ('io_key, 'model_key, 'inner) assoc_on = private Assoc_on
 
 type 'a id =
-  | Leaf_id : { action : 'action Type_equal.Id.t } -> 'action leaf id
+  | Leaf_id :
+      { action : 'action Var_id.t
+      ; action_name : string
+      ; sexp_of_action : ('action -> Sexp.t) option
+      }
+      -> 'action leaf id
   | Sub_id :
       { from : 'from id
       ; into : 'into id
@@ -20,20 +25,21 @@ type 'a id =
       -> ('from, 'into) sub id
   | Wrap_id :
       { inner : 'inner id
-      ; outer : 'outer Type_equal.Id.t
+      ; outer : 'outer Var_id.t
       }
       -> ('inner, 'outer) wrap id
   | Model_reset_id : { inner : 'inner id } -> 'inner model_resetter id
   | Switch_id : switch id
   | Lazy_id : lazy_ id
   | Assoc_id :
-      { key : 'key Type_equal.Id.t
+      { key : 'key Var_id.t
       ; action : 'a id
       }
       -> ('key, 'a) assoc id
   | Assoc_on_id :
-      { io_key : 'io_key Type_equal.Id.t
-      ; model_key : 'model_key Type_equal.Id.t
+      { io_key : 'io_key Var_id.t
+      ; model_key : 'model_key Var_id.t
+      ; sexp_of_model_key : 'model_key -> Sexp.t
       ; action : 'a id
       }
       -> ('io_key, 'model_key, 'a) assoc_on id
@@ -65,24 +71,24 @@ and 'a t =
   | Assoc :
       { key : 'key
       ; action : 'a t
-      ; id : 'key Type_equal.Id.t
-      ; compare : 'key -> 'key -> int
+      ; id : 'key Var_id.t
+      ; comparator : ('key, _) Comparator.Module.t
       }
       -> ('key, 'a) assoc t
   | Assoc_on :
       { io_key : 'io_key
       ; model_key : 'model_key
       ; action : 'a t
-      ; io_id : 'io_key Type_equal.Id.t
-      ; io_compare : 'io_key -> 'io_key -> int
+      ; io_id : 'io_key Var_id.t
+      ; io_comparator : ('io_key, _) Comparator.Module.t
       }
       -> ('io_key, 'model_key, 'a) assoc_on t
 
 let rec same_witness : type a b. a id -> b id -> (a, b) Type_equal.t option =
   fun a b ->
   match a, b with
-  | Leaf_id { action }, Leaf_id { action = action' } ->
-    (match Type_equal.Id.same_witness action action' with
+  | Leaf_id { action; _ }, Leaf_id { action = action'; _ } ->
+    (match Var_id.same_witness action action' with
      | Some T -> Some T
      | None -> None)
   | Sub_id { from; into }, Sub_id { from = from'; into = into' } ->
@@ -93,7 +99,7 @@ let rec same_witness : type a b. a id -> b id -> (a, b) Type_equal.t option =
      | _ -> None)
   | Wrap_id { inner; outer }, Wrap_id { inner = inner'; outer = outer' } ->
     let same_inner = same_witness inner inner' in
-    let same_outer = Type_equal.Id.same_witness outer outer' in
+    let same_outer = Var_id.same_witness outer outer' in
     (match same_inner, same_outer with
      | Some T, Some T -> Some T
      | _ -> None)
@@ -104,15 +110,15 @@ let rec same_witness : type a b. a id -> b id -> (a, b) Type_equal.t option =
   | Switch_id, Switch_id -> Some T
   | Lazy_id, Lazy_id -> Some T
   | Assoc_id { key; action }, Assoc_id { key = key'; action = action' } ->
-    let same_key = Type_equal.Id.same_witness key key' in
+    let same_key = Var_id.same_witness key key' in
     let same_action = same_witness action action' in
     (match same_key, same_action with
      | Some T, Some T -> Some T
      | _ -> None)
-  | ( Assoc_on_id { io_key; model_key; action }
-    , Assoc_on_id { io_key = io_key'; model_key = model_key'; action = action' } ) ->
-    let same_io_key = Type_equal.Id.same_witness io_key io_key' in
-    let same_model_key = Type_equal.Id.same_witness model_key model_key' in
+  | ( Assoc_on_id { io_key; model_key; action; _ }
+    , Assoc_on_id { io_key = io_key'; model_key = model_key'; action = action'; _ } ) ->
+    let same_io_key = Var_id.same_witness io_key io_key' in
+    let same_model_key = Var_id.same_witness model_key model_key' in
     let same_action = same_witness action action' in
     (match same_io_key, same_model_key, same_action with
      | Some T, Some T, Some T -> Some T
@@ -176,37 +182,34 @@ let rec same_witness : type a b. a id -> b id -> (a, b) Type_equal.t option =
 ;;
 
 let rec sexp_of_t : type a. a id -> Sexp.t = function
-  | Leaf_id { action } -> [%sexp Leaf, (action : opaque Type_equal.Id.t)]
+  | Leaf_id { action = _; action_name; sexp_of_action = _ } ->
+    [%sexp Leaf, (action_name : string)]
   | Sub_id { from; into } ->
     let from = sexp_of_t from in
     let into = sexp_of_t into in
     [%sexp Sub, (from : Sexp.t), (into : Sexp.t)]
-  | Wrap_id { inner; outer } ->
+  | Wrap_id { inner; _ } ->
     let inner = sexp_of_t inner in
-    [%sexp Wrap, (inner : Sexp.t), (outer : opaque Type_equal.Id.t)]
+    [%sexp Wrap, (inner : Sexp.t), "action id"]
   | Model_reset_id { inner } ->
     let inner = sexp_of_t inner in
     [%sexp Model_reset (inner : Sexp.t)]
   | Switch_id -> [%sexp Switch]
   | Lazy_id -> [%sexp Lazy]
-  | Assoc_id { key; action } ->
+  | Assoc_id { action; _ } ->
     let action = sexp_of_t action in
-    [%sexp Assoc, (key : opaque Type_equal.Id.t), (action : Sexp.t)]
-  | Assoc_on_id { io_key; model_key; action } ->
+    [%sexp Assoc, "key id", (action : Sexp.t)]
+  | Assoc_on_id { action; _ } ->
     let action = sexp_of_t action in
-    [%sexp
-      Assoc
-      , (io_key : opaque Type_equal.Id.t)
-      , (model_key : opaque Type_equal.Id.t)
-      , (action : Sexp.t)]
+    [%sexp Assoc, "io key id", "model key id", (action : Sexp.t)]
 ;;
 
 let rec to_sexp : type a. a id -> a t -> Sexp.t = function
-  | Leaf_id { action } ->
-    let to_sexp = Type_equal.Id.to_sexp action in
+  | Leaf_id { sexp_of_action; _ } ->
+    let sexp_of_action = Option.value sexp_of_action ~default:sexp_of_opaque in
     (function
-      | Leaf_dynamic action -> [%sexp Leaf_dynamic, (to_sexp action : Sexp.t)]
-      | Leaf_static action -> [%sexp Leaf_static, (to_sexp action : Sexp.t)])
+      | Leaf_dynamic action -> [%sexp Leaf_dynamic, (sexp_of_action action : Sexp.t)]
+      | Leaf_static action -> [%sexp Leaf_static, (sexp_of_action action : Sexp.t)])
   | Sub_id { from; into } ->
     (function
       | Sub_from action ->
@@ -215,14 +218,12 @@ let rec to_sexp : type a. a id -> a t -> Sexp.t = function
       | Sub_into action ->
         let to_sexp = to_sexp into in
         [%sexp Sub_into, (to_sexp action : Sexp.t)])
-  | Wrap_id { inner; outer } ->
+  | Wrap_id { inner; _ } ->
     (function
       | Wrap_inner action ->
         let to_sexp = to_sexp inner in
         [%sexp Wrap_inner, (to_sexp action : Sexp.t)]
-      | Wrap_outer action ->
-        let to_sexp = Type_equal.Id.to_sexp outer in
-        [%sexp Wrap_outer, (to_sexp action : Sexp.t)])
+      | Wrap_outer action -> [%sexp Wrap_outer, (sexp_of_opaque action : Sexp.t)])
   | Model_reset_id { inner } ->
     (function
       | Model_reset_outer -> [%sexp Model_reset_outer]
@@ -237,30 +238,41 @@ let rec to_sexp : type a. a id -> a t -> Sexp.t = function
     fun (Lazy { action; type_id }) ->
       let to_sexp = to_sexp type_id in
       [%sexp Lazy, (to_sexp action : Sexp.t)]
-  | Assoc_id { key = key_id; action = action_id } ->
-    fun (Assoc { key; action; id = _; compare = _ }) ->
-      let sexp_of_key = Type_equal.Id.to_sexp key_id in
+  | Assoc_id { action = action_id; _ } ->
+    fun (Assoc { key; action; id = _; comparator = (module Cmp) }) ->
+      let sexp_of_key = Comparator.sexp_of_t Cmp.comparator in
       let sexp_of_action = to_sexp action_id in
       [%sexp Assoc, (key : key), (action : action)]
-  | Assoc_on_id { io_key = io_key_id; model_key = model_key_id; action = action_id } ->
-    fun (Assoc_on { io_key; model_key; action; io_id = _; io_compare = _ }) ->
-      let sexp_of_io_key = Type_equal.Id.to_sexp io_key_id in
-      let sexp_of_model_key = Type_equal.Id.to_sexp model_key_id in
+  | Assoc_on_id { sexp_of_model_key; action = action_id; _ } ->
+    fun (Assoc_on
+          { io_key; model_key; action; io_id = _; io_comparator = (module Io_cmp) }) ->
+      let sexp_of_io_key = Comparator.sexp_of_t Io_cmp.comparator in
       let sexp_of_action = to_sexp action_id in
       [%sexp Assoc_on, (io_key : io_key), (model_key : model_key), (action : action)]
 ;;
 
 module Type_id = struct
-  let nothing_type_id = Type_equal.Id.create ~name:"Nothing.t" [%sexp_of: Nothing.t]
-  let nothing = Leaf_id { action = nothing_type_id }
-  let leaf type_id = Leaf_id { action = type_id }
+  let nothing_type_id = Var_id.create ()
+
+  let nothing =
+    Leaf_id { action = nothing_type_id; action_name = "Nothing.t"; sexp_of_action = None }
+  ;;
+
+  let leaf type_id ~action_name ~sexp_of_action =
+    Leaf_id { action = type_id; action_name; sexp_of_action }
+  ;;
+
   let sub ~from ~into = Sub_id { from; into }
   let wrap ~inner ~outer = Wrap_id { inner; outer }
   let model_reset inner = Model_reset_id { inner }
   let lazy_ = Lazy_id
   let switch = Switch_id
   let assoc ~key ~action = Assoc_id { key; action }
-  let assoc_on ~io_key ~model_key ~action = Assoc_on_id { io_key; model_key; action }
+
+  let assoc_on ~io_key ~model_key ~sexp_of_model_key ~action =
+    Assoc_on_id { io_key; model_key; sexp_of_model_key; action }
+  ;;
+
   let same_witness = same_witness
   let same_witness_exn a b = Option.value_exn (same_witness a b)
   let to_sexp = to_sexp
@@ -277,8 +289,8 @@ let model_reset_inner action = Model_reset_inner action
 let model_reset_outer = Model_reset_outer
 let switch ~branch ~type_id action = Switch { branch; action; type_id }
 let lazy_ ~type_id action = Lazy { action; type_id }
-let assoc ~key ~id ~compare action = Assoc { key; action; id; compare }
+let assoc ~key ~id ~comparator action = Assoc { key; action; id; comparator }
 
-let assoc_on ~io_key ~io_id ~io_compare ~model_key action =
-  Assoc_on { io_key; model_key; action; io_id; io_compare }
+let assoc_on ~io_key ~io_id ~io_comparator ~model_key action =
+  Assoc_on { io_key; model_key; action; io_id; io_comparator }
 ;;

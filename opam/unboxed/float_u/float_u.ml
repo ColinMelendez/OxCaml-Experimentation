@@ -31,9 +31,27 @@ module Shared_derived = struct
 
   let[@inline] t_of_sexp sexp : t = of_float ((F.t_of_sexp [@inlined hint]) sexp)
   let t_sexp_grammar = Sexplib0.Sexp_grammar.coerce F.t_sexp_grammar
+  let bin_shape_t = Bin_prot_unboxed_numbers.Float_u.bin_shape_t
 
-  include Bin_prot_unboxed_numbers.Float_u
+  [%%template
+  [@@@mode.default m = (global, local)]
 
+  let[@inline always] bin_size_t t =
+    (Bin_prot_unboxed_numbers.Float_u.bin_size_t [@mode m] [@inlined]) t
+  ;;
+
+  let[@inline always] bin_write_t buf ~pos t =
+    (Bin_prot_unboxed_numbers.Float_u.bin_write_t [@mode m] [@inlined]) buf ~pos t
+  ;;]
+
+  let[@inline always] bin_read_t buf ~pos_ref =
+    (Bin_prot_unboxed_numbers.Float_u.bin_read_t [@inlined]) buf ~pos_ref
+  ;;
+
+  let __bin_read_t__ = Bin_prot_unboxed_numbers.Float_u.__bin_read_t__
+  let bin_writer_t = Bin_prot_unboxed_numbers.Float_u.bin_writer_t
+  let bin_reader_t = Bin_prot_unboxed_numbers.Float_u.bin_reader_t
+  let bin_t = Bin_prot_unboxed_numbers.Float_u.bin_t
   let[@inline] hash_fold_t state t = (F.hash_fold_t [@inlined hint]) state (to_float t)
   let[@inline] hash t = (F.hash [@inlined hint]) (to_float t)
   let typerep_of_t = Typerep_lib.Std.Typerep.Float_u
@@ -69,32 +87,22 @@ let[@inline] [@zero_alloc strict] clamp_exn t ~min ~max : t =
 
 let[@inline] pp ppf t : unit = (F.pp [@inlined hint]) ppf (to_float t)
 let[@inline] invariant t : unit = (F.invariant [@inlined hint]) (to_float t)
-let[@inline] [@zero_alloc strict] nan () : t = of_float F.nan
-let[@inline] [@zero_alloc strict] infinity () : t = of_float F.infinity
-let[@inline] [@zero_alloc strict] neg_infinity () : t = of_float F.neg_infinity
-let[@inline] [@zero_alloc strict] max_value () : t = of_float F.max_value
-let[@inline] [@zero_alloc strict] min_value () : t = of_float F.min_value
-let[@inline] [@zero_alloc strict] zero () : t = of_float F.zero
-let[@inline] [@zero_alloc strict] one () : t = of_float F.one
-let[@inline] [@zero_alloc strict] minus_one () : t = of_float F.minus_one
-let[@inline] [@zero_alloc strict] pi () : t = of_float F.pi
-let[@inline] [@zero_alloc strict] sqrt_pi () : t = of_float F.sqrt_pi
-let[@inline] [@zero_alloc strict] sqrt_2pi () : t = of_float F.sqrt_2pi
-
-let[@inline] [@zero_alloc strict] euler_gamma_constant () : t =
-  of_float F.euler_gamma_constant
-;;
-
-let[@inline] [@zero_alloc strict] epsilon_float () : t = of_float F.epsilon_float
-let[@inline] [@zero_alloc strict] max_finite_value () : t = of_float F.max_finite_value
-
-let[@inline] [@zero_alloc strict] min_positive_subnormal_value () : t =
-  of_float F.min_positive_subnormal_value
-;;
-
-let[@inline] [@zero_alloc strict] min_positive_normal_value () : t =
-  of_float F.min_positive_normal_value
-;;
+let nan : t = of_float F.nan
+let infinity : t = of_float F.infinity
+let neg_infinity : t = of_float F.neg_infinity
+let max_value : t = of_float F.max_value
+let min_value : t = of_float F.min_value
+let zero : t = of_float F.zero
+let one : t = of_float F.one
+let minus_one : t = of_float F.minus_one
+let pi : t = of_float F.pi
+let sqrt_pi : t = of_float F.sqrt_pi
+let sqrt_2pi : t = of_float F.sqrt_2pi
+let euler_gamma_constant : t = of_float F.euler_gamma_constant
+let epsilon_float : t = of_float F.epsilon_float
+let max_finite_value : t = of_float F.max_finite_value
+let min_positive_subnormal_value : t = of_float F.min_positive_subnormal_value
+let min_positive_normal_value : t = of_float F.min_positive_normal_value
 
 let[@inline] to_int64_preserve_order t : int64 option =
   (F.to_int64_preserve_order [@inlined hint]) (to_float t)
@@ -116,7 +124,7 @@ let[@inline] [@zero_alloc] to_int_unchecked t : int =
 ;;
 
 let[@inline] truncate t : int = Stdlib.truncate (to_float t)
-let[@inline] of_int63 i : t = of_float ((F.of_int63 [@inlined hint]) i)
+let[@inline] of_int63 i : t = of_float ((F.of_int63 [@inlined hint]) i) [@@zero_alloc]
 let[@inline] of_int64 i : t = of_float ((F.of_int64 [@inlined hint]) i)
 let[@inline] to_int64 t : int64 = (F.to_int64 [@inlined hint]) (to_float t)
 
@@ -172,6 +180,22 @@ let[@inline] iround_nearest t : int option =
   (F.iround_nearest [@inlined hint]) (to_float t)
 ;;
 
+let[@inline] iround_towards_zero_or_null t : int or_null =
+  (F.iround_towards_zero_or_null [@inlined hint]) (to_float t)
+;;
+
+let[@inline] iround_down_or_null t : int or_null =
+  (F.iround_down_or_null [@inlined hint]) (to_float t)
+;;
+
+let[@inline] iround_up_or_null t : int or_null =
+  (F.iround_up_or_null [@inlined hint]) (to_float t)
+;;
+
+let[@inline] iround_nearest_or_null t : int or_null =
+  (F.iround_nearest_or_null [@inlined hint]) (to_float t)
+;;
+
 let[@inline] iround_towards_zero_exn t : int =
   (F.iround_towards_zero_exn [@inlined hint]) (to_float t)
 ;;
@@ -193,12 +217,13 @@ let[@inline] int63_round_up_exn t : Base.Int63.t =
 
 let[@inline] int63_round_nearest_exn t : Base.Int63.t =
   (F.int63_round_nearest_exn [@inlined hint]) (to_float t)
+[@@zero_alloc]
 ;;
 
-let[@inline] iround_lbound () = of_float F.iround_lbound
-let[@inline] iround_ubound () = of_float F.iround_ubound
-let[@inline] int63_round_lbound () = of_float F.int63_round_lbound
-let[@inline] int63_round_ubound () = of_float F.int63_round_ubound
+let iround_lbound = of_float F.iround_lbound
+let iround_ubound = of_float F.iround_ubound
+let int63_round_lbound = of_float F.int63_round_lbound
+let int63_round_ubound = of_float F.int63_round_ubound
 
 let[@inline] round_significant t ~significant_digits : t =
   of_float ((F.round_significant [@inlined hint]) (to_float t) ~significant_digits)
@@ -214,6 +239,22 @@ let[@inline] [@zero_alloc] is_finite t : bool = (F.is_finite [@inlined hint]) (t
 
 let[@inline] [@zero_alloc] is_integer t : bool =
   (F.is_integer [@inlined hint]) (to_float t)
+;;
+
+let[@inline] [@zero_alloc] is_positive t : bool =
+  (F.is_positive [@inlined hint]) (to_float t)
+;;
+
+let[@inline] [@zero_alloc] is_non_negative t : bool =
+  (F.is_non_negative [@inlined hint]) (to_float t)
+;;
+
+let[@inline] [@zero_alloc] is_negative t : bool =
+  (F.is_negative [@inlined hint]) (to_float t)
+;;
+
+let[@inline] [@zero_alloc] is_non_positive t : bool =
+  (F.is_non_positive [@inlined hint]) (to_float t)
 ;;
 
 let%template[@inline] [@zero_alloc] min_inan t1 t2 : t =
@@ -373,6 +414,7 @@ let[@inline] acosh t : t = of_float (F.acosh (to_float t))
 let[@inline] asinh t : t = of_float (F.asinh (to_float t))
 let[@inline] atanh t : t = of_float (F.atanh (to_float t))
 let[@inline] sqrt t : t = of_float (F.sqrt (to_float t))
+let[@inline] cbrt t : t = of_float (F.cbrt (to_float t))
 let[@inline] exp t : t = of_float (F.exp (to_float t))
 let[@inline] log t : t = of_float (F.log (to_float t))
 
@@ -399,6 +441,93 @@ let[@inline] ieee_exponent t : int = (F.ieee_exponent [@inlined hint]) (to_float
 
 let[@inline] ieee_mantissa t : Base.Int63.t =
   (F.ieee_mantissa [@inlined hint]) (to_float t)
+;;
+
+let validate_ordinary t =
+  Core.Validate.of_error_opt
+    (match classify t with
+     | Normal | Subnormal | Zero -> None
+     | Infinite -> Some "value is infinite"
+     | Nan -> Some "value is NaN")
+;;
+
+let validate_not_nan t =
+  Core.Validate.of_error_opt
+    (match classify t with
+     | Normal | Subnormal | Zero | Infinite -> None
+     | Nan -> Some "value is NaN")
+;;
+
+let validate_bounded
+  ~(lower : (t Base.Maybe_bound.t[@kind float64]))
+  ~(upper : (t Base.Maybe_bound.t[@kind float64]))
+  t
+  =
+  if not ((Base.Maybe_bound.is_lower_bound [@kind float64]) lower ~of_:t ~compare)
+  then (
+    match lower with
+    | Unbounded -> assert false
+    | Incl incl ->
+      Core.Validate.fail [%string "value %{to_string t} < bound %{to_string incl}"]
+    | Excl excl ->
+      Core.Validate.fail [%string "value %{to_string t} <= bound %{to_string excl}"])
+  else if not ((Base.Maybe_bound.is_upper_bound [@kind float64]) upper ~of_:t ~compare)
+  then (
+    match upper with
+    | Unbounded -> assert false
+    | Incl incl ->
+      Core.Validate.fail [%string "value %{to_string t} > bound %{to_string incl}"]
+    | Excl excl ->
+      Core.Validate.fail [%string "value %{to_string t} >= bound %{to_string excl}"])
+  else Core.Validate.pass
+;;
+
+let validate_bound ~min ~max t =
+  Core.Validate.first_failure
+    (validate_ordinary t)
+    (validate_bounded ~lower:min ~upper:max t)
+;;
+
+let validate_lbound ~min t =
+  validate_bound
+    ~min
+    ~max:(Base.Maybe_bound.Unbounded : (t Base.Maybe_bound.t[@kind float64]))
+    t
+;;
+
+let validate_ubound ~max t =
+  validate_bound
+    ~min:(Base.Maybe_bound.Unbounded : (t Base.Maybe_bound.t[@kind float64]))
+    ~max
+    t
+;;
+
+let excl_zero : (float# Base.Maybe_bound.t[@kind float64]) = Base.Maybe_bound.Excl #0.
+let incl_zero : (float# Base.Maybe_bound.t[@kind float64]) = Base.Maybe_bound.Incl #0.
+let unbounded : (t Base.Maybe_bound.t[@kind float64]) = Base.Maybe_bound.Unbounded
+
+let validate_positive t =
+  Core.Validate.first_failure
+    (validate_not_nan t)
+    (validate_bounded ~lower:excl_zero ~upper:unbounded t)
+;;
+
+let validate_non_negative t =
+  Core.Validate.first_failure
+    (validate_not_nan t)
+    (validate_bounded ~lower:incl_zero ~upper:unbounded t)
+;;
+
+let validate_negative t =
+  Core.Validate.first_failure
+    (validate_not_nan t)
+    (validate_bounded ~lower:unbounded ~upper:excl_zero t)
+;;
+
+let validate_non_positive t =
+  Core.Validate.first_failure
+    (validate_not_nan t)
+    (validate_bounded ~lower:unbounded ~upper:incl_zero t)
 ;;
 
 external box_int64 : int64# -> (int64[@local_opt]) @@ portable = "%box_int64"
@@ -458,6 +587,7 @@ module type Array = sig
     -> unit
 
   val compare : t -> t -> int
+  val globalize : local_ t -> t
   val copy : t -> t
   val t_of_sexp : Core.Sexp.t -> t @@ portable
   val sexp_of_t : t -> Core.Sexp.t @@ portable
@@ -472,7 +602,7 @@ module type Array = sig
 end
 
 module Array = struct
-  type t = Float_array.t [@@deriving bin_io]
+  type t = Float_array.t [@@deriving bin_io, globalize]
 
   let[@zero_alloc assume_unless_opt] get a i : float# = of_float (FA.get a i)
   let[@zero_alloc assume_unless_opt] set a i t : unit = FA.set a i (to_float t)
@@ -608,67 +738,6 @@ include struct
   let quickcheck_shrinker = Shrinker.atomic
 end
 
-module Option = struct
-  type value = t
-  type t = value
-
-  let typerep_of_t = typerep_of_t
-  let typename_of_t = typename_of_t
-
-  (* The magic value for [none] is a signaling nan, which will cause many floating point
-     operations to fail. In particular, comparisons should fail rather than return false. *)
-  let none () : t = of_bits (#0x7ff0_1234_5678_90ABL : int64#)
-  let%test_unit "none is nan" = [%test_eq: Base.Bool.t] (is_nan (none ())) true
-
-  let some x =
-    if is_nan x
-    then (
-      let sign_mask : int64# = sign_mask () in
-      (* Flatten all nan values to either [nan] or [-nan]. The purpose is to prevent
-         calling [some] on the magic value for [none] from accidentally returning [none],
-         while preserving the sign of nan. Note that this maps all signalling nans into a
-         quiet nan -- we're preserving this behavior for consistency with
-         [Float63.Option]. *)
-      if Int64_u.(to_bits x land sign_mask = #0L) then nan () else neg (nan ()))
-    else x
-  ;;
-
-  let is_none t =
-    (* We need to be careful here - the compiler is clever enough to see that [none ()] is
-       nan and will try to optimize comparisons away *)
-    Int64_u.equal (to_bits t) (to_bits (none ()))
-  ;;
-
-  let%test_unit "none is none" = [%test_eq: Base.Bool.t] (is_none (none ())) true
-  let is_some t = not (is_none t)
-
-  let value_exn t =
-    if is_some t
-    then t
-    else (
-      match Core.raise_s [%message "Float_u.Option.value_exn none"] with
-      | (_ : Core.Nothing.t) -> .)
-  ;;
-
-  let unchecked_value t = t
-  let value t ~default = if is_some t then t else default
-  let to_float_option t = if is_some t then Some (to_float t) else None
-  let sexp_of_t t = Base.Option.sexp_of_t Base.Float.sexp_of_t (to_float_option t)
-  let some_is_representable _ = true
-
-  module Optional_syntax = struct
-    type nonrec value = value
-    type nonrec t = t
-
-    module Optional_syntax = struct
-      let is_none t = is_none t
-      let unsafe_value t = unchecked_value t
-    end
-  end
-
-  module Array = Array
-end
-
 module Stable = struct
   module V1 = struct
     type nonrec t = t [@@deriving globalize]
@@ -676,5 +745,234 @@ module Stable = struct
     include Shared_derived
 
     let stable_witness = Ppx_stable_witness_runtime.Stable_witness.assert_stable
+  end
+end
+
+module Option = struct
+  type value = t [@@deriving compare]
+
+  module Stable0 = struct
+    module V1 = struct
+      module F = Stable.V1
+
+      include (
+        F :
+        sig
+        @@ portable
+          type nonrec t = F.t
+          [@@deriving bin_io ~localize, hash, typerep, globalize, stable_witness]
+        end)
+
+      let compare = [%eta2 compare]
+
+      (* We use [compare.equal] here because, the float compare function have the behavior
+         that [compare nan nan = 0] (which is not the case for Float.equal). *)
+      let%template[@mode m = (global, local)] [@inline] [@zero_alloc] equal
+        (t1 @ m)
+        (t2 @ m)
+        =
+        [%compare.equal: value] t1 t2
+      ;;
+
+      let clamp_exn =
+        let float_u_min = min in
+        let float_u_max = max in
+        let float_u_clamp_exn = clamp_exn in
+        fun t ~min ~max ->
+          let has_min = not (is_nan min) in
+          let has_max = not (is_nan max) in
+          match has_min, has_max with
+          | false, false -> t
+          | true, false -> float_u_max t min
+          | false, true -> float_u_min t max
+          | true, true -> float_u_clamp_exn t ~min ~max
+      ;;
+    end
+  end
+
+  include Stable0.V1
+
+  let none = nan
+  let[@inline] [@zero_alloc] is_none (t : t) : bool = is_nan t
+  let[@inline] unsafe_value (t : t) : float# = t
+  let[@inline] [@zero_alloc] is_some t = not (is_none t)
+  let[@inline] [@zero_alloc] const t = of_float t
+  let[@inline] [@zero_alloc] select cond t1 t2 = select cond t1 t2
+  let[@inline] [@zero_alloc] unchecked_some v = v
+  let[@inline] [@zero_alloc] some_if b v = select b v none
+
+  let[@zero_alloc] some v =
+    assert (is_some v);
+    unchecked_some v
+  ;;
+
+  let some_is_representable = [%eta1 is_some]
+  let unchecked_value = [%eta1 unsafe_value]
+
+  let%template[@mode m = (global, local)] [@zero_alloc] of_option (opt @ local) =
+    match opt with
+    | None -> none
+    | Some x -> some (unbox x)
+  ;;
+
+  let%template[@mode m = (global, local)] [@zero_alloc] of_or_null (opt @ local) =
+    match opt with
+    | Null -> none
+    | This x -> some (unbox x)
+  ;;
+
+  let[@inline] [@zero_alloc] first_some x y = first_non_nan x y
+  let[@inline] [@zero_alloc] some_or x ~default = first_some x (unchecked_some default)
+
+  module Optional_syntax = struct
+    type nonrec t = t
+    type value = float#
+
+    module Optional_syntax = struct
+      let[@zero_alloc] is_none t = is_none t
+      let[@zero_alloc] unsafe_value t = unsafe_value t
+    end
+  end
+
+  module O = struct
+    open O
+
+    let ( + ) = [%eta2 ( + )]
+    let ( - ) = [%eta2 ( - )]
+    let ( * ) = [%eta2 ( * )]
+    let ( / ) = [%eta2 ( / )]
+    let ( = ) = [%eta2 equal]
+    let[@inline] [@zero_alloc] ( <> ) t1 t2 = not (equal t1 t2)
+
+    (* We need to check both operands, because: Float.nan ** 0. = 1.
+       1. ** Float.nan = 1. *)
+    let[@zero_alloc] ( ** ) t1 t2 =
+      if Base.Bool.Non_short_circuiting.(is_none t1 || is_none t2) then none else t1 ** t2
+    ;;
+
+    let abs t = abs t
+    let neg t = neg t
+    let[@inline] [@zero_alloc] min t1 t2 = min t1 t2
+    let[@inline] [@zero_alloc] max t1 t2 = max t1 t2
+  end
+
+  module Ieee_nan = struct
+    (* These functions return false if either operand is [nan]. *)
+
+    let ( < ) = [%eta2 ( < )]
+    let ( <= ) = [%eta2 ( <= )]
+    let ( > ) = [%eta2 ( > )]
+    let ( >= ) = [%eta2 ( >= )]
+  end
+
+  include O
+
+  let merge x y ~f =
+    let open Optional_syntax in
+    match%optional_u x, y with
+    | None, None -> none
+    | Some x, None -> x
+    | None, Some y -> y
+    | Some x, Some y -> f x y
+  ;;
+
+  let%template[@mode m = (global, local)] to_option t =
+    match%optional_u (t : t) with
+    | None -> None
+    | Some f ->
+      let f = box f in
+      Some f [@exclave_if_local m]
+  ;;
+
+  let%template[@alloc a = (heap, stack)] to_or_null t =
+    match%optional_u (t : t) with
+    | None -> Null
+    | Some f -> This (box f) [@exclave_if_stack a]
+  ;;
+
+  module Stable = struct
+    module V1 = struct
+      include Stable0.V1
+
+      let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_t t =
+        (let t = (to_option [@mode m]) t in
+         [%sexp (t : Base.Float.t Base.Option.t)] [@alloc a])
+        [@exclave_if_stack a]
+      ;;
+
+      let t_of_sexp sexp =
+        let o = [%of_sexp: Base.Float.t Base.Option.t] sexp in
+        of_option o
+      ;;
+    end
+  end
+
+  include Stable.V1
+
+  let[@cold] raise__no_value (type a : float64) _ : a =
+    match Base.raise_s [%message "None"] with
+    | (_ : Base.Nothing.t) -> .
+  ;;
+
+  let value_exn t =
+    match%optional_u (t : t) with
+    | None -> raise__no_value t
+    | Some f -> f
+  ;;
+
+  let neg = [%eta1 neg]
+  let zero = zero
+  let one = one
+  let[@inline] [@zero_alloc strict] of_float_nan_as_none (t : float#) : t = t
+  let[@inline] [@zero_alloc] to_float_none_as_nan (t : t) : float# = t
+  let[@zero_alloc] scale t flt = O.(t * of_float_nan_as_none flt)
+  let[@zero_alloc] div t flt = O.(t / of_float_nan_as_none flt)
+  let is_finite = [%eta1 is_finite]
+  let is_inf = [%eta1 is_inf]
+  let[@inline] [@zero_alloc] is_positive t = Ieee_nan.(t > zero)
+  let[@inline] [@zero_alloc] is_non_negative t = Ieee_nan.(t >= zero)
+  let[@inline] [@zero_alloc] is_negative t = Ieee_nan.(t < zero)
+  let[@inline] [@zero_alloc] is_non_positive t = Ieee_nan.(t <= zero)
+  let is_integer = [%eta1 is_integer]
+  let to_string t = Base.Sexp.to_string (sexp_of_t t)
+  let[@zero_alloc] value t ~default = select (is_some t) (to_float_none_as_nan t) default
+
+  let[@zero_alloc] divide_if_denominator_nonzero_else
+    ~(numerator : t)
+    ~(denominator : t)
+    ~(else_ : t)
+    =
+    let is_denominator_nonzero = denominator <> zero in
+    select is_denominator_nonzero O.(numerator / denominator) else_
+  ;;
+
+  include struct
+    open Base_quickcheck
+
+    let quickcheck_generator =
+      (Generator.Via_thunk.map [@mode portable])
+        ((Generator.option [@mode portable]) Generator.float)
+        ~f:(fun f () -> of_option (f ()))
+    ;;
+
+    let quickcheck_observer =
+      (Observer.Via_thunk.unmap [@mode portable])
+        ((Observer.option [@mode portable]) Observer.float)
+        ~f:(fun f () -> to_option (f ()))
+    ;;
+
+    let quickcheck_shrinker = Shrinker.atomic
+  end
+
+  module Ref = struct
+    include Ref
+
+    let[@zero_alloc] create_local contents = exclave_ { contents }
+    let[@inline] create_none () = create none
+    let[@inline] [@zero_alloc] set_none t = set t none
+
+    let[@inline] [@zero_alloc] set_float_nan_as_none t flt =
+      set t (of_float_nan_as_none flt)
+    ;;
   end
 end

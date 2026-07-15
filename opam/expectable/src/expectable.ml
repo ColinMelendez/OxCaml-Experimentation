@@ -121,7 +121,7 @@ module%test [@name "find_key_paths"] _ = struct
     [%expect {| ((a) (b) (c) (d)) |}];
     test
       [ [%sexp { a = "foo"; b = "bar"; c = "baz"; d = "qux" }] (* alphabetical *)
-      ; [%sexp { z = "x"; b = "foo"; c = "bar"; d = "baz"; y = "y" }] (* reverse      *)
+      ; [%sexp { z = "x"; b = "foo"; c = "bar"; d = "baz"; y = "y" }] (* reverse *)
       ];
     [%expect {| ((a) (b) (c) (d) (z) (y)) |}]
   ;;
@@ -222,7 +222,9 @@ let trees_to_string
   ?limit_width_to
   ?prefer_split_on_spaces
   ?(nested_columns = `auto)
+  ?(transpose = false)
   trees
+  ~use_first_column_as_header_when_transposed
   =
   let align : Ascii_table_kernel.Align.t =
     match align with
@@ -235,9 +237,6 @@ let trees_to_string
     |> List.map ~f:(fun key_path ->
       key_path, Column_display.render nested_columns (List.drop key_path drop_prefix))
   in
-  let header_height =
-    List.fold columns ~init:1 ~f:(fun acc (_, col) -> max acc (height_of_string col))
-  in
   let rows : Leaf.t list Array.t list =
     List.map trees ~f:(fun tree ->
       List.map columns ~f:(fun (key_path, _) ->
@@ -247,46 +246,93 @@ let trees_to_string
           | None | Some (Choose _ | All _) -> Leaf.Empty))
       |> Array.of_list)
   in
-  let max_opt = Option.map2 ~f:max in
-  let max_digits_before_decimal : int option Array.t =
-    Array.init (List.length columns) ~f:(fun i ->
-      List.fold rows ~init:(Some 0) ~f:(fun best row ->
-        max_opt
-          best
-          (List.fold row.(i) ~init:(Some 0) ~f:(fun best -> function
-             | Number { str = _; digits_before_decimal } ->
-               max_opt best (Some digits_before_decimal)
-             | Empty -> best
-             | String _ -> None))))
+  let cell_to_string desired_digits_before_decimal values =
+    let value =
+      List.map values ~f:(function
+        | Leaf.Empty -> ""
+        | Leaf.String str -> str
+        | Leaf.Number { str; digits_before_decimal } ->
+          (match desired_digits_before_decimal with
+           | None -> str
+           | Some desired_digits_before_decimal ->
+             String.pad_left
+               str
+               ~char:' '
+               ~len:
+                 (String.length str
+                  + desired_digits_before_decimal
+                  - digits_before_decimal)))
+      |> String.concat ~sep:"\n"
+    in
+    (* [Ascii_table_kernel] will trim trailing newlines, which can be significant in the
+       case of lists containing empty elements, so we add a blank space at the end to stop
+       that. *)
+    if String.is_suffix value ~suffix:"\n" then value ^ " " else value
+  in
+  let col_headers, string_rows =
+    match transpose with
+    | false ->
+      let max_opt = Option.map2 ~f:max in
+      let max_digits_before_decimal : int option Array.t =
+        Array.init (List.length columns) ~f:(fun i ->
+          List.fold rows ~init:(Some 0) ~f:(fun best row ->
+            max_opt
+              best
+              (List.fold row.(i) ~init:(Some 0) ~f:(fun best -> function
+                 | Number { str = _; digits_before_decimal } ->
+                   max_opt best (Some digits_before_decimal)
+                 | Empty -> best
+                 | String _ -> None))))
+      in
+      let cell_strings =
+        List.map rows ~f:(fun row ->
+          List.mapi columns ~f:(fun i _ ->
+            cell_to_string max_digits_before_decimal.(i) row.(i)))
+      in
+      let header_height =
+        List.fold columns ~init:1 ~f:(fun acc (_, col) -> max acc (height_of_string col))
+      in
+      let col_headers =
+        List.map columns ~f:(fun (_, display) -> vertical_pad display header_height)
+      in
+      col_headers, cell_strings
+    | true ->
+      (* No numeric alignment is applied since transposed columns mix different field
+         types. *)
+      let cell_to_string values = cell_to_string None values in
+      let col_names =
+        List.map columns ~f:(fun (key_path, _) ->
+          Column_display.render nested_columns (List.drop key_path drop_prefix))
+      in
+      (match use_first_column_as_header_when_transposed with
+       | false ->
+         let col_headers = List.init (List.length rows + 1) ~f:(Fn.const "") in
+         let string_rows =
+           List.mapi col_names ~f:(fun i col_name ->
+             col_name :: List.map rows ~f:(fun row -> cell_to_string row.(i)))
+         in
+         col_headers, string_rows
+       | true ->
+         (* Column 0 contains row labels (from [print_alist]). Promote them to column
+            headers and exclude column 0 from the data rows. *)
+         let col_headers = "" :: List.map rows ~f:(fun row -> cell_to_string row.(0)) in
+         let string_rows =
+           List.filter_mapi col_names ~f:(fun i col_name ->
+             if i = 0
+             then None
+             else Some (col_name :: List.map rows ~f:(fun row -> cell_to_string row.(i))))
+         in
+         col_headers, string_rows)
   in
   let columns =
-    List.mapi columns ~f:(fun i (_, display) ->
-      let name = vertical_pad display header_height in
-      Ascii_table_kernel.Column.create ?max_width:max_column_width ~align name (fun row ->
-        let values = row.(i) in
-        let desired_digits_before_decimal = max_digits_before_decimal.(i) in
-        let value =
-          List.map values ~f:(function
-            | Leaf.Empty -> ""
-            | Leaf.String str -> str
-            | Leaf.Number { str; digits_before_decimal } ->
-              (match desired_digits_before_decimal with
-               | None -> str
-               | Some desired_digits_before_decimal ->
-                 String.pad_left
-                   str
-                   ~char:' '
-                   ~len:
-                     (String.length str
-                      + desired_digits_before_decimal
-                      - digits_before_decimal)))
-          |> String.concat ~sep:"\n"
-        in
-        (* [Ascii_table_kernel] will trim trailing newlines, which can be significant in
-           the case of lists containing empty elements, so we add a blank space at the end
-           to stop that. *)
-        if String.is_suffix value ~suffix:"\n" then value ^ " " else value))
+    List.mapi col_headers ~f:(fun i header ->
+      Ascii_table_kernel.Column.create
+        ?max_width:max_column_width
+        ~align
+        header
+        (fun row -> row.(i)))
   in
+  let rows = List.map string_rows ~f:Array.of_list in
   table_to_string
     ?display
     ?separate_rows
@@ -318,6 +364,7 @@ module Format = struct
     ?limit_width_to
     ?prefer_split_on_spaces
     ?nested_columns
+    ?transpose
     =
     parse_trees ?align ?max_depth
     >> trees_to_string
@@ -328,6 +375,8 @@ module Format = struct
          ?limit_width_to
          ?prefer_split_on_spaces
          ?nested_columns
+         ?transpose
+         ~use_first_column_as_header_when_transposed:false
   ;;
 
   let print_alist
@@ -339,6 +388,7 @@ module Format = struct
     ?limit_width_to
     ?prefer_split_on_spaces
     ?nested_columns
+    ?transpose
     sexp_of_t
     alist
     =
@@ -352,7 +402,35 @@ module Format = struct
          ?limit_width_to
          ?prefer_split_on_spaces
          ?nested_columns
+         ?transpose
+         ~use_first_column_as_header_when_transposed:true
          ~drop_prefix:1
+  ;;
+
+  let print_record
+    ?max_column_width
+    ?max_depth
+    ?align
+    ?display
+    ?separate_rows
+    ?limit_width_to
+    ?prefer_split_on_spaces
+    ?nested_columns
+    ?(transpose = false)
+    sexp
+    =
+    [%of_sexp: (string * Sexp.t) list] sexp
+    |> print_alist
+         ?max_column_width
+         ?max_depth
+         ?align
+         ?display
+         ?separate_rows
+         ?limit_width_to
+         ?prefer_split_on_spaces
+         ?nested_columns
+         ~transpose:(not transpose)
+         Fn.id
   ;;
 
   let print_record_transposed
@@ -366,17 +444,17 @@ module Format = struct
     ?nested_columns
     sexp
     =
-    [%of_sexp: (string * Sexp.t) list] sexp
-    |> print_alist
-         ?max_column_width
-         ?max_depth
-         ?align
-         ?display
-         ?separate_rows
-         ?limit_width_to
-         ?prefer_split_on_spaces
-         ?nested_columns
-         Fn.id
+    print_record
+      ?max_column_width
+      ?max_depth
+      ?align
+      ?display
+      ?separate_rows
+      ?limit_width_to
+      ?prefer_split_on_spaces
+      ?nested_columns
+      ~transpose:true
+      sexp
   ;;
 
   let print_cases
@@ -412,6 +490,7 @@ module Format = struct
          ?limit_width_to
          ?prefer_split_on_spaces
          ?nested_columns
+         ~use_first_column_as_header_when_transposed:false
   ;;
 end
 
@@ -424,6 +503,7 @@ let print
   ?limit_width_to
   ?prefer_split_on_spaces
   ?nested_columns
+  ?transpose
   sexps
   =
   Format.print
@@ -435,6 +515,7 @@ let print
     ?limit_width_to
     ?prefer_split_on_spaces
     ?nested_columns
+    ?transpose
     sexps
   |> print_endline
 ;;
@@ -448,6 +529,7 @@ let print_alist
   ?limit_width_to
   ?prefer_split_on_spaces
   ?nested_columns
+  ?transpose
   sexp_of_t
   alist
   =
@@ -460,8 +542,35 @@ let print_alist
     ?limit_width_to
     ?prefer_split_on_spaces
     ?nested_columns
+    ?transpose
     sexp_of_t
     alist
+  |> print_endline
+;;
+
+let print_record
+  ?max_column_width
+  ?max_depth
+  ?align
+  ?display
+  ?separate_rows
+  ?limit_width_to
+  ?prefer_split_on_spaces
+  ?nested_columns
+  ?transpose
+  sexp
+  =
+  Format.print_record
+    ?max_column_width
+    ?max_depth
+    ?align
+    ?display
+    ?separate_rows
+    ?limit_width_to
+    ?prefer_split_on_spaces
+    ?nested_columns
+    ?transpose
+    sexp
   |> print_endline
 ;;
 

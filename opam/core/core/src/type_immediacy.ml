@@ -39,7 +39,7 @@ module Immediacy = struct
     | Unknown
   [@@deriving compare ~localize]
 
-  let equal = [%compare.equal: t]
+  let%template[@mode m = local] equal = ([%compare.equal: t] [@mode m])
 
   let to_string = function
     | Always -> "Always"
@@ -321,18 +321,18 @@ module For_all_parameters (M : sig
     val immediacy : Immediacy.t
   end) =
 struct
-  let witness typerep1 typerep2 =
+  let%template witness typerep1 typerep2 =
     let t1 = of_typerep typerep1 in
     let t2 = of_typerep typerep2 in
     let i1 = immediacy t1 in
     let i2 = immediacy t2 in
-    if not (Immediacy.equal i1 i2)
+    if not ((Immediacy.equal [@mode local]) i1 i2)
     then
       failwith
         (sprintf
            "type %s is not independent of its arguments"
            (Typename.name (Typerep.typename_of_t typerep1)))
-    else if not (Immediacy.equal i1 M.immediacy)
+    else if not ((Immediacy.equal [@mode local]) i1 M.immediacy)
     then
       failwith
         (sprintf
@@ -423,8 +423,8 @@ module Always = struct
   ;;
 
   let int_as_value = int_as_value
-  let int_as_value_exn = int_as_value_exn
-  let int_is_value = int_is_value
+  let int_as_value_exn = [%eta2 int_as_value_exn]
+  let int_is_value = [%eta2 int_is_value]
   let[@inline always] value_as_int (type a) (_ : a t) a = a |> (Obj.magic : a -> int)
   let int = int
   let char = char
@@ -451,11 +451,11 @@ module Sometimes = struct
   ;;
 
   let int_as_value = int_as_value
-  let int_as_value_exn = int_as_value_exn
-  let int_is_value = int_is_value
+  let int_as_value_exn = [%eta2 int_as_value_exn]
+  let int_is_value = [%eta2 int_is_value]
   let value_as_int = value_as_int
-  let value_as_int_exn = value_as_int_exn
-  let value_is_int = value_is_int
+  let value_as_int_exn = [%eta2 value_as_int_exn]
+  let value_is_int = [%eta2 value_is_int]
   let option = option
   let list = list
 end

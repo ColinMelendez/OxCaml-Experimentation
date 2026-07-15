@@ -62,8 +62,8 @@ end = struct
          already-bound named value, otherwise you risk losing value sharing. *)
       { Value.value; here }
     | computation_to_perform ->
-      (* Mint a fresh type-id to hold the result of performing this graph modification *)
-      let via : a Type_equal.Id.t = Type_equal.Id.create ~name:"" [%sexp_of: opaque] in
+      (* Mint a fresh id to hold the result of performing this graph modification *)
+      let via : a Var_id.t = Var_id.create () in
       (* Keep hold of the previous graph-modification function *)
       let old_f : type b. b Computation.t Trampoline.t -> b Computation.t Trampoline.t =
         graph.f
@@ -71,9 +71,9 @@ end = struct
       let new_f computation =
         let new_f : type x. x Computation.t -> x Computation.t Trampoline.t = function
           | Return { value = { value = Named (_, id); _ }; here = _ }
-            when Type_equal.Id.same via id ->
+            when Var_id.same via id ->
             (* introduce the optimization {[ let%sub a = foo bar in return a ]} => {[ foo bar ]} *)
-            let T = Type_equal.Id.same_witness_exn via id in
+            let T = Var_id.same_witness_exn via id in
             old_f (Trampoline.return computation_to_perform)
           | eventual_result ->
             (* old_f takes the eventual innermost result, and wraps it in 0+ layers of
@@ -1000,7 +1000,7 @@ module Edge = struct
   let on_change__for_proc2
     ~(here : [%call_pos])
     ?sexp_of_model
-    ~trigger
+    ?trigger
     ~equal
     value
     ~callback
@@ -1009,19 +1009,19 @@ module Edge = struct
     perform
       ~here
       graph
-      (Proc.Edge.on_change ~here ?sexp_of_model ~trigger ~equal value ~callback)
+      (Proc.Edge.on_change ~here ?sexp_of_model ?trigger ~equal value ~callback)
   ;;
 
-  let on_change ~(here : [%call_pos]) ?sexp_of_model ~trigger ~equal value ~callback graph
+  let on_change ~(here : [%call_pos]) ?sexp_of_model ?trigger ~equal value ~callback graph
     =
     ignore_t
-      (on_change__for_proc2 ~here ?sexp_of_model ~trigger ~equal value ~callback graph)
+      (on_change__for_proc2 ~here ?sexp_of_model ?trigger ~equal value ~callback graph)
   ;;
 
   let on_change'__for_proc2
     ~(here : [%call_pos])
     ?sexp_of_model
-    ~trigger
+    ?trigger
     ~equal
     value
     ~callback
@@ -1030,20 +1030,20 @@ module Edge = struct
     perform
       ~here
       graph
-      (Proc.Edge.on_change' ~here ?sexp_of_model ~trigger ~equal value ~callback)
+      (Proc.Edge.on_change' ~here ?sexp_of_model ?trigger ~equal value ~callback)
   ;;
 
   let on_change'
     ~(here : [%call_pos])
     ?sexp_of_model
-    ~trigger
+    ?trigger
     ~equal
     value
     ~callback
     graph
     =
     ignore_t
-      (on_change'__for_proc2 ~here ?sexp_of_model ~trigger ~equal value ~callback graph)
+      (on_change'__for_proc2 ~here ?sexp_of_model ?trigger ~equal value ~callback graph)
   ;;
 
   let lifecycle__for_proc2
@@ -1283,6 +1283,19 @@ module Dynamic_scope = struct
   let set' ~(here : [%call_pos]) var value ~f (local_ graph) =
     modify ~here var ~change:(fun _ -> value) ~f graph
   ;;
+
+  module Bulk_setter = struct
+    type 'a id = 'a t
+
+    type 'a t = 'a Proc.Dynamic_scope.Bulk_setter.t =
+      | [] : unit t
+      | ( :: ) : ('element id * 'element bonsai_t) * 'rem t -> ('element * 'rem) t
+
+    let set ~(here : [%call_pos]) hlist ~inside (local_ graph) =
+      let inside = handle ~here graph ~f:(fun graph -> inside graph) in
+      perform ~here graph (Proc.Dynamic_scope.Bulk_setter.set ~here hlist ~inside)
+    ;;
+  end
 end
 
 module Incr = struct
@@ -1417,6 +1430,33 @@ module Debug = struct
       ~here
   ;;
 
+  let debug_node
+    ~(here : [%call_pos])
+    ~name
+    ?(equal : 'a -> 'a -> bool = phys_equal)
+    ?(sexp_of = sexp_of_opaque)
+    value
+    graph
+    =
+    let pos = Source_code_position.to_string here in
+    let to_string value = Core.Sexp.to_string_hum (sexp_of value) in
+    let callback =
+      Value.return (fun old_value new_value ->
+        (match old_value with
+         | None ->
+           Debug_node_output.output
+             [%string "[%{name}] initialized: %{to_string new_value} (%{pos})"]
+         | Some old_value ->
+           Debug_node_output.output
+             [%string
+               "[%{name}] changed: %{to_string old_value} -> %{to_string new_value} \
+                (%{pos})"]);
+        Effect.Ignore)
+    in
+    Edge.on_change' ~here ~equal value ~callback graph;
+    value
+  ;;
+
   let memo_subscribers (T { subscribers; _ } : _ Memo.t) = subscribers
 end
 
@@ -1482,6 +1522,16 @@ module Let_syntax = struct
 
     let sub ~here:(_ : [%call_pos]) a ~f = f a
     let delay = delay
+
+    let debug_node ~(here : [%call_pos]) ~name ~equal ~sexp_of value =
+      with_global_graph
+        ~f:(fun graph -> Debug.debug_node ~here ~name ~equal ~sexp_of value graph)
+        ~no_graph:(fun () ->
+          raise_s
+            [%message
+              "Let_syntax.debug_node called outside of the context of a graph"
+                (here : Source_code_position.t)]) [@nontail]
+    ;;
   end
 end
 

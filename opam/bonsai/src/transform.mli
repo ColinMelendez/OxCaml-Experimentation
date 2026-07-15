@@ -5,10 +5,10 @@ module Var_from_parent : sig
   type t =
     | None
     (** The common case, in which the parent node does not introduce any variables. *)
-    | One of Type_equal.Id.Uid.t
+    | One of Var_id.Packed.t
     (** The case in which the parent node introduces one new variable; most of the time
         this is for [Subst] or [Subst_stateless] *)
-    | Two of Type_equal.Id.Uid.t * Type_equal.Id.Uid.t
+    | Two of Var_id.Packed.t * Var_id.Packed.t
     (** The case in which the parent node introduces two new variables; most of the time
         this is for [Assoc]. *)
 end

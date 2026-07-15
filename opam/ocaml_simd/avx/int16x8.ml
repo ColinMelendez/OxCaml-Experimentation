@@ -12,7 +12,7 @@ external broadcast
   -> t
   @@ portable
   = "ocaml_simd_avx_unreachable" "caml_avx2_vec128_broadcast_16"
-[@@noalloc] [@@builtin]
+[@@noalloc] [@@builtin amd64]
 
 let[@inline] set1 x = broadcast (low_of x)
 let[@inline] of_int16x16 x = Int16x16_internal.low_to_i16x8 x

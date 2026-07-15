@@ -12,6 +12,12 @@ open Base
     , bits64
     , vec128
     , word
+    , value_or_null & value_or_null
+    , value_or_null & float64
+    , value_or_null & bits32
+    , value_or_null & bits64
+    , value_or_null & vec128
+    , value_or_null & word
     , value & value
     , value & float64
     , value & bits32
@@ -23,7 +29,9 @@ open Base
     , bits32 & bits32
     , bits64 & bits64
     , vec128 & vec128
-    , word & word )]
+    , word & word
+    , (_ : (_ : value_or_null & (value_or_null & value_or_null)))
+    , (_ : (_ : (value_or_null & value_or_null) & (value_or_null & value_or_null))) )]
 
 type ('a : k, 'b : k, 'c : k) tag =
   | First : (('a, 'b, 'a) tag[@kind k])
@@ -63,6 +71,12 @@ let to_either (type a b) (T #(tag, x) : (a, b) t) : (a, b) Either.t =
     , bits64
     , vec128
     , word
+    , value_or_null & value_or_null
+    , value_or_null & float64
+    , value_or_null & bits32
+    , value_or_null & bits64
+    , value_or_null & vec128
+    , value_or_null & word
     , value & value
     , value & float64
     , value & bits32
@@ -74,7 +88,9 @@ let to_either (type a b) (T #(tag, x) : (a, b) t) : (a, b) Either.t =
     , bits32 & bits32
     , bits64 & bits64
     , vec128 & vec128
-    , word & word )]
+    , word & word
+    , (_ : (_ : value_or_null & (value_or_null & value_or_null)))
+    , (_ : (_ : (value_or_null & value_or_null) & (value_or_null & value_or_null))) )]
 
 let globalize
   (type (a : k) (b : k))

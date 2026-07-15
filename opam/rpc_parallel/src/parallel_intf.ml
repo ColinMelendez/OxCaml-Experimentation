@@ -38,7 +38,7 @@ module type Function = sig
       NOTE: You will never get any log messages before this implementation has run (there
       is no queuing of log messages). As a consequence, you will never get any log
       messages written in a worker's init functions. *)
-  val async_log : (_, unit, Log.Message.Stable.V2.t Pipe.Reader.t) t
+  val async_log : (_, unit, Log.Message.t Pipe.Reader.t) t
 
   (** A given process can have multiple worker servers running (of the same or different
       worker types). This implementation closes the server on which it is run. All
@@ -127,7 +127,12 @@ module type Worker = sig
 
     val close : t -> unit Deferred.t
     val close_finished : t -> unit Deferred.t
-    val close_reason : t -> on_close:[ `started | `finished ] -> Info.t Deferred.t
+
+    val close_reason
+      :  t
+      -> on_close:[ `started | `finished ]
+      -> Info.Portable.t Deferred.t
+
     val is_closed : t -> bool
 
     (** The underlying rpc connection. This should not be used to dispatch rpcs, but it's
@@ -607,7 +612,7 @@ module type Backend = sig
     -> ?buffer_age_limit:Writer.buffer_age_limit
     -> ?handshake_timeout:Time_float.Span.t
     -> ?heartbeat_config:Rpc.Connection.Heartbeat_config.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> Settings.t
     -> Socket.Address.Inet.t Tcp.Where_to_connect.t
     -> Rpc.Connection.t Or_error.t Deferred.t
@@ -768,7 +773,7 @@ module type Parallel = sig
         call.
 
         This has the side effect of calling [chdir]. *)
-    val worker_init_before_async_exn : unit -> Worker_env.t
+    val worker_init_before_async_exn : here:[%call_pos] -> unit -> Worker_env.t
 
     (** [start_worker_server_exn] must be called in each spawned process. It is illegal to
         call both [start_master_server_exn] and [start_worker_server_exn] in the same

@@ -139,6 +139,62 @@ let%expect_test "[floor_log2], [popcount]" =
     |}]
 ;;
 
+let%expect_test "[byte_qualifier]" =
+  let e num_bytes how_many_bytes_set =
+    Bits.binary_to_byte_qualifier
+      ~num_bytes
+      (Bits.of_unsigned_int ~width:(num_bits_to_represent num_bytes) how_many_bytes_set)
+  in
+  (* Self tests *)
+  Sequence.range 1 8
+  |> Sequence.iter ~f:(fun num_bytes ->
+    Sequence.range ~stop:`inclusive 0 num_bytes
+    |> Sequence.iter ~f:(fun how_many_bytes_set ->
+      let encoded = e num_bytes how_many_bytes_set in
+      assert (Bits.to_unsigned_int (popcount encoded) = how_many_bytes_set);
+      assert (Bits.to_unsigned_int (trailing_ones encoded) = how_many_bytes_set)));
+  (* Usage demonstration *)
+  let p num_bytes test_cases =
+    List.map test_cases ~f:(fun input ->
+      let result = e num_bytes input in
+      [%message (input : int) (result : Bits.t)])
+    |> Expectable.print
+  in
+  p 4 [ 0; 2; 4 ];
+  [%expect
+    {|
+    ┌───────┬────────┐
+    │ input │ result │
+    ├───────┼────────┤
+    │ 0     │ 0000   │
+    │ 2     │ 0011   │
+    │ 4     │ 1111   │
+    └───────┴────────┘
+    |}];
+  p 6 [ 0; 3; 6 ];
+  [%expect
+    {|
+    ┌───────┬────────┐
+    │ input │ result │
+    ├───────┼────────┤
+    │ 0     │ 000000 │
+    │ 3     │ 000111 │
+    │ 6     │ 111111 │
+    └───────┴────────┘
+    |}];
+  p 8 [ 0; 4; 8 ];
+  [%expect
+    {|
+    ┌───────┬──────────┐
+    │ input │ result   │
+    ├───────┼──────────┤
+    │ 0     │ 00000000 │
+    │ 4     │ 00001111 │
+    │ 8     │ 11111111 │
+    └───────┴──────────┘
+    |}]
+;;
+
 let test_sexp_of_bit_string (module M : Hardcaml.Comb.S) =
   List.iter
     [ "0"
@@ -206,6 +262,177 @@ let%expect_test "[Bits.of_bit_string]" =
      (Ok 11111111111111111111111111111111111111111111111111111111111111111))
     |}]
 ;;
+
+module%test Test_for_collection = struct
+  open Core
+
+  let gen_bits =
+    let open Quickcheck.Generator.Let_syntax in
+    let%bind width = Int.gen_incl 1 20 in
+    let%bind data = Int.gen_incl 0 ((1 lsl width) - 1) in
+    return (Bits.of_unsigned_int ~width data)
+  ;;
+
+  let gen_bits_list =
+    let open Quickcheck.Generator.Let_syntax in
+    let%bind cnt = Int.gen_incl 1 8 in
+    List.gen_with_length cnt gen_bits
+  ;;
+
+  let gen_bits_and_part_width =
+    let open Quickcheck.Generator.Let_syntax in
+    let%bind width = Int.gen_incl 1 40 in
+    let%bind data = Int.gen_incl 0 ((1 lsl min width 30) - 1) in
+    let%bind part_width = Int.gen_incl 1 width in
+    return (Bits.of_unsigned_int ~width data, part_width)
+  ;;
+
+  (* Test mux, mux_strict *)
+  let gen_mux_inputs =
+    let open Core.Quickcheck.Generator.Let_syntax in
+    let%bind sel_width = Int.gen_incl 1 4 in
+    let num_cases = 1 lsl sel_width in
+    let%bind sel_val = Int.gen_incl 0 (num_cases - 1) in
+    let%bind data_width = Int.gen_incl 1 16 in
+    let%bind cases =
+      List.gen_with_length num_cases (Int.gen_incl 0 ((1 lsl data_width) - 1))
+    in
+    return
+      ( Bits.of_unsigned_int ~width:sel_width sel_val
+      , List.map cases ~f:(fun v -> Bits.of_unsigned_int ~width:data_width v) )
+  ;;
+
+  module type For_collection = sig
+    include Bits.For_collection
+
+    val of_list : Bits.t list -> Bits.t collection
+    val to_list : Bits.t collection -> Bits.t list
+  end
+
+  let test (module For_collection : For_collection) =
+    Quickcheck.test gen_bits_list ~f:(fun values_list ->
+      let values_array = For_collection.of_list values_list in
+      let list_msb = Bits.concat_msb values_list in
+      [%test_result: Bits.t] (For_collection.concat_msb values_array) ~expect:list_msb;
+      let list_lsb = Bits.concat_lsb values_list in
+      [%test_result: Bits.t] (For_collection.concat_lsb values_array) ~expect:list_lsb);
+    Quickcheck.test gen_bits ~f:(fun bits ->
+      let list_msb = Bits.bits_msb bits in
+      let list_lsb = Bits.bits_lsb bits in
+      [%test_result: Bits.t list]
+        (For_collection.to_list (For_collection.bits_msb bits))
+        ~expect:list_msb;
+      [%test_result: Bits.t list]
+        (For_collection.to_list (For_collection.bits_lsb bits))
+        ~expect:list_lsb);
+    Quickcheck.test gen_bits_and_part_width ~f:(fun (bits, part_width) ->
+      let list_lsb = Bits.split_lsb ~exact:false ~part_width bits in
+      let list_msb = Bits.split_msb ~exact:false ~part_width bits in
+      [%test_result: Bits.t list]
+        (For_collection.to_list (For_collection.split_lsb ~exact:false ~part_width bits))
+        ~expect:list_lsb;
+      [%test_result: Bits.t list]
+        (For_collection.to_list (For_collection.split_msb ~exact:false ~part_width bits))
+        ~expect:list_msb);
+    Quickcheck.test gen_mux_inputs ~f:(fun (sel, cases_list) ->
+      let cases_array = For_collection.of_list cases_list in
+      let list_mux = Bits.mux sel cases_list in
+      let list_mux_strict = Bits.mux_strict sel cases_list in
+      [%test_result: Bits.t] (For_collection.mux sel cases_array) ~expect:list_mux;
+      [%test_result: Bits.t]
+        (For_collection.mux_strict sel cases_array)
+        ~expect:list_mux_strict)
+  ;;
+
+  let%expect_test "For_array" =
+    test
+      (module struct
+        type 'a collection = 'a array
+
+        let of_list = Array.of_list
+        let to_list = Array.to_list
+
+        include Bits.For_array
+      end)
+  ;;
+
+  let%expect_test "For_iarray" =
+    test
+      (module struct
+        type 'a collection = 'a iarray
+
+        let of_list = Iarray.of_list
+        let to_list = Iarray.to_list
+
+        include Bits.For_iarray
+      end)
+  ;;
+end
+
+module%test Test_generate = struct
+  open Core
+
+  let%expect_test "generate raises for non-positive widths" =
+    require_does_raise (fun () -> generate 0);
+    [%expect {| ("Bits.generate: width must be positive" (width 0)) |}];
+    require_does_raise (fun () -> generate (-1));
+    [%expect {| ("Bits.generate: width must be positive" (width -1)) |}]
+  ;;
+
+  let%expect_test "generate produces values of the requested width in range" =
+    List.iter [ 1; 3; 8; 17; 64; 65 ] ~f:(fun width ->
+      Quickcheck.test
+        (Bits.generate width)
+        ~sexp_of:[%sexp_of: Bits.t]
+        ~trials:200
+        ~f:(fun bits ->
+          [%test_result: int] (Bits.width bits) ~expect:width;
+          let as_bigint = Bits.to_bigint ~signedness:Unsigned bits in
+          if Bigint.(as_bigint < zero || as_bigint >= one lsl width)
+          then
+            raise_s [%message "value out of range" (width : int) (as_bigint : Bigint.t)]))
+  ;;
+
+  let print_example_values ~width ~num_samples =
+    let random = Splittable_random.of_int 0x0ead_beef in
+    let generator = Bits.generate width in
+    for _ = 1 to num_samples do
+      let bits = Quickcheck.Generator.generate generator ~size:10 ~random in
+      print_endline (Bits.Binary.to_string bits)
+    done
+  ;;
+
+  let%expect_test "generate is approximately uniform over all bit patterns" =
+    print_example_values ~width:4 ~num_samples:10;
+    [%expect
+      {|
+      4'b1110
+      4'b0111
+      4'b0000
+      4'b0111
+      4'b1001
+      4'b1100
+      4'b1011
+      4'b1110
+      4'b0011
+      4'b0011
+      |}];
+    print_example_values ~width:70 ~num_samples:10;
+    [%expect
+      {|
+      70'b0001111110100011101010101100110010100000110111011101110100000001001110
+      70'b0001110100101100010100100101011011000010011101011010001010111001010000
+      70'b1111001010000011010010010110100011001010101101101011100100110000101001
+      70'b1011101000100011110011000010001010010010001000110000000111011111101011
+      70'b0100111001110111001100100000000000111101111101100001010110111101100011
+      70'b0110011110011001000101111011010101000111101010110000111001000110110100
+      70'b0000000111110010000010101011011100010101011101001000001011101110100000
+      70'b0101010100101101000010001101010000100111100011011100101010110101010001
+      70'b0101011011100101101011010110001010111101011010011010010110110101001000
+      70'b0001110100101001011011101101110101111001000111100001111110101101001000
+      |}]
+  ;;
+end
 
 module Primitive_op = struct
   type t =

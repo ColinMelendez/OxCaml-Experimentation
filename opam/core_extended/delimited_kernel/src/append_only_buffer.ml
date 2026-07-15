@@ -7,6 +7,7 @@ type 'a t =
   }
 
 let to_array t = Array.init t.length ~f:(fun i -> Option_array.get_some_exn t.array i)
+let to_iarray t = Iarray.init t.length ~f:(fun i -> Option_array.get_some_exn t.array i)
 
 let create ?(capacity = 1) () =
   { array = Option_array.create ~len:capacity; capacity; length = 0 }

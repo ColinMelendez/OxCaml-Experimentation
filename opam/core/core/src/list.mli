@@ -4,12 +4,18 @@
 
 open! Import
 
+[%%template:
+[@@@kind_set.define all_ks_non_value = base_non_value]
+
 (** {2 The interface from Base} *)
 
 (** @inline *)
 include module type of struct
   include Base.List
 end
+
+type nonrec ('a : k) t = ('a t[@kind k])
+[@@kind k = all_ks_non_value] [@@deriving bin_io ~localize]
 
 [%%rederive:
   type nonrec ('a : value_or_null) t = 'a list [@@deriving bin_io ~localize, typerep]]
@@ -18,7 +24,11 @@ module Assoc : sig
   type ('a : value_or_null, 'b : value_or_null) t = ('a, 'b) Base.List.Assoc.t
   [@@deriving bin_io ~localize]
 
-  val compare : [%compare: 'a] -> [%compare: 'b] -> [%compare: ('a, 'b) t]
+  val%template compare
+    :  ([%compare: 'a][@mode.explicit m])
+    -> ([%compare: 'b][@mode.explicit m])
+    -> ([%compare: ('a, 'b) t][@mode.explicit m])
+  [@@mode m = (local, global)]
   [@@deprecated
     "[since 2016-06] This does not respect the equivalence class promised by List.Assoc.\n\
      Use List.compare directly if that's what you want."]
@@ -65,13 +75,13 @@ include%template Quickcheckable.S1 [@modality portable] with type 'a t := 'a t
 
 val to_string : ('a : value_or_null). f:('a -> string) -> 'a t -> string
 
-(** Like [gen], but never generates the empty list. *)
+(** Like [quickcheck_generator], but never generates the empty list. *)
 val%template gen_non_empty
   :  'a Quickcheck.Generator.t @ p
   -> 'a t Quickcheck.Generator.t @ p
 [@@mode p = (portable, nonportable)]
 
-(** Like [gen], but generates lists with the given length. *)
+(** Like [quickcheck_generator], but generates lists with the given length. *)
 val%template gen_with_length
   :  int
   -> 'a Quickcheck.Generator.t @ p
@@ -99,7 +109,8 @@ val zip_with_remainder
 module Stable : sig
   module V1 : sig
     type%template nonrec ('a : k) t = ('a t[@kind k])
-    [@@kind k = base_non_value] [@@deriving compare ~localize, equal ~localize]
+    [@@kind k = all_ks_non_value]
+    [@@deriving bin_io ~localize, compare ~localize, equal ~localize]
 
     type nonrec ('a : value_or_null) t = 'a t
     [@@deriving
@@ -111,4 +122,4 @@ module Stable : sig
       , hash
       , stable_witness]
   end
-end
+end]

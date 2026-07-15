@@ -31,13 +31,13 @@ module Search_bar = struct
   end
 
   module Input = struct
-    include Bonsai_web_ui_search_bar.Input
+    include Bonsai_web_contrib_search_bar.Input
 
     let create = Fields.create
   end
 
   let component =
-    Bonsai_web_ui_search_bar.create
+    Bonsai_web_contrib_search_bar.create
       (module Username)
       ~of_string:Username.of_string
       ~additional_query_results_on_click:2
@@ -97,7 +97,5 @@ let component input (local_ graph) =
 
 let () =
   let input = Bonsai.Expert.Var.create (Input.default ()) in
-  Bonsai_web.Start.start
-    (component (Bonsai.Expert.Var.value input))
-    ~enable_bonsai_telemetry:Enabled
+  Bonsai_web.Start.start (component (Bonsai.Expert.Var.value input))
 ;;

@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/toplevel_backend/issues"
 dev-repo: "git+https://github.com/janestreet/toplevel_backend.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/toplevel_backend/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -21,7 +22,10 @@ depends: [
   "dune"        {>= "3.17.0"}
   "ocamlfind"   {>= "1.7.2"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Shared backend for setting up toplevels"
 description: "
 Module for setting up dependencies (like printers and liblinks) for toplevels.

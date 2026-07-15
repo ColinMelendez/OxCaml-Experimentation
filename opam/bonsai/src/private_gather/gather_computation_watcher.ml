@@ -19,10 +19,10 @@ let enqueue_value
     eprint_s [%message "BUG" [%here] "value not found in environment"];
     environment
   | Some value ->
-    let uid = Type_equal.Id.uid id in
+    let packed_id = Var_id.pack id in
     let has_been_set =
       Computation_watcher.Id_location_hashmap.update_and_check_if_value_set
-        ~id:(`Named uid)
+        ~id:(`Named packed_id)
         ~update_data:(source_code_positions, config)
         value_id_observation_definition_positions
     in
@@ -32,7 +32,7 @@ let enqueue_value
        let loud_value =
          Computation_watcher.instrument_incremental_node
            ~here:[%here]
-           ~id:(`Named uid)
+           ~id:(`Named packed_id)
            ~watcher_queue
            ~value_id_observation_definition_positions
            value
@@ -78,14 +78,14 @@ let f
     let%bind.Trampoline (T inner) = gather ~recursive_scopes ~time_source inner in
     let run ~environment ~fix_envs ~path ~model ~inject =
       let environment =
-        Computation_watcher.Type_id_location_map.fold
+        Computation_watcher.Var_id_location_map.fold
           free_vars
           ~init:environment
           { f =
-              (fun env
-                id
+              (fun id
                 (Computation_watcher.Source_code_positions.Finalized
-                  source_code_positions) ->
+                  source_code_positions)
+                env ->
                 enqueue_value
                   ~source_code_positions
                   ~watcher_queue

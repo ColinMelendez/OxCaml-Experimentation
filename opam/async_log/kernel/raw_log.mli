@@ -2,7 +2,7 @@ open! Core
 open Async_kernel
 open! Import
 
-type t
+type t : value mod contended portable
 
 module Control_event : sig
   type t = Set_level of Level.t [@@deriving globalize, sexp_of]
@@ -45,10 +45,26 @@ val get_transform : t -> (Message_event.t -> Message_event.t option) option
 val get_on_error : t -> On_error.t
 val set_on_error : t -> On_error.t -> unit
 val close : t -> unit Deferred.t
-val is_closed : t -> bool
 val flushed : t -> unit Deferred.t
-val would_log : t -> Level.t option -> bool
 val push_message_event : t -> Message_event.t -> unit
+val would_log : t -> Level.t option -> bool @@ portable
+val is_closed : t -> bool @@ portable
+
+(** [enqueue_message_request] is the portable entry point for log emission. It queues the
+    inputs needed to build a [Message_event.t]; the actual event construction,
+    transformations, and output writes happen later in the Async scheduler. If [time] is
+    [None], the default timestamp is filled in within the Async scheduler from the log's
+    time source. *)
+val enqueue_message_request
+  :  t
+  -> Message_data.t
+  -> Message_source.t
+  -> level:Level.t option
+  -> time:Time_float.t option
+  -> legacy_tags:(string * string) list
+  -> unit
+  @@ portable
+
 val all_live_logs_flushed : unit -> unit Deferred.t
 val control_events : t -> (local_ Control_event.t -> unit) Bus.Read_only.t
 

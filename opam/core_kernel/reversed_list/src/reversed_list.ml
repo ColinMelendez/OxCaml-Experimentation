@@ -15,6 +15,7 @@ let rev_map = List.rev_map
 let rev_filter_map = List.rev_filter_map
 let is_empty = List.is_empty
 let length = List.length
+let singleton = List.singleton
 
 module O = struct
   type nonrec 'a t = 'a t =
@@ -36,7 +37,9 @@ end
 module With_rev_sexp_of = struct
   type nonrec 'a t = 'a t
 
-  let sexp_of_t sexp_of_a t = List.sexp_of_t sexp_of_a (rev t)
+  let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of_a t =
+    (List.sexp_of_t [@alloc a]) sexp_of_a ((rev [@alloc a]) t) [@exclave_if_stack a]
+  ;;
 
   let%expect_test _ =
     Stdlib.print_endline (Sexp.to_string [%sexp ([ 1; 2 ] : int t)]);
@@ -70,6 +73,8 @@ module Nonempty = struct
   let rev_mapi (hd :: tl : _ t) ~f = rev_map_aux 1 tl ~f ([ f 0 hd ] : _ nonempty_list)
   let rev_map t ~f = rev_mapi t ~f:(fun _ x -> f x) [@nontail]
   let cons x t = x :: to_rev_list t
+  let length (_ :: tl) = 1 + length tl
+  let singleton a = [ a ]
 
   module With_sexp_of = struct
     type nonrec 'a t = 'a t

@@ -18,7 +18,7 @@ val all : t list
     ]}
 
     into its implementation/interface. *)
-val extensions : t -> Context_free.Rule.t list
+val extensions : t -> Surface_type.t -> Context_free.Rule.t list
 
 (** [attributes] expands e.g.
 
@@ -27,7 +27,7 @@ val extensions : t -> Context_free.Rule.t list
     ]}
 
     into its implementation/interface. *)
-val attributes : t -> Context_free.Rule.t list
+val attributes : t -> Surface_type.t -> Context_free.Rule.t list
 
 (** Includes extensions in the deriving ppx. E.g.
     {[
@@ -42,6 +42,18 @@ module For_deriving : sig
   type t
 
   val flag : function_ -> t option Deriving.Args.param
-  val structure_extensions : t -> location -> core_type -> structure_item list
-  val signature_extensions : t -> location -> core_type -> signature_item list
+
+  val structure_extensions
+    :  t
+    -> Surface_type.t
+    -> location
+    -> core_type
+    -> structure_item list
+
+  val signature_extensions
+    :  t
+    -> Surface_type.t
+    -> location
+    -> core_type
+    -> signature_item list
 end

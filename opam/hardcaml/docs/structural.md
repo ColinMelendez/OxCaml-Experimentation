@@ -226,9 +226,9 @@ module hardcaml_lib_add_3 (
     input [2:0] i0;
     output [2:0] o;
 
-    wire [2:0] _4;
-    assign _4 = i0 + i1;
-    assign o = _4;
+    wire [2:0] signal_add;
+    assign signal_add = i0 + i1;
+    assign o = signal_add;
 
 endmodule
 module hardcaml_lib_sub_3 (
@@ -241,9 +241,9 @@ module hardcaml_lib_sub_3 (
     input [2:0] i0;
     output [2:0] o;
 
-    wire [2:0] _4;
-    assign _4 = i0 - i1;
-    assign o = _4;
+    wire [2:0] signal_sub;
+    assign signal_sub = i0 - i1;
+    assign o = signal_sub;
 
 endmodule
 - : unit = ()
@@ -274,7 +274,7 @@ module example4
   assign _4 = 1'bz;
   assign _5 =
     sel == 0 ? d :
-    _4;
+    1'bz;
   assign t = _5;
 endmodule
 - : unit = ()

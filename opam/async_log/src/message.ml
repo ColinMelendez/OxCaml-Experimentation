@@ -2,6 +2,14 @@ module Stable = struct
   module V2 = struct
     type t = Time_float_unix.t Async_log_kernel.Message.Stable.T1.V2.t
     [@@deriving bin_io, sexp]
+
+    let to_v3 = Async_log_kernel.Message.Stable.T1.V2.to_v3
+    let of_v3 = Async_log_kernel.Message.Stable.T1.V2.of_v3
+  end
+
+  module V3 = struct
+    type t = Time_float_unix.Stable.V1.t Async_log_kernel.Message.Stable.T1.V3.t
+    [@@deriving bin_io, sexp, stable_witness]
   end
 end
 

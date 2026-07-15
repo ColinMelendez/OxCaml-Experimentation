@@ -1,5 +1,5 @@
 (library
- (name bonsai_tui_tree_view)
+ (name bonsai_term_tree_view)
  (public_name bonsai_term_components.tree_view)
  (libraries bonsai_term core expectree)
  (preprocess

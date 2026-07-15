@@ -1,0 +1,17 @@
+(library
+ (name bonsai_term_color_scheme)
+ (public_name bonsai_term_components.color_scheme)
+ (libraries bonsai_term bonsai_term_color_scheme_bluloco
+   bonsai_term_color_scheme_catppuccin bonsai_term_color_scheme_dracula
+   bonsai_term_color_scheme_gruvbox_dark
+   bonsai_term_color_scheme_gruvbox_light bonsai_term_color_scheme_kanagawa
+   bonsai_term_color_scheme_monokai bonsai_term_color_scheme_solarized_dark
+   bonsai_term_color_scheme_solarized_light
+   bonsai_term_color_scheme_terminal_16
+   bonsai_term_color_scheme_terminal_16_inverted
+   bonsai_term_color_scheme_tokyo_night_dark
+   bonsai_term_color_scheme_tokyo_night_light
+   bonsai_term_color_scheme_vscode_dark bonsai_term_color_scheme_vscode_light
+   core)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))

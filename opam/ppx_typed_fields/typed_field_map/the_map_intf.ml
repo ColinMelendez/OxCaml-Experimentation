@@ -78,7 +78,7 @@ module type S = sig
 
     module To_other_map
         (A : S_for_other_map)
-        (M : S_plain with type 'a Key.t = 'a Key.t and type 'a Data.t = 'a A.s) : sig
+        (M : S_plain with type ('a : any) Key.t = 'a Key.t and type 'a Data.t = 'a A.s) : sig
       val run : t -> M.t A.t
     end
   end
@@ -116,6 +116,8 @@ module type The_map = sig
   module type Data = Data
   module type S = S
   module type S_plain = S_plain
+
+  module For_records = For_records
 
   module%template.portable Make (Key : Typed_fields_lib.Common.S) (Data : Data) :
     S with module Key = Key and module Data = Data

@@ -18,7 +18,7 @@ let watch_computation
   Computation_watcher
     { here
     ; inner
-    ; free_vars = Computation_watcher.Type_id_location_map.empty
+    ; free_vars = Computation_watcher.Var_id_location_map.empty
     ; config =
         { log_model_before
         ; log_model_after
@@ -42,11 +42,7 @@ let sub (type via) ~(here : [%call_pos]) (from : via Computation.t) ~f =
   | Return { value = { here = _; value = Named _ as named }; here } ->
     f { Value.here; value = named }
   | _ ->
-    let via : via Type_equal.Id.t =
-      Type_equal.Id.create
-        ~name:(Source_code_position.to_string [%here])
-        [%sexp_of: opaque]
-    in
+    let via : via Var_id.t = Var_id.create () in
     let into = f (Value.named ~here (Sub here) via) in
     Sub
       { from
@@ -60,7 +56,7 @@ let sub (type via) ~(here : [%call_pos]) (from : via Computation.t) ~f =
 ;;
 
 let with_inverted_lifecycle_ordering ~(here : [%call_pos]) ~compute_dep f =
-  let via = Type_equal.Id.create ~name:"inverted-lifecycle-dep-id" [%sexp_of: opaque] in
+  let via = Var_id.create () in
   let into = f (Value.named ~here Inverted_lifecycles_dependency via) in
   Sub { from = compute_dep; via; into; invert_lifecycles = true; here }
 ;;
@@ -90,17 +86,18 @@ module Edge = struct
   let lifecycle ~(here : [%call_pos]) lifecycle = Lifecycle { lifecycle; here }
 end
 
-let state_machine_with_input_safe
-  ~here
-  ?(sexp_of_action = sexp_of_opaque)
-  ~sexp_of_model
+module Computation_status = Bonsai_private_base.Computation_status
+
+let state_machine_with_input
+  ~(here : [%call_pos])
+  ?sexp_of_action
   ?reset
-  ~equal
+  ?(sexp_of_model = sexp_of_opaque)
+  ?equal
   ~default_model
   ~apply_action
   input
   =
-  let name = Source_code_position.to_string here in
   let reset =
     match reset with
     | None -> fun ~inject:_ ~schedule_event:_ ~time_source:_ _ -> default_model
@@ -113,64 +110,33 @@ let state_machine_with_input_safe
       (Apply_action_context.Private.create ~inject ~schedule_event ~time_source)
   in
   Leaf1
-    { model = Meta.Model.of_module ~sexp_of_model ~equal ~name ~default:default_model
+    { model =
+        Meta.Model.of_module
+          ~sexp_of_model
+          ~equal
+          ~name:"state_machine_with_input"
+          ~default:default_model
     ; input_id = Meta.Input.create ()
-    ; dynamic_action = Type_equal.Id.create ~name sexp_of_action
+    ; dynamic_action = Var_id.create ()
     ; apply_action
     ; reset
     ; input
+    ; action_name = "state_machine_with_input"
+    ; sexp_of_action
     ; here
     }
-;;
-
-module Computation_status = struct
-  type 'input t =
-    | Active of 'input
-    | Inactive
-  [@@deriving sexp_of]
-
-  let of_option = function
-    | Some x -> Active x
-    | None -> Inactive
-  ;;
-end
-
-let state_machine_with_input
-  ~(here : [%call_pos])
-  ?sexp_of_action
-  ?reset
-  ?sexp_of_model
-  ?equal
-  ~default_model
-  ~apply_action
-  input
-  =
-  let apply_action context input model action =
-    let input = Computation_status.of_option input in
-    apply_action context input model action
-  in
-  state_machine_with_input_safe
-    ~here
-    ?sexp_of_action
-    ~sexp_of_model:(Option.value sexp_of_model ~default:sexp_of_opaque)
-    ?reset
-    ~equal
-    ~default_model
-    ~apply_action
-    input
 ;;
 
 let state_machine
   ~(here : [%call_pos])
   ?reset
   ?sexp_of_model
-  ?(sexp_of_action = sexp_of_opaque)
+  ?sexp_of_action
   ?equal
   ~default_model
   ~apply_action
   ()
   =
-  let name = Source_code_position.to_string here in
   let apply_action ~inject ~schedule_event ~time_source =
     apply_action
       (Apply_action_context.Private.create ~inject ~schedule_event ~time_source)
@@ -187,11 +153,13 @@ let state_machine
         Meta.Model.of_module
           ~sexp_of_model:(Option.value ~default:sexp_of_opaque sexp_of_model)
           ~equal
-          ~name
+          ~name:"state_machine"
           ~default:default_model
-    ; static_action = Type_equal.Id.create ~name sexp_of_action
+    ; static_action = Var_id.create ()
     ; apply_action
     ; reset
+    ; action_name = "state_machine"
+    ; sexp_of_action
     ; here
     }
 ;;
@@ -255,16 +223,9 @@ let assoc
   (map : (k, v, cmp) Map.t Value.t)
   ~f
   =
-  let module C = (val comparator) in
-  let key_id : k Type_equal.Id.t =
-    Type_equal.Id.create ~name:"key id" (Comparator.sexp_of_t C.comparator)
-  in
-  let cmp_id : cmp Type_equal.Id.t =
-    Type_equal.Id.create ~name:"cmp id" [%sexp_of: opaque]
-  in
-  let data_id : v Type_equal.Id.t =
-    Type_equal.Id.create ~name:"data id" [%sexp_of: opaque]
-  in
+  let key_id : k Var_id.t = Var_id.create () in
+  let cmp_id : cmp Var_id.t = Var_id.create () in
+  let data_id : v Var_id.t = Var_id.create () in
   let key_var = Value.named ~here Assoc_like_key key_id in
   let data_var = Value.named ~here Assoc_like_data data_id in
   let by = f key_var data_var in
@@ -280,25 +241,11 @@ let assoc_on
   ~get_model_key
   ~f
   =
-  let module Io_comparator = (val io_comparator) in
-  let module Model_comparator = (val model_comparator) in
-  let io_key_id : io_k Type_equal.Id.t =
-    Type_equal.Id.create ~name:"io key id" (Comparator.sexp_of_t Io_comparator.comparator)
-  in
-  let io_cmp_id : io_cmp Type_equal.Id.t =
-    Type_equal.Id.create ~name:"io cmp id" [%sexp_of: opaque]
-  in
-  let model_key_id : model_k Type_equal.Id.t =
-    Type_equal.Id.create
-      ~name:"model key id"
-      (Comparator.sexp_of_t Model_comparator.comparator)
-  in
-  let model_cmp_id : model_cmp Type_equal.Id.t =
-    Type_equal.Id.create ~name:"model key id" [%sexp_of: opaque]
-  in
-  let data_id : v Type_equal.Id.t =
-    Type_equal.Id.create ~name:"data id" [%sexp_of: opaque]
-  in
+  let io_key_id : io_k Var_id.t = Var_id.create () in
+  let io_cmp_id : io_cmp Var_id.t = Var_id.create () in
+  let model_key_id : model_k Var_id.t = Var_id.create () in
+  let model_cmp_id : model_cmp Var_id.t = Var_id.create () in
+  let data_id : v Var_id.t = Var_id.create () in
   let key_var = Value.named ~here Assoc_like_key io_key_id in
   let data_var = Value.named ~here Assoc_like_data data_id in
   let by = f key_var data_var in
@@ -329,9 +276,7 @@ let fix
              -> result Computation.t)
   =
   let fix_id : result Fix_id.t = Fix_id.create () in
-  let input_id : input Type_equal.Id.t =
-    Type_equal.Id.create ~name:"fix input" sexp_of_opaque
-  in
+  let input_id : input Var_id.t = Var_id.create () in
   let arg_value = Value.named ~here Fix_recurse input_id in
   let fix_recurse input = Fix_recurse { input; input_id; fix_id; here } in
   let result = f ~recurse:fix_recurse arg_value in
@@ -349,9 +294,7 @@ let wrap
   ~f
   ()
   =
-  let model_id : model Type_equal.Id.t =
-    Type_equal.Id.create ~name:"model id" [%sexp_of: opaque]
-  in
+  let model_id : model Var_id.t = Var_id.create () in
   let reset =
     match reset with
     | None -> fun ~inject:_ ~schedule_event:_ ~time_source:_ _ -> default_model
@@ -359,19 +302,10 @@ let wrap
       fun ~inject ~schedule_event ~time_source ->
         reset (Apply_action_context.Private.create ~inject ~schedule_event ~time_source)
   in
-  let action_id : action Type_equal.Id.t =
-    Type_equal.Id.create ~name:"action id" [%sexp_of: opaque]
-  in
+  let action_id : action Var_id.t = Var_id.create () in
   let result_id = Meta.Input.create () in
-  let inject_id : (action -> unit Effect.t) Type_equal.Id.t =
-    Type_equal.Id.create ~name:"inject id" [%sexp_of: opaque]
-  in
+  let inject_id : (action -> unit Effect.t) Var_id.t = Var_id.create () in
   let apply_action ~inject ~schedule_event ~time_source result model action =
-    let result =
-      match result with
-      | Some result -> Computation_status.Active result
-      | None -> Computation_status.Inactive
-    in
     apply_action
       (Apply_action_context.Private.create ~inject ~schedule_event ~time_source)
       result
@@ -402,7 +336,7 @@ let wrap
 ;;
 
 let with_model_resetter ~(here : [%call_pos]) f =
-  let reset_id = Type_equal.Id.create ~name:"reset-model" [%sexp_of: opaque] in
+  let reset_id = Var_id.create () in
   let inner = f ~reset:(Value.named ~here Model_resetter reset_id) in
   With_model_resetter { reset_id; inner; here }
 ;;

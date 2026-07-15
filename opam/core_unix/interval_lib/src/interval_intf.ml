@@ -155,7 +155,12 @@ end
 
 module type S = sig
   type t
-  [@@deriving (bin_io [@mode m]), sexp, (compare [@mode m]), (equal [@mode m]), hash]
+  [@@deriving
+    (bin_io [@mode m])
+    , sexp
+    , (compare [@mode.explicit m])
+    , (equal [@mode.explicit m])
+    , hash]
 
   type bound
 
@@ -190,7 +195,12 @@ module type S1 = sig
       [[@@deriving bin_io, sexp]] extensions, which inline the relevant function
       signatures (like [bin_read_t] and [t_of_sexp]). *)
   type 'a t
-  [@@deriving (bin_io [@mode m]), sexp, (compare [@mode m]), (equal [@mode m]), hash]
+  [@@deriving
+    (bin_io [@mode m])
+    , sexp ~stackify
+    , (compare [@mode.explicit m])
+    , (equal [@mode.explicit m])
+    , hash]
 
   include Gen with type 'a t := 'a t with type 'a bound := 'a (** @inline *)
 
@@ -198,12 +208,16 @@ module type S1 = sig
       type 'a t [@@deriving bin_io, sexp]
 
       include Gen_set with type 'a t := 'a t with type 'a bound := 'a (** @inline *)
+
+      (** [to_list] will return a list of non-overlapping intervals defining the set, in
+          ascending order. *)
+      val to_list : 'a t -> 'a interval list
     end
     with type 'a interval := 'a t
 end
 
 module type S_stable = sig
-  type t [@@deriving (equal [@mode m]), hash, sexp_grammar]
+  type t [@@deriving (equal [@mode.explicit m]), hash, sexp_grammar]
 
   include Stable_with_witness [@mode m] with type t := t
 end]
@@ -309,7 +323,7 @@ module type%template Interval = sig @@ portable
       {[
         module Percent = struct
           module T = struct
-            type t = float [@@deriving bin_io, compare, equal, hash, sexp]
+            type t = float [@@deriving bin_io, compare, equal, hash, sexp ~stackify]
           end
 
           include T
@@ -319,7 +333,12 @@ module type%template Interval = sig @@ portable
   module%template.portable
     [@mode m = (global, local)] Make (Bound : sig
       type t
-      [@@deriving (bin_io [@mode m]), (compare [@mode m]), (equal [@mode m]), hash, sexp]
+      [@@deriving
+        (bin_io [@mode m])
+        , (compare [@mode.explicit m])
+        , (equal [@mode.explicit m])
+        , hash
+        , sexp]
 
       include Comparable.S [@mode m] with type t := t
     end) : S [@mode m] with type bound = Bound.t and type t = Bound.t t
@@ -335,7 +354,7 @@ module type%template Interval = sig @@ portable
         , compare ~localize
         , equal ~localize
         , hash
-        , sexp
+        , sexp ~stackify
         , sexp_grammar
         , stable_witness]
 

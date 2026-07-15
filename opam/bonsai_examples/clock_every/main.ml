@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Form = Bonsai_web_form.With_automatic_view
 
 module Css =
   [%css
@@ -493,4 +493,4 @@ let component (local_ graph) =
     ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

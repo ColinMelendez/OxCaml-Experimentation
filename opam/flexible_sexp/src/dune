@@ -3,4 +3,4 @@
  (public_name flexible_sexp)
  (libraries basement core string_dict)
  (preprocess
-  (pps ppx_jane -dont-apply=sexp_message)))
+  (pps ppx_jane -compare-require-explicit-locality -dont-apply=sexp_message)))

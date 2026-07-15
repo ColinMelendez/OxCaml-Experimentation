@@ -178,6 +178,17 @@ let scale_int63 t i = Int63.( * ) t i
 let[@zero_alloc strict] scale_int t i = scale_int63 t (Int63.of_int i)
 let[@inline] div t u = Int63.( /% ) t u
 let[@inline] ( // ) t u = Int63.( // ) t u
+
+external unbox_float
+  :  (float[@local_opt])
+  -> (float#[@unboxed])
+  @@ portable
+  = "%unbox_float"
+
+external box_float : (float#[@unboxed]) -> (float[@local_opt]) @@ portable = "%box_float"
+
+let[@zero_alloc] ( /// ) t u = unbox_float (Int63.( // ) t u)
+let[@zero_alloc] scale_u t f = (scale [@inlined]) t (box_float f)
 let ( / ) t f = round_nearest_ns (float t /. f)
 let to_proportional_float t = Int63.to_float t
 
@@ -233,8 +244,9 @@ module Stable0 = struct
 
       let stable_witness : t Stable_witness.t = Stable_witness.assert_stable
 
-      let sexp_of_t t =
-        Time_float.Stable.Span.V1.sexp_of_t (to_span_float_round_nearest t)
+      let%template[@alloc a = (heap, stack)] sexp_of_t t =
+        (Time_float.Stable.Span.V1.sexp_of_t [@alloc a])
+          (to_span_float_round_nearest t) [@exclave_if_stack a]
       ;;
 
       let t_of_sexp s =
@@ -841,7 +853,8 @@ include%template Hashable.Make_binable [@modality portable] (struct
 
 type comparator_witness = Stable.V2.comparator_witness
 
-include%template Comparable.Make_binable_using_comparator [@modality portable] (struct
+include%template
+  Comparable.Make_binable_using_comparator [@mode local] [@modality portable] (struct
     type nonrec t = t [@@deriving bin_io, compare ~localize, sexp]
     type nonrec comparator_witness = comparator_witness
 
@@ -904,6 +917,7 @@ let max_value_representable = of_int63_ns Int63.max_value
 module O = struct
   let[@zero_alloc] ( / ) = [%eta2 ( / )]
   let ( // ) = ( // )
+  let[@zero_alloc] ( /// ) = [%eta2 ( /// )]
   let[@zero_alloc strict] ( + ) = [%eta2 ( + )]
   let[@zero_alloc strict] ( - ) = [%eta2 ( - )]
   let[@zero_alloc strict] ( >= ) = [%eta2 ( >= )]
@@ -966,7 +980,20 @@ module Option = struct
     | Some t -> some t
   ;;
 
-  let to_option t = if is_none t then None else Some (of_int63_ns t)
+  let%template[@alloc a = (heap, stack)] to_option t =
+    (if is_none t then None else Some (of_int63_ns t)) [@exclave_if_stack a]
+  ;;
+
+  include%template
+    Immediate_option.Provide_or_null_conversions_zero_alloc [@modality portable] (struct
+      type nonrec t = t
+      type value = span
+
+      let none = none
+      let some v = some v
+      let is_none t = is_none t
+      let unchecked_value t = unchecked_value t
+    end)
 
   module For_quickcheck = struct
     module Some = struct
@@ -1023,7 +1050,11 @@ module Option = struct
         [@@deriving
           bin_io ~localize, compare ~localize, equal ~localize, globalize, typerep]
 
-        let sexp_of_t t = [%sexp_of: Stable.V1.t option] (to_option t)
+        let%template[@alloc a = (heap, stack)] sexp_of_t t =
+          ([%sexp_of: Stable.V1.t option] [@alloc a])
+            ((to_option [@alloc a]) t) [@exclave_if_stack a]
+        ;;
+
         let t_of_sexp s = of_option ([%of_sexp: Stable.V1.t option] s)
         let of_int63_exn i = i
         let to_int63 t = t

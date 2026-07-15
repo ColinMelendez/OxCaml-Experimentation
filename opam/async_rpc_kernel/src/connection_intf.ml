@@ -1,5 +1,6 @@
 open Core
 open Async_kernel
+open! Import
 
 (* The reason for defining this module type explicitly is so that we can internally keep
    track of what is and isn't exposed. *)
@@ -8,8 +9,8 @@ module type S = sig
 
   module Close_reason = Close_reason
 
-  module Heartbeat_config : sig
-    type t [@@deriving sexp, bin_io ~localize, compare ~localize]
+  module Heartbeat_config : sig @@ portable
+    type t : immutable_data [@@deriving sexp, bin_io ~localize, compare ~localize]
 
     (** Each side of the connection has its own heartbeat config. It sends a heartbeat
         every [send_every]. If it doesn't receive any messages for [timeout], whether it's
@@ -27,10 +28,18 @@ module type S = sig
     val send_every : t -> Time_ns.Span.t
   end
 
-  module Heartbeat_timeout_style : sig
+  module Heartbeat_timeout_style : sig @@ portable
     type t =
       | Time_between_heartbeats_legacy
+      (** Legacy timeout style that drops the connection if we haven't seen any messages
+          from the remote peer for some time. This is prone to unnecessary disconnections
+          if the local side was too busy (e.g. long async cycle) to read any of the
+          remote's messages off the transport and drops the connection. *)
       | Number_of_heartbeats
+      (** New, preferred timeout style that drops the connection if we haven't seen any
+          messages from the remote peer after we've sent some number of heartbeat
+          messages. This mitigates the case mentioned above since if the local side was
+          too busy to read messages, it was also too busy to send any heartbeats as well. *)
     [@@deriving sexp_of]
   end
 
@@ -91,6 +100,11 @@ module type S = sig
       contain the rpc shapes digests (and as a result whether or not we need to compute
       digests). Default: [false]
 
+      [custom_menu] can be used to override the menu that is sent to peers (both in the v3
+      protocol handshake and via the [__Versioned_rpc.Menu] RPC for older clients). The
+      function is called once per connection, so it can reflect dynamic state. When
+      provided, the auto-generated menu from implementations is not used.
+
       [validate_connection] can be used to validate/reject a connection based on the
       connection state and the [identification] sent by the peer. Default: everything
       validated *)
@@ -101,11 +115,12 @@ module type S = sig
     -> ?handshake_timeout:Time_ns.Span.t
     -> ?heartbeat_config:Heartbeat_config.t
     -> ?max_metadata_size_per_key:Byte_units.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> ?time_source:Synchronous_time_source.t
     -> ?identification:Bigstring.t
     -> ?reader_drain_timeout:Time_ns.Span.t
     -> ?provide_rpc_shapes:bool
+    -> ?custom_menu:(unit -> Menu.t)
     -> ?validate_connection:
          (identification_from_peer:Bigstring.t option
           -> unit Or_not_authorized.t Deferred.t)
@@ -118,7 +133,7 @@ module type S = sig
       whether this magic number was observed. *)
   val contains_magic_prefix : bool Bin_prot.Type_class.reader
 
-  val description : t -> Info.t
+  val description : t -> Info.t @ portable
 
   (** After [add_heartbeat_callback t f], [f ()] will be called after every subsequent
       heartbeat received by [t]. *)
@@ -182,7 +197,7 @@ module type S = sig
     :  ?streaming_responses_flush_timeout:Time_ns.Span.t (* default: 5 seconds *)
     -> ?wait_for_open_queries_timeout:Time_ns.Span.t (* default: don't wait *)
     -> ?reason_kind:Close_reason.Protocol.Kind.t
-    -> ?reason:Info.t
+    -> ?reason:Info.Portable.t
     -> t
     -> unit Deferred.t
 
@@ -194,7 +209,7 @@ module type S = sig
 
   (** [close_reason ~on_close t] becomes determined when close starts or finishes based on
       [on_close], but additionally returns the reason that the connection was closed. *)
-  val close_reason : t -> on_close:[ `started | `finished ] -> Info.t Deferred.t
+  val close_reason : t -> on_close:[ `started | `finished ] -> Info.Portable.t Deferred.t
 
   (** [close_reason_structured ~on_close t] becomes determined when close starts or
       finishes based on [on_close], but additionally returns the reason that the
@@ -222,24 +237,23 @@ module type S = sig
 
   val flushed : t -> unit Deferred.t
 
-  (** Peer menu will become determined before any other messages are received. The menu is
-      sent automatically on creation of a connection. If the peer is using an older
-      version, the value is immediately determined to be [None]. If the connection is
-      closed before the menu is received, an error is returned.
+  (** The peer's menu is sent automatically on creation of a connection during the
+      handshake, if supported. If the peer is using an older version, the value is [None].
 
       It is expected that one will call {!Versioned_rpc.Connection_with_menu.create}
       instead of this function and that will request the menu via rpc if it gets [None]. *)
-  val peer_menu : t -> Menu.t option Or_error.t Deferred.t
-
-  (** Like {!peer_menu} but returns an rpc result *)
-  val peer_menu' : t -> Menu.t option Rpc_result.t Deferred.t
+  val peer_menu : t -> Menu.t option
 
   val my_menu : t -> Menu.t option
+  val peer_menu_or_null : t -> Menu.t or_null
+  val my_menu_or_null : t -> Menu.t or_null
 
-  (** Peer identification will become determined before any other messages are received.
-      If the peer is using an older version, the peer id is immediately determined to be
-      [None]. If the connection is closed before the menu is received, [None] is returned. *)
-  val peer_identification : t -> Bigstring.t option Deferred.t
+  (** The peer's ID is sent automatically on creation of a connection during the
+      handshake, if supported. If the peer is using an older version, the peer ID is
+      [None]. *)
+  val peer_identification : t -> Bigstring.t option
+
+  val peer_identification_or_null : t -> Bigstring.t or_null
 
   (** [with_close] tries to create a [t] using the given transport. If a handshake error
       is the result, it calls [on_handshake_error], for which the default behavior is to
@@ -264,10 +278,11 @@ module type S = sig
     -> ?protocol_version_headers:Protocol_version_header.Pair.t
     -> ?handshake_timeout:Time_ns.Span.t
     -> ?heartbeat_config:Heartbeat_config.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> ?time_source:Synchronous_time_source.t
     -> ?identification:Bigstring.t
     -> ?provide_rpc_shapes:bool
+    -> ?custom_menu:(unit -> Menu.t)
     -> ?heartbeat_timeout_style:Heartbeat_timeout_style.t
     -> ?validate_connection:
          (identification_from_peer:Bigstring.t option
@@ -284,10 +299,11 @@ module type S = sig
   val server_with_close
     :  ?handshake_timeout:Time_ns.Span.t
     -> ?heartbeat_config:Heartbeat_config.t
-    -> ?description:Info.t
+    -> ?description:Info.Portable.t
     -> ?time_source:Synchronous_time_source.t
     -> ?identification:Bigstring.t
     -> ?provide_rpc_shapes:bool
+    -> ?custom_menu:(unit -> Menu.t)
     -> ?heartbeat_timeout_style:Heartbeat_timeout_style.t
     -> ?validate_connection:
          (identification_from_peer:Bigstring.t option
@@ -308,24 +324,24 @@ module type S_private = sig
 
   val compute_metadata
     :  t
-    -> local_ Description.t
+    -> Description.t @ local
     -> Query_id.t
     -> dispatch_metadata:Rpc_metadata.V2.t
-    -> Rpc_metadata.V2.t option
+    -> Rpc_metadata.V2.t or_null
 
   module Response_handler_action : sig
     type response_with_determinable_status =
       | Pipe_eof
       | Expert_indeterminate
       | Determinable :
-          global_ 'a Rpc_result.t * global_ 'a Implementation_mode.Error_mode.t
+          'a Rpc_result.t @@ global * 'a Implementation_mode.Error_mode.t @@ global
           -> response_with_determinable_status
 
     type t =
       | Keep
-      | Wait of global_ unit Deferred.t
+      | Wait of unit Deferred.t @@ global
       | Remove of (response_with_determinable_status, Rpc_error.t Modes.Global.t) result
-      | Expert_remove_and_wait of global_ unit Deferred.t
+      | Expert_remove_and_wait of unit Deferred.t @@ global
   end
 
   module Response_handler : sig
@@ -333,7 +349,7 @@ module type S_private = sig
       data:Nat0.t Rpc_result.t
       -> read_buffer:Bigstring.t
       -> read_buffer_pos_ref:int ref
-      -> local_ Response_handler_action.t
+      -> Response_handler_action.t @ local
   end
 
   val sexp_of_t_hum_writer : t -> Sexp.t
@@ -390,7 +406,7 @@ module type S_private = sig
 
   (** Allows getting information from the RPC that may be used for tracing or metrics. The
       interface is not yet stable. *)
-  val tracing_events : t -> (local_ Tracing_event.t -> unit) Bus.Read_only.t
+  val tracing_events : t -> (Tracing_event.t @ local -> unit) Bus.Read_only.t
 
   (** The header that would be sent at the beginning of a connection. This can be used to
       pre-share this part of the handshake (see the [protocol_version_headers] argument to
@@ -411,11 +427,11 @@ module type S_private = sig
     :  t
     -> key:Rpc_metadata.V2.Key.t
     -> when_sending:
-         (local_ Description.t -> query_id:Int63.t -> Rpc_metadata.V2.Payload.t option)
+         (Description.t @ local -> query_id:Int63.t -> Rpc_metadata.V2.Payload.t or_null)
     -> on_receive:
-         (local_ Description.t
+         (Description.t @ local
           -> query_id:Int63.t
-          -> Rpc_metadata.V2.Payload.t option
+          -> Rpc_metadata.V2.Payload.t or_null
           -> Execution_context.t
           -> Execution_context.t)
     -> [ `Ok | `Already_set ]

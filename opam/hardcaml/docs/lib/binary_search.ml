@@ -296,14 +296,8 @@ let test ~waves ~input_data ~find_key =
   (* Create the simulator. *)
   let scope = Scope.create ~auto_label_hierarchical_ports:true ~flatten_design:true () in
   let sim = Sim.create ~config:Cyclesim.Config.trace_all (Binary_search.create scope) in
-  let waves, sim =
-    (* Optionally trace a waveform. *)
-    if waves
-    then (
-      let waves, sim = Waveform.create sim in
-      Some waves, sim)
-    else None, sim
-  in
+  (* Optionally trace a waveform. *)
+  let waves, sim = Cyclesim.Waveform.create_if ~enabled:waves sim in
   (* Run the testbench. *)
   clear_core sim;
   load_inputs sim input_data;
@@ -328,9 +322,9 @@ let%expect_test "debug waveform" =
   [%expect_exact
     {|
 ┌Signals───────────┐┌Waves───────────────────────────────────────────────────────────────┐
-│clocking$clock    ││┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
+│clock             ││┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
 │                  ││    └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   │
-│clocking$clear    ││                                                                    │
+│clear             ││                                                                    │
 │                  ││────────────────────────────────────────────────────────            │
 │write_enable      ││────────────────────────────────────────────────────────            │
 │                  ││                                                                    │
@@ -393,9 +387,9 @@ let%expect_test "randomized example waveform" =
   [%expect_exact
     {|
 ┌Signals───────────┐┌Waves───────────────────────────────────────────────────────────────┐
-│clocking$clock    ││┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
+│clock             ││┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
 │                  ││    └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   └───┘   │
-│clocking$clear    ││                                                                    │
+│clear             ││                                                                    │
 │                  ││────────────────────────────────────────────────────────────────    │
 │write_enable      ││────────────────────────────────────────────────────────────────    │
 │                  ││                                                                    │

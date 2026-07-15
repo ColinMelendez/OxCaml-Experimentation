@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/hardcaml_verify/issues"
 dev-repo: "git+https://github.com/janestreet/hardcaml_verify.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/hardcaml_verify/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -13,16 +14,20 @@ depends: [
   "ocaml" {>= "5.1.0"}
   "base"
   "hardcaml"
+  "hardcaml_tools_config"
   "hardcaml_waveterm"
   "jane_rope"
   "ppx_hardcaml"
   "ppx_jane"
   "ppx_rope"
   "stdio"
-  "dune"              {>= "3.17.0"}
-  "re"                {= "1.14.0+ox"}
+  "dune"                  {>= "3.17.0"}
+  "re"                    {>= "1.8.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Hardcaml Verification Tools"
 description: "
 Tools for verifying properties of Hardcaml circuits.

@@ -1,5 +1,7 @@
 open Core
 
+module type Pre = Hardcaml_interface_types.Pre
+
 module Array = struct
   include Array
 
@@ -18,6 +20,7 @@ end
 
 module Int = Int
 module List = List
+module Option = Option
 
 let concat = String.concat
 

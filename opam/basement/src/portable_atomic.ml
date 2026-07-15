@@ -4,14 +4,20 @@ type ('a : value_or_null) t =
 external make
   : ('a : value_or_null).
   'a @ contended portable -> ('a t[@local_opt])
-  @@ portable
+  @@ stateless
   = "%makemutable"
 
 external make_contended
   : ('a : value_or_null).
   'a @ contended portable -> ('a t[@local_opt])
-  @@ portable
+  @@ stateless
   = "caml_atomic_make_contended"
+
+let[@inline] make ?(padded = false) value =
+  match padded, Stdlib_shim.runtime5 () with
+  | true, true -> make_contended value
+  | _ -> make value
+;;
 
 external get
   : ('a : value_or_null).

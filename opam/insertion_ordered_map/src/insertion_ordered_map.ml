@@ -261,10 +261,11 @@ let of_alist_exn comparator_s alist =
 
 let of_map map = of_alist_exn (Map.comparator_s map) (Map.to_alist map)
 
-module Make_common (Key : sig
-    type t [@@deriving compare, sexp_of]
+module%template.portable
+  [@modality p] [@mode m = (local, global)] Make_common (Key : sig
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
 
-    include Comparable.S_plain with type t := t
+    include Comparable.S_plain [@modality p] with type t := t
   end) =
 struct
   module For_sexp = struct
@@ -289,7 +290,7 @@ struct
        of [latest_index]) is not considered in semantic equivalence. *)
     let equal equal_v t t' =
       List.equal
-        (Tuple2.equal ~eq1:[%compare.equal: Key.t] ~eq2:equal_v)
+        (Tuple2.equal ~eq1:([%compare.equal: Key.t] [@mode.explicit m]) ~eq2:equal_v)
         (Map.data t.insertion_ordered_map)
         (Map.data t'.insertion_ordered_map)
     ;;
@@ -300,95 +301,108 @@ struct
 
     let compare compare_v t t' =
       List.compare
-        (Tuple2.compare ~cmp1:[%compare: Key.t] ~cmp2:compare_v)
+        (Tuple2.compare ~cmp1:([%compare: Key.t] [@mode.explicit m]) ~cmp2:compare_v)
         (Map.data t.insertion_ordered_map)
         (Map.data t'.insertion_ordered_map)
     ;;
   end
 
-  let empty = empty (module Key)
+  let empty =
+    { insertion_ordered_map = Int.Map.empty
+    ; canonical_map = Key.Map.empty
+    ; latest_index = 0 (* Read note in [of_alist_exn]. *)
+    }
+  ;;
+
   let singleton key data = singleton (module Key) key data
   let of_alist_exn alist = of_alist_exn (module Key) alist
+end
 
-  module Provide_of_sexp
-      (Key : sig
-               type t [@@deriving of_sexp]
-             end
-             with type t = Key.t) =
-  struct
-    module For_sexp = struct
-      type 'a t = (Key.t, 'a) List.Assoc.t [@@deriving of_sexp]
+module%template.portable
+  [@modality p] Provide_of_sexp (Key : sig
+    type t [@@deriving of_sexp]
+
+    include Comparator.S [@modality p] with type t := t
+  end) =
+struct
+  module For_sexp = struct
+    type 'a t = (Key.t, 'a) List.Assoc.t [@@deriving of_sexp]
+  end
+
+  let t_of_sexp v_of_sexp sexp =
+    For_sexp.t_of_sexp v_of_sexp sexp |> of_alist_exn (module Key)
+  ;;
+end
+
+module%template.portable [@modality p] Provide_bin_io (Key : Stable [@modality p]) =
+Bin_prot.Utils.Make_binable1_with_uuid [@modality p] (struct
+    let caller_identity =
+      (* Do not copy-paste this to other calls. *)
+      Bin_prot.Shape.Uuid.of_string "da3844f1-0525-8a0d-8b4b-4503171cae1e"
+    ;;
+
+    module Binable = struct
+      type 'a t = (Key.t, 'a) List.Assoc.t [@@deriving bin_io]
     end
 
-    let t_of_sexp v_of_sexp sexp = For_sexp.t_of_sexp v_of_sexp sexp |> of_alist_exn
-  end
+    type nonrec 'a t = (Key.t, 'a, Key.comparator_witness) t
 
-  module Provide_bin_io (Key : Stable with type t = Key.t) =
-  Bin_prot.Utils.Make_binable1_with_uuid (struct
-      let caller_identity =
-        (* Do not copy-paste this to other calls. *)
-        Bin_prot.Shape.Uuid.of_string "da3844f1-0525-8a0d-8b4b-4503171cae1e"
-      ;;
+    let to_binable t = Map.data t.insertion_ordered_map
+    let of_binable binable = of_alist_exn (module Key) binable
+  end)
 
-      module Binable = struct
-        type 'a t = (Key.t, 'a) List.Assoc.t [@@deriving bin_io]
-      end
-
-      type nonrec 'a t = 'a t
-
-      let to_binable t = Map.data t.insertion_ordered_map
-      let of_binable binable = of_alist_exn binable
-    end)
-
-  module Provide_sexp_grammar
-      (Key : sig
-               type t [@@deriving sexp_grammar]
-             end
-             with type t = Key.t) =
-  struct
-    let t_sexp_grammar v_grammar =
-      Sexplib.Sexp_grammar.coerce (List.Assoc.t_sexp_grammar Key.t_sexp_grammar v_grammar)
-    ;;
-  end
-end
-
-module Make_plain (Key : sig
-    type t [@@deriving compare, sexp_of]
-
-    include Comparator.S with type t := t
+module Provide_sexp_grammar (Key : sig
+    type t [@@deriving sexp_grammar]
+    type comparator_witness
   end) =
 struct
-  include Make_common (struct
+  let t_sexp_grammar v_grammar
+    : (Key.t, 'a, Key.comparator_witness) t Sexplib.Sexp_grammar.t
+    =
+    Sexplib.Sexp_grammar.coerce (List.Assoc.t_sexp_grammar Key.t_sexp_grammar v_grammar)
+  ;;
+end
+
+module%template.portable
+  [@modality p] [@mode m = (local, global)] Make_plain (Key : sig
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
+
+    include Comparator.S [@modality p] with type t := t
+  end) =
+struct
+  include Make_common [@modality p] [@mode m] (struct
       include Key
-      include Comparable.Make_plain_using_comparator (Key)
+      include Comparable.Make_plain_using_comparator [@mode m] [@modality p] (Key)
     end)
 end
 
-module Make (Key : sig
-    type t [@@deriving compare, sexp]
+module%template.portable
+  [@modality p] [@mode m = (local, global)] Make (Key : sig
+    type t [@@deriving (compare [@mode.explicit m]), sexp]
 
-    include Comparator.S with type t := t
+    include Comparator.S [@modality p] with type t := t
   end) =
 struct
-  include Make_common (struct
+  include Make_common [@modality p] [@mode m] (struct
       include Key
-      include Comparable.Make_plain_using_comparator (Key)
+      include Comparable.Make_plain_using_comparator [@mode m] [@modality p] (Key)
     end)
 
-  include Provide_of_sexp (Key)
+  include Provide_of_sexp [@modality p] (Key)
 end
 
-module Make_binable (Key : sig
-    type t [@@deriving bin_io, compare, sexp]
+module%template.portable
+  [@modality p] [@mode m = (local, global)] Make_binable (Key : sig
+    type t [@@deriving bin_io, (compare [@mode.explicit m]), sexp]
 
-    include Comparator.S with type t := t
+    include Comparator.S [@modality p] with type t := t
   end) =
 struct
-  include Make_common (struct
+  include Make_common [@modality p] [@mode m] (struct
       include Key
-      include Comparable.Make_plain_using_comparator (Key)
+      include Comparable.Make_plain_using_comparator [@mode m] [@modality p] (Key)
     end)
 
-  include Provide_of_sexp (Key)
-  include Provide_bin_io (Key)
+  include Provide_of_sexp [@modality p] (Key)
+  include Provide_bin_io [@modality p] (Key)
 end

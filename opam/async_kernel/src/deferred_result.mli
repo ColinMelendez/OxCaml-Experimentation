@@ -1,6 +1,16 @@
 open! Core
 
-include Monad.S2 with type ('a, 'b) t = ('a, 'b) Result.t Deferred1.t (** @open *)
+[@@@implicit_kind:
+  ('ok : value_or_null)
+  * ('ok1 : value_or_null)
+  * ('ok2 : value_or_null)
+  * ('ok3 : value_or_null)]
+
+include
+  Monad.S2
+  [@kind value_or_null mod maybe_null]
+  with type ('ok, 'err) t = ('ok, 'err) Result.t Deferred1.t
+(** @open *)
 
 val fail : 'err -> (_, 'err) t
 
@@ -17,8 +27,11 @@ val combine
   -> err:('err -> 'err -> 'err)
   -> ('ok3, 'err) t
 
+(** [ok_unit = return ()] *)
+val ok_unit : (unit, _) t
+
 module List :
-  Monad_sequence.S2_result
+  Monad_sequence.S2_sequential
   with type ('a, 'e) monad := ('a, 'e) t
   with type 'a t := 'a list
 

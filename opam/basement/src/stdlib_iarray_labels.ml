@@ -7,102 +7,124 @@ type (+'a : any mod separable) t = 'a iarray
 
 (* Array operations *)
 
-external length : local_ 'a iarray -> int @@ portable = "%array_length"
+external length
+  : ('a : any mod separable).
+  local_ 'a iarray -> int
+  @@ portable
+  = "%array_length"
+[@@layout_poly]
 
 external get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_safe_get"
+[@@layout_poly]
 
 external ( .:() )
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_safe_get"
+[@@layout_poly]
 
 external unsafe_get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_unsafe_get"
+[@@layout_poly]
 
-external concat : 'a iarray list -> 'a iarray @@ portable = "caml_array_concat"
+external concat
+  : ('a : any mod separable).
+  'a iarray list -> 'a iarray
+  @@ portable
+  = "caml_array_concat"
 
 external concat_local
-  :  local_ 'a iarray list
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray list -> local_ 'a iarray
   @@ portable
   = "caml_array_concat_local"
 
 external append_prim
-  :  'a iarray
-  -> 'a iarray
-  -> 'a iarray
+  : ('a : any mod separable).
+  'a iarray -> 'a iarray -> 'a iarray
   @@ portable
   = "caml_array_append"
 
 external append_prim_local
-  :  local_ 'a iarray
-  -> local_ 'a iarray
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray -> local_ 'a iarray -> local_ 'a iarray
   @@ portable
   = "caml_array_append_local"
 
-external unsafe_sub : 'a iarray -> int -> int -> 'a iarray @@ portable = "caml_array_sub"
+external unsafe_sub
+  : ('a : any mod separable).
+  'a iarray -> int -> int -> 'a iarray
+  @@ portable
+  = "caml_array_sub"
 
 external unsafe_sub_local
-  :  local_ 'a iarray
-  -> int
-  -> int
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray -> int -> int -> local_ 'a iarray
   @@ portable
   = "caml_array_sub_local"
 
-external unsafe_of_array : 'a array -> 'a iarray @@ portable = "%array_to_iarray"
-external unsafe_to_array : 'a iarray -> 'a array @@ portable = "%array_of_iarray"
+external unsafe_of_array
+  : ('a : any mod separable).
+  'a array -> 'a iarray
+  @@ portable
+  = "%array_to_iarray"
+
+external unsafe_to_array
+  : ('a : any mod separable).
+  'a iarray -> 'a array
+  @@ portable
+  = "%array_of_iarray"
 
 (* Used only to reimplement [init] *)
 external unsafe_set_mutable
-  :  'a array
-  -> int
-  -> 'a
-  -> unit
+  : ('a : any mod separable).
+  'a array -> int -> 'a -> unit
   @@ portable
   = "%array_unsafe_set"
+[@@layout_poly]
 
-(* VERY UNSAFE: Any of these functions can be used to violate the "no forward
-   pointers" restriction for the local stack if not used carefully.  Each of
-   these can either make a local mutable array or mutate its contents, and if
-   not careful, this can lead to an array's contents pointing forwards. *)
+(* VERY UNSAFE: Any of these functions can be used to violate the "no forward pointers"
+   restriction for the local stack if not used carefully. Each of these can either make a
+   local mutable array or mutate its contents, and if not careful, this can lead to an
+   array's contents pointing forwards. *)
 external make_mutable_local
   : ('a : value_or_null mod separable).
   int -> local_ 'a -> local_ 'a array
   @@ portable
-  = "caml_make_local_vect"
+  = "caml_array_make_local"
+
+(* Make sure this function is marked zero-alloc because we can't annotate externals as
+   zero-alloc. It's not [noalloc] because it can raise. *)
+let[@inline] [@zero_alloc assume] make_mutable_local i x = exclave_ make_mutable_local i x
 
 external unsafe_of_local_array
-  : ('a : value_or_null mod separable).
+  : ('a : any mod separable).
   local_ 'a array -> local_ 'a iarray
   @@ portable
   = "%array_to_iarray"
 
 external unsafe_set_local
-  : ('a : value_or_null mod separable).
+  : ('a : any mod separable).
   local_ 'a array -> int -> local_ 'a -> unit
   @@ portable
   = "%array_unsafe_set"
+[@@layout_poly]
 
-(* We can't use immutable array literals in this file, since we don't want to
-   require the stdlib to be compiled with extensions, so instead of [[::]] we
-   use [unsafe_of_array [||]] below.  Thankfully, we never need it in the
-   [local] case so we don't have to think about the details. *)
+(* We can't use immutable array literals in this file, since we don't want to require the
+   stdlib to be compiled with extensions, so instead of [[::]] we use
+   [unsafe_of_array [||]] below. Thankfully, we never need it in the [local] case so we
+   don't have to think about the details. *)
 
-(* Really trusting the inliner here; to get maximum performance, it has to
-   inline both [unsafe_init_local] *and* [f]. *)
+(* Really trusting the inliner here; to get maximum performance, it has to inline both
+   [unsafe_init_local] *and* [f]. *)
 
 (** Precondition: [l >= 0]. *)
 let[@inline always] unsafe_init_local
@@ -113,17 +135,15 @@ let[@inline always] unsafe_init_local
   if l = 0
   then unsafe_of_local_array [||]
   else (
-    (* The design of this function is exceedingly delicate, and is the only way
-       we can correctly allocate a local array on the stack via mutation.  We
-       are subject to the "no forward pointers" constraint on the local stack;
-       we're not allowed to make pointers to later-allocated objects even within
-       the same stack frame.  Thus, in order to get this right, we consume O(n)
-       call-stack space: we allocate the values to put in the array, and only
-       *then* recurse, creating the array as the very last thing of all and
-       *returning* it.  This is why the [f i] call is the first thing in the
-       function, and why it's not tail-recursive; if it were tail-recursive,
-       then we wouldn't have anywhere to put the array elements during the whole
-       process. *)
+    (* The design of this function is exceedingly delicate, and is the only way we can
+       correctly allocate a local array on the stack via mutation. We are subject to the
+       "no forward pointers" constraint on the local stack; we're not allowed to make
+       pointers to later-allocated objects even within the same stack frame. Thus, in
+       order to get this right, we consume O(n) call-stack space: we allocate the values
+       to put in the array, and only *then* recurse, creating the array as the very last
+       thing of all and *returning* it. This is why the [f i] call is the first thing in
+       the function, and why it's not tail-recursive; if it were tail-recursive, then we
+       wouldn't have anywhere to put the array elements during the whole process. *)
     let rec go i = exclave_
       let x = f i in
       if i = l - 1
@@ -383,13 +403,26 @@ let mapi_local ~f a = exclave_
 ;;
 
 let mapi_local_input ~f a =
+  let open struct
+    external array_make
+      : ('a : value_or_null mod separable).
+      int -> 'a -> 'a array
+      @@ portable
+      = "caml_make_vect"
+
+    external array_unsafe_set
+      : ('a : value_or_null mod separable).
+      ('a array[@local_opt]) -> int -> 'a -> unit
+      @@ portable
+      = "%array_unsafe_set"
+  end in
   let l = length a in
   if l = 0
   then unsafe_of_array [||]
   else (
-    let r = Stdlib.Array.make l (f 0 (unsafe_get a 0)) in
+    let r = array_make l (f 0 (unsafe_get a 0)) in
     for i = 1 to l - 1 do
-      Stdlib.Array.unsafe_set r i (f i (unsafe_get a i))
+      array_unsafe_set r i (f i (unsafe_get a i))
     done;
     unsafe_of_array r)
 ;;
@@ -418,8 +451,8 @@ let rec list_length accu = function
   | _ :: t -> list_length (succ accu) t
 ;;
 
-(* This shouldn't violate the forward-pointers restriction because the list
-   elements already exist *)
+(* This shouldn't violate the forward-pointers restriction because the list elements
+   already exist *)
 let of_list_local = function
   | [] -> exclave_ unsafe_of_array [||]
   | hd :: tl as l ->
@@ -488,9 +521,9 @@ let fold_left_map_local ~f ~init:acc input_array = exclave_
   then acc, unsafe_of_local_array [||]
   else (
     let rec go acc i = exclave_
-      let acc', elt = f acc (unsafe_get input_array i) in
+      let acc, elt = f acc (unsafe_get input_array i) in
       if i = len - 1
-      then acc', make_mutable_local len elt
+      then acc, make_mutable_local len elt
       else (
         let ((_, output_array) as res) = go acc (i + 1) in
         unsafe_set_local output_array i elt;
@@ -522,9 +555,9 @@ let fold_left_map_local_output ~f ~init:acc input_array = exclave_
   then acc, unsafe_of_local_array [||]
   else (
     let rec go acc i = exclave_
-      let acc', elt = f acc (unsafe_get input_array i) in
+      let acc, elt = f acc (unsafe_get input_array i) in
       if i = len - 1
-      then acc', make_mutable_local len elt
+      then acc, make_mutable_local len elt
       else (
         let ((_, output_array) as res) = go acc (i + 1) in
         unsafe_set_local output_array i elt;
@@ -834,9 +867,8 @@ let split x =
     unsafe_of_array a, unsafe_of_array b)
 ;;
 
-(* This shouldn't violate the forward-pointers restriction because the array
-   elements already exist.  (This doesn't work for [combine], where we need to
-   create the tuples.) *)
+(* This shouldn't violate the forward-pointers restriction because the array elements
+   already exist. (This doesn't work for [combine], where we need to create the tuples.) *)
 let split_local x = exclave_
   if x = unsafe_of_array [||]
   then unsafe_of_array [||], unsafe_of_array [||]

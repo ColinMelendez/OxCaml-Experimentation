@@ -36,8 +36,15 @@ end
 
 module Stable : sig
   module T1 : sig
+    module V3 : sig
+      type 'time t = 'time T1.t [@@deriving bin_io, sexp, stable_witness]
+    end
+
     module V2 : sig
-      type 'time t = 'time T1.t [@@deriving bin_io, sexp]
+      type 'time t [@@deriving bin_io, sexp, stable_witness]
+
+      val to_v3 : 'time t -> 'time V3.t
+      val of_v3 : 'time V3.t -> 'time t
     end
   end
 end

@@ -2,9 +2,7 @@
 
 open! Core
 open Unboxed
-
-module type S_plain = Bitset_intf.S_plain
-module type S_permissioned = Bitset_intf.S_permissioned
+include Bitset_intf
 
 (* This bitset stores the number of valid bits (aka [bit_capacity]) in the first word of
    the [Bytes.t], and the bits themselves in the rest of the space.
@@ -33,18 +31,29 @@ end
 
 include Stable.V1
 
+open struct
+  module Bytes = struct
+    include Bytes
+
+    let blit ~(src @ local read) ~src_pos ~(dst @ local) ~dst_pos ~len =
+      let src : Bytes.t @ local read_write = Obj.magic_read_write_uncontended src in
+      Bytes.unsafe_blit ~src ~src_pos ~dst ~dst_pos ~len [@nontail]
+    ;;
+  end
+end
+
 (* The byte offset of where the bitset data itself lives in the [Bytes.t] *)
 let start_of_data = 8
 
 (* Direct access to the words of the underlying [Bytes.t], without doing anything to
    handle the odd bits at the end. *)
 module Direct : sig @@ portable
-  val unsafe_get_64 : local_ Bytes.t -> byte_index:int -> I64.t
+  val unsafe_get_64 : local_ Bytes.t @ read -> byte_index:int -> I64.t
   val unsafe_set_64 : local_ Bytes.t -> byte_index:int -> I64.t -> unit
-  val unsafe_get_32 : local_ Bytes.t -> byte_index:int -> I32.t
+  val unsafe_get_32 : local_ Bytes.t @ read -> byte_index:int -> I32.t
 end = struct
   external unsafe_get_64
-    :  local_ Bytes.t
+    :  local_ Bytes.t @ read
     -> int
     -> int64
     @@ portable
@@ -59,7 +68,7 @@ end = struct
     = "%caml_bytes_set64u"
 
   external unsafe_get_32
-    :  local_ Bytes.t
+    :  local_ Bytes.t @ read
     -> int
     -> int32
     @@ portable
@@ -709,10 +718,7 @@ module T = struct
       let w = Direct.unsafe_get_64 t ~byte_index in
       let w = ref (I64.box w) in
       while Int64.(!w <> 0L) do
-        let wi =
-          Ocaml_intrinsics_kernel.Int64.count_trailing_zeros_nonzero_arg !w
-          |> Int64.to_int_trunc
-        in
+        let wi = Int64.ctz !w |> Int64.to_int_trunc in
         (f [@zero_alloc assume]) (bit_index + wi);
         w := Int64.(!w land lnot (one lsl wi))
       done
@@ -829,6 +835,7 @@ module T = struct
   ;;
 
   let sexp_of_t t = Sexp.Atom (to_string t)
+  let sexp_of_t__stack t = exclave_ Sexp.Atom (to_string_local t)
   let t_of_sexp sexp = of_string ([%of_sexp: string] sexp)
   let capacity t = bit_capacity t
 
@@ -867,20 +874,11 @@ end
 
 include T
 
-module Permissioned = struct
-  module Stable = struct
-    module V1 = struct
-      type nonrec -'perms t = t
-      [@@deriving globalize, equal ~localize, compare ~localize, bin_io]
-    end
-  end
+module Expert = struct
+  let[@inline] unsafe_to_bytes (t : t) : bytes = t
 
-  include Stable.V1
-  include T
-
-  module As_bit_array = struct
-    include As_bit_array
-
-    type nonrec 'rw t = t [@@deriving sexp]
-  end
+  let[@inline] unsafe_of_bytes (bytes : bytes) : t =
+    invariant_in_test bytes;
+    bytes
+  ;;
 end

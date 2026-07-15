@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/tracing/issues"
 dev-repo: "git+https://github.com/janestreet/tracing.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/tracing/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -22,7 +23,10 @@ depends: [
   "dune"         {>= "3.17.0"}
   "uri"          {>= "3.0.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Tracing library"
 description: "
 Utilities for creating and parsing traces in Fuchsia Trace Format.

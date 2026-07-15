@@ -39,7 +39,7 @@
     this problem. *)
 
 open! Core
-module Deferred = Deferred1
+module Deferred := Deferred1
 
 type t = Monitor0.t [@@deriving sexp_of]
 
@@ -50,6 +50,24 @@ type 'a with_optional_monitor_name :=
 
 (** [create ()] returns a new monitor whose parent is the current monitor. *)
 val create : (unit -> t) with_optional_monitor_name
+
+(** [within_v_detached ~on_exn f] runs [f ()] in an execution context that is completely
+    detached from the caller's context, preventing the caller's execution context from
+    being kept alive by work spawned in [f]. Returns [None] if [f] raised synchronously,
+    [Some x] otherwise.
+
+    Exceptions raised in [f] or any background work it spawns are passed to [on_exn],
+    which runs under the detached context. [on_exn] runs in the [on_exn_context].
+
+    This is useful when a function returns synchronously but spawns long-running
+    background work. Using regular [within_v] would keep the caller's execution context
+    alive for the duration of that background work. *)
+val within_v_detached
+  : (on_exn:(exn -> unit)
+     -> on_exn_context:Execution_context.t
+     -> (unit -> 'a)
+     -> 'a option)
+      with_optional_monitor_name
 
 (** [name t] returns the name of the monitor, or a unique id if no name was supplied to
     [create]. *)
@@ -109,6 +127,11 @@ type exn += private Monitor_exn of Monitor_exn.t
     from the error (see discussion in [try_with]). *)
 val extract_exn : exn -> exn
 
+(** [report_uncaught_exn exn] reports [exn] as an uncaught exception, synchronously
+    causing the scheduler to stop running jobs. If [main] has not been [detach]ed,
+    [report_uncaught_exn exn] is equivalent to [send_exn main exn] *)
+val report_uncaught_exn : exn -> unit
+
 (** [has_seen_error t] returns true iff the monitor has ever seen an error. *)
 val has_seen_error : t -> bool
 
@@ -134,20 +157,22 @@ val send_exn : t -> ?backtrace:[ `Get | `This of Backtrace.t ] -> exn -> unit
     exception raised by the computation. If [extract_exn = false], then the [exn] will
     include additional information, like the monitor and backtrace. *)
 val try_with
-  : (?extract_exn:bool (** default is [false] *)
-     -> ?run:[ `Now | `Schedule ] (** default is [`Now] *)
-     -> ?rest:[ `Log | `Raise | `Call of exn -> unit ] (** default is [`Raise] *)
-     -> (unit -> 'a Deferred.t)
-     -> ('a, exn) Result.t Deferred.t)
-      with_optional_monitor_name
+  : ('a : value_or_null).
+  (?extract_exn:bool (** default is [false] *)
+   -> ?run:[ `Now | `Schedule ] (** default is [`Now] *)
+   -> ?rest:[ `Log | `Raise | `Call of exn -> unit ] (** default is [`Raise] *)
+   -> (unit -> 'a Deferred.t)
+   -> ('a, exn) Result.t Deferred.t)
+    with_optional_monitor_name
 
 (** [try_with_local] is like [try_with] but always runs [f] now, so [f] can be local. *)
 val try_with_local
-  : (?extract_exn:bool (** default is [false] *)
-     -> ?rest:[ `Log | `Raise | `Call of exn -> unit ] (** default is [`Raise] *)
-     -> local_ (unit -> 'a Deferred.t)
-     -> ('a, exn) Result.t Deferred.t)
-      with_optional_monitor_name
+  : ('a : value_or_null).
+  (?extract_exn:bool (** default is [false] *)
+   -> ?rest:[ `Log | `Raise | `Call of exn -> unit ] (** default is [`Raise] *)
+   -> local_ (unit -> 'a Deferred.t)
+   -> ('a, exn) Result.t Deferred.t)
+    with_optional_monitor_name
 
 (** [try_with_or_error] is like [try_with] but returns ['a Or_error.t Deferred.t] instead
     of [('a,exn) Result.t Deferred.t]. More precisely:

@@ -49,23 +49,12 @@ let f x = x__global
 let f x = x__value__global
 let f x = x__global
 let f__global x = x
+let f x = x__global
+let f__global x = x
+let f x = x__global
 
-include struct
-  let f x = x__global
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__global x = x
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f x = x__global
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__local x = x__local
-  and f x = x__global
-end [@@ocaml.doc " @inline "]
+let f__local x = x__local
+and f x = x__global
 
 [@@@end]
 
@@ -102,23 +91,15 @@ and f__local x = x
 let f__value__global x = x
 and f__value__local x = x
 
-include struct
-  let f__global x = x
-end [@@ocaml.doc " @inline "]
+let f__global x = x
 
-include struct
-  let f__local x = x
-  and f__global x = x
-end [@@ocaml.doc " @inline "]
+let f__local x = x
+and f__global x = x
 
-include struct
-  let f x = x
-end [@@ocaml.doc " @inline "]
+let f x = x
 
-include struct
-  let f__local x = x
-  and f x = x
-end [@@ocaml.doc " @inline "]
+let f__local x = x
+and f x = x
 
 [@@@end]
 
@@ -154,89 +135,20 @@ end [@@ocaml.doc " @inline "]
 
   let f x = x [@@mode l1 l2]]]
 
-include struct
-  let f__global x = x
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__local x = x
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    include struct
-      let f__global__global x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    include struct
-      let f__global__local x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    include struct
-      let f__local__global x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    include struct
-      let f__local__local x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    let f__global__global x = x
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    let f__global__local x = x
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    let f__local__global x = x
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    let f__local__local x = x
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    include struct
-      let f x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    include struct
-      let f__global__local x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
-
-include struct
-  include struct
-    include struct
-      let f__local__global x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-
-  include struct
-    include struct
-      let f__local__local x = x
-    end [@@ocaml.doc " @inline "]
-  end [@@ocaml.doc " @inline "]
-end [@@ocaml.doc " @inline "]
+let f__global x = x
+let f__local x = x
+let f__global__global x = x
+let f__global__local x = x
+let f__local__global x = x
+let f__local__local x = x
+let f__global__global x = x
+let f__global__local x = x
+let f__local__global x = x
+let f__local__local x = x
+let f x = x
+let f__global__local x = x
+let f__local__global x = x
+let f__local__local x = x
 
 [@@@end]
 
@@ -263,29 +175,18 @@ let f x = x__heap
   let g = (f [@mode.explicit c p])
   let h = (g [@mode.explicit p c])]]
 
-include struct
-  let f__portable__contended x = x
-  let g__portable__contended = f__portable__contended
-  let h__portable__contended = g__portable__contended
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__nonportable__contended x = x
-  let g__nonportable__contended = f__nonportable__contended
-  let h__nonportable__contended = g__nonportable__contended
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__portable__uncontended x = x
-  let g__portable__uncontended = f__portable__uncontended
-  let h__portable__uncontended = g__portable__uncontended
-end [@@ocaml.doc " @inline "]
-
-include struct
-  let f__nonportable__uncontended x = x
-  let g__nonportable__uncontended = f__nonportable__uncontended
-  let h__nonportable__uncontended = g__nonportable__uncontended
-end [@@ocaml.doc " @inline "]
+let f__portable__contended x = x
+let g__portable__contended = f__portable__contended
+let h__portable__contended = g__portable__contended
+let f__nonportable__contended x = x
+let g__nonportable__contended = f__nonportable__contended
+let h__nonportable__contended = g__nonportable__contended
+let f__portable__uncontended x = x
+let g__portable__uncontended = f__portable__uncontended
+let h__portable__uncontended = g__portable__uncontended
+let f__nonportable__uncontended x = x
+let g__nonportable__uncontended = f__nonportable__uncontended
+let h__nonportable__uncontended = g__nonportable__uncontended
 
 [@@@end]
 
@@ -308,6 +209,340 @@ end
 module _ = struct
   module type S__''value'' = sig end
   module type S__''bits64'' = sig end
+end
+
+[@@@end]
+
+[@@@expand_inline
+  module%template _ = struct
+    [@@@kind.default.explicit ka = (value, bits64)]
+
+    type ('a : ka) t1
+    type ('a : ka, 'b : kb) t2 [@@kind ka = ka, kb = (value, bits64)]
+
+    [@@@kind.default.explicit kb = (value, bits64)]
+
+    type ('a : ka, 'b : kb) t3
+  end]
+
+module _ = struct
+  type ('a : value) t1__value
+
+  type ('a : value, 'b : value) t2
+  and ('a : value, 'b : bits64) t2__value__bits64
+
+  type ('a : value, 'b : value) t3__value__value
+  type ('a : value, 'b : bits64) t3__value__bits64
+  type ('a : bits64) t1__bits64
+
+  type ('a : bits64, 'b : value) t2__bits64__value
+  and ('a : bits64, 'b : bits64) t2__bits64__bits64
+
+  type ('a : bits64, 'b : value) t3__bits64__value
+  type ('a : bits64, 'b : bits64) t3__bits64__bits64
+end
+
+[@@@end]
+
+(* explicit_plus_unmangled tests - produces untemplated version in addition to explicit
+   versions *)
+
+[@@@expand_inline
+  let%template mode1 x = x [@@mode.explicit_plus_unmangled l = (global, local)]
+  let%template mode2 x = x [@@mode.explicit_plus_unmangled l = (local, global)]
+
+  let%template kind1 (type a : k) (x : a) = x
+  [@@kind.explicit_plus_unmangled k = (value, bits64)]
+  ;;
+
+  let%template kind2 (type a : k) (x : a) = x
+  [@@kind.explicit_plus_unmangled k = (bits64, value)]
+  ;;
+
+  let%template kind_multiple_defaults (type a : k) x = x
+  [@@kind.explicit_plus_unmangled k = (value, value_or_null)]
+  ;;
+
+  let%template kind_multiple_defaults2 (type a : k) x = x
+  [@@kind.explicit_plus_unmangled k = (value_or_null, value)]
+  ;;
+
+  let%template kind_no_default x = x [@@kind.explicit_plus_unmangled k = (bits64, bits32)]]
+
+let mode1__global x = x
+and mode1 x = x
+and mode1__local x = x
+
+let mode2__local x = x
+and mode2__global x = x
+and mode2 x = x
+
+let kind1__value (type a : value) (x : a) = x
+and kind1 (type a : value) (x : a) = x
+and kind1__bits64 (type a : bits64) (x : a) = x
+
+let kind2__bits64 (type a : bits64) (x : a) = x
+and kind2__value (type a : value) (x : a) = x
+and kind2 (type a : value) (x : a) = x
+
+let kind_multiple_defaults__value (type a : value) x = x
+and kind_multiple_defaults (type a : value) x = x
+and kind_multiple_defaults__value_or_null (type a : value_or_null) x = x
+
+let kind_multiple_defaults2__value_or_null (type a : value_or_null) x = x
+and kind_multiple_defaults2__value (type a : value) x = x
+and kind_multiple_defaults2 (type a : value) x = x
+
+let kind_no_default__bits64 x = x
+and kind_no_default__bits32 x = x
+
+[@@@end]
+
+(* explicit_plus_unmangled with multiple axes *)
+
+[@@@expand_inline
+  let%template explicit_plus_unmangled_and_normal (type a : k) (x : a @ l) = x
+  [@@kind.explicit_plus_unmangled k = (value, bits64)] [@@mode l = (global, local)]
+  ;;
+
+  let%template multiple_explicit_plus_unmangled (type a : k) (x : a @ l) = x
+  [@@kind.explicit_plus_unmangled k = (value, bits64)]
+  [@@mode.explicit_plus_unmangled l = (global, local)]
+  ;;
+
+  (* explicit_plus_unmangled combined with explicit: the explicit_plus_unmangled axis
+     produces untemplated versions, while the explicit axis remains mangled in all
+     versions *)
+  let%template explicit_plus_unmangled_and_explicit (type a : k) (x : a @ l) = x
+  [@@kind.explicit_plus_unmangled k = (bits64, value)]
+  [@@mode.explicit l = (global, local)]
+  ;;]
+
+let explicit_plus_unmangled_and_normal__value (type a : value) (x : a @ global) = x
+and explicit_plus_unmangled_and_normal (type a : value) (x : a @ global) = x
+and explicit_plus_unmangled_and_normal__value__local (type a : value) (local_ (x : a)) = x
+and explicit_plus_unmangled_and_normal__local (type a : value) (local_ (x : a)) = x
+and explicit_plus_unmangled_and_normal__bits64 (type a : bits64) (x : a @ global) = x
+
+and explicit_plus_unmangled_and_normal__bits64__local (type a : bits64) (local_ (x : a)) =
+  x
+;;
+
+let multiple_explicit_plus_unmangled__value__global (type a : value) (x : a @ global) = x
+and multiple_explicit_plus_unmangled (type a : value) (x : a @ global) = x
+and multiple_explicit_plus_unmangled__value__local (type a : value) (local_ (x : a)) = x
+
+and multiple_explicit_plus_unmangled__bits64__global (type a : bits64) (x : a @ global) =
+  x
+
+and multiple_explicit_plus_unmangled__bits64__local (type a : bits64) (local_ (x : a)) = x
+
+let explicit_plus_unmangled_and_explicit__bits64__global
+  (type a : bits64)
+  (x : a @ global)
+  =
+  x
+
+and explicit_plus_unmangled_and_explicit__bits64__local (type a : bits64) (local_ (x : a))
+  =
+  x
+
+and explicit_plus_unmangled_and_explicit__value__global (type a : value) (x : a @ global) =
+  x
+
+and explicit_plus_unmangled_and_explicit__global (type a : value) (x : a @ global) = x
+
+and explicit_plus_unmangled_and_explicit__value__local (type a : value) (local_ (x : a)) =
+  x
+
+and explicit_plus_unmangled_and_explicit__local (type a : value) (local_ (x : a)) = x
+
+[@@@end]
+
+(* multiple explicit_plus_unmangled floating attributes *)
+[@@@expand_inline
+  [%%template
+    module _ = struct
+      [@@@kind.default.explicit_plus_unmangled ka = (value, value_or_null)]
+
+      module type S1 = sig
+        type ('a : ka) t
+      end
+
+      [@@@kind.default.explicit_plus_unmangled kb = (value, value_or_null)]
+
+      module type S2 = sig
+        type ('a : ka, 'b : kb) t
+      end
+    end]]
+
+module _ = struct
+  module type S1__value = sig
+    type ('a : value) t
+  end
+
+  module type S1 = sig
+    type ('a : value) t
+  end
+
+  module type S2__value__value = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S2 = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S2__value__value_or_null = sig
+    type ('a : value, 'b : value_or_null) t
+  end
+
+  module type S1__value_or_null = sig
+    type ('a : value_or_null) t
+  end
+
+  module type S2__value_or_null__value = sig
+    type ('a : value_or_null, 'b : value) t
+  end
+
+  module type S2__value_or_null__value_or_null = sig
+    type ('a : value_or_null, 'b : value_or_null) t
+  end
+end
+
+[@@@end]
+
+(* explicit_plus_unmangled then default floating attributes *)
+[@@@expand_inline
+  [%%template
+    module _ = struct
+      [@@@kind.default.explicit_plus_unmangled ka = (value, value_or_null)]
+
+      module type S1 = sig
+        type ('a : ka) t
+      end
+
+      [@@@kind.default.explicit_plus_unmangled kb = value]
+
+      module type S2 = sig
+        type ('a : ka, 'b : kb) t
+      end
+
+      module type S3 = S2 [@kind.explicit_plus_unmangled ka kb]
+    end]]
+
+module _ = struct
+  module type S1__value = sig
+    type ('a : value) t
+  end
+
+  module type S1 = sig
+    type ('a : value) t
+  end
+
+  module type S2__value__value = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S2 = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S3__value__value = S2__value__value
+  module type S3 = S2__value__value
+
+  module type S1__value_or_null = sig
+    type ('a : value_or_null) t
+  end
+
+  module type S2__value_or_null__value = sig
+    type ('a : value_or_null, 'b : value) t
+  end
+
+  module type S3__value_or_null__value = S2__value_or_null__value
+end
+
+[@@@end]
+
+(* explicit_plus_unmangled then explicit floating attributes *)
+[@@@expand_inline
+  [%%template
+    module _ = struct
+      [@@@kind.default.explicit_plus_unmangled ka = (value, value_or_null)]
+
+      module type S1 = sig
+        type ('a : ka) t
+      end
+
+      [@@@kind.default.explicit_plus_unmangled kb = value]
+
+      module type S2 = sig
+        type ('a : ka, 'b : kb) t
+      end
+    end]]
+
+module _ = struct
+  module type S1__value = sig
+    type ('a : value) t
+  end
+
+  module type S1 = sig
+    type ('a : value) t
+  end
+
+  module type S2__value__value = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S2 = sig
+    type ('a : value, 'b : value) t
+  end
+
+  module type S1__value_or_null = sig
+    type ('a : value_or_null) t
+  end
+
+  module type S2__value_or_null__value = sig
+    type ('a : value_or_null, 'b : value) t
+  end
+end
+
+[@@@end]
+
+(* explicit_plus_unmangled with no default *)
+
+[@@@expand_inline
+  [%%template
+    module _ = struct
+      [@@@kind.default.explicit_plus_unmangled ka = (bits64, value_or_null)]
+
+      module type S1 = sig
+        type ('a : ka) t
+      end
+
+      [@@@kind.default.explicit_plus_unmangled kb = value]
+
+      module type S2 = sig
+        type ('a : ka, 'b : kb) t
+      end
+    end]]
+
+module _ = struct
+  module type S1__bits64 = sig
+    type ('a : bits64) t
+  end
+
+  module type S2__bits64__value = sig
+    type ('a : bits64, 'b : value) t
+  end
+
+  module type S1__value_or_null = sig
+    type ('a : value_or_null) t
+  end
+
+  module type S2__value_or_null__value = sig
+    type ('a : value_or_null, 'b : value) t
+  end
 end
 
 [@@@end]

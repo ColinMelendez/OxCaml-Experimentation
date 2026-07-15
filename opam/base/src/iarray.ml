@@ -1,4 +1,5 @@
 open! Import
+open Modes.Export
 include Iarray_intf.Definitions
 include Iarray0
 module I = Basement.Stdlib_iarray_labels
@@ -64,22 +65,20 @@ module%template Local0 = struct
        be overloaded via [[@local_opt]], but we don't do that in order to isolate the
        unsafety. *)
     external make_mutable_local
-      :  int
-      -> local_ 'a
-      -> local_ 'a array
+      : ('a : value_or_null mod separable).
+      int -> local_ 'a -> local_ 'a array
       @@ portable
-      = "caml_make_local_vect"
+      = "caml_array_make_local"
 
     external unsafe_set_local
-      :  local_ 'a array
-      -> int
-      -> local_ 'a
-      -> unit
+      : ('a : value_or_null mod separable).
+      local_ 'a array -> int -> local_ 'a -> unit
       @@ portable
       = "%array_unsafe_set"
 
     external unsafe_blit_local
-      :  src:local_ 'a t
+      : ('a : value_or_null mod separable).
+      src:local_ 'a t
       -> src_pos:int
       -> dst:local_ 'a array
       -> dst_pos:int
@@ -378,6 +377,25 @@ module%template Local0 = struct
     fold_mapi t ~init ~f:(fun _ acc x -> exclave_ f acc x) [@nontail]
   ;;
 
+  external to_array_of_immediates
+    : ('a : immediate64_or_null).
+    'a iarray @ local -> len:int -> 'a array @ local
+    @@ portable
+    = "Base_iarray_to_array_of_immediates"
+  [@@noalloc]
+
+  let to_array_of_immediates t =
+    match length t with
+    | 0 -> [||]
+    | len -> exclave_ to_array_of_immediates t ~len
+  ;;
+
+  let sort_immediates t ~compare = exclave_
+    let dst = to_array_of_immediates t in
+    Array.sort dst ~compare;
+    unsafe_of_array__promise_no_mutation dst
+  ;;
+
   module Let_syntax = struct
     let return = singleton
 
@@ -395,7 +413,8 @@ end
 (** Constructors *)
 
 let%template[@alloc heap] init len ~f =
-  unsafe_of_array__promise_no_mutation (Array.init len ~f)
+  unsafe_of_array__promise_no_mutation ((Array.init [@kind k]) len ~f)
+[@@kind k = (base_or_null, value_or_null mod external64)]
 ;;
 
 let%template[@alloc stack] init = Local0.init
@@ -473,14 +492,25 @@ end
 
 let%template[@alloc heap] of_list = I.of_list
 let%template[@alloc stack] of_list = I.of_list_local
-let%template[@alloc heap] of_array = I.of_array
+
+[%%template
+[@@@kind.default k = (base_or_null, value_or_null mod external64)]
+
+let[@alloc heap] of_array arr : (_ : k) t =
+  unsafe_of_array__promise_no_mutation ((Array.copy [@kind k]) arr)
+;;]
 
 let%template[@alloc stack] of_array (a @ local) = exclave_
   (init [@alloc stack]) (Array.length a) ~f:(fun i -> exclave_ Array.unsafe_get a i)
 ;;
 
 let of_list_rev list = unsafe_of_array__promise_no_mutation (Array.of_list_rev list)
-let of_list_map list ~f = unsafe_of_array__promise_no_mutation (Array.of_list_map list ~f)
+
+let%template of_list_map list ~f =
+  unsafe_of_array__promise_no_mutation
+    ((Array.of_list_map [@kind value_or_null k]) list ~f)
+[@@kind __ = value_or_null, k = (base_or_null, value_or_null mod external64)]
+;;
 
 let of_list_mapi list ~f =
   unsafe_of_array__promise_no_mutation (Array.of_list_mapi list ~f)
@@ -500,29 +530,9 @@ let to_sequence t =
 
 (** Exports for deriving *)
 
-let globalize globalize_elt (local_ t) =
-  init (length t) ~f:(fun i -> globalize_elt (get t i) [@nontail]) [@nontail]
-;;
-
-let%template compare compare_elt ta tb =
-  if phys_equal ta tb
-  then 0
-  else (
-    let na = length ta in
-    let nb = length tb in
-    match Int.compare na nb with
-    | 0 ->
-      let rec local_ loop pos =
-        if pos = na
-        then 0
-        else (
-          match compare_elt (unsafe_get ta pos) (unsafe_get tb pos) with
-          | 0 -> loop (pos + 1)
-          | c -> c)
-      in
-      loop 0 [@nontail]
-    | c -> c)
-[@@mode __ = (local, global)]
+let%template globalize globalize_elt (t : (_ : k) t @ local) =
+  (init [@kind k]) (length t) ~f:(fun i -> globalize_elt (get t i) [@nontail]) [@nontail]
+[@@kind k = (base_or_null, value_or_null mod external64)]
 ;;
 
 let hash_fold_t hash_fold_elt state t =
@@ -531,10 +541,11 @@ let hash_fold_t hash_fold_elt state t =
 
 (* sexp serialization is copied from that of [array] in [Sexplib0] *)
 
-let t_of_sexp elt_of_sexp sexp =
+let%template t_of_sexp elt_of_sexp sexp : (_ : k) t =
   match (sexp : Sexp.t) with
   | Atom _ -> Sexplib0.Sexp_conv.of_sexp_error "iarray_of_sexp: list expected" sexp
-  | List sexps -> of_list_map ~f:elt_of_sexp sexps
+  | List sexps -> (of_list_map [@kind value_or_null k]) ~f:elt_of_sexp sexps
+[@@kind k = (base_or_null, value_or_null mod external64)]
 ;;
 
 let t_sexp_grammar (a_sexp_grammar : 'a Sexplib0.Sexp_grammar.t)
@@ -557,10 +568,11 @@ let iteri t ~(local_ f : _ -> _ @ m -> _) =
 let iter t ~f = (iteri [@mode m]) t ~f:(fun _ x -> f x) [@nontail]]
 
 [%%template
-[@@@kind.default ka = value, kacc = base_or_null]
+[@@@kind.default ka = value_or_null, kacc = base_or_null]
+[@@@kind ka' = ka mod separable]
 [@@@mode.default mi = (global, local), mo = (global, local)]
 
-let foldi (type (a : ka) (acc : kacc)) (t : a t) ~(init : acc) ~(local_ f) : acc =
+let foldi (type (a : ka') (acc : kacc)) (t : a t) ~(init : acc) ~(local_ f) : acc =
   let n = length t in
   (let rec local_ loop pos acc =
      if [@exclave_if_local mo ~reasons:[ May_return_local ]] pos = n
@@ -579,7 +591,7 @@ let fold t ~init ~f =
   [@nontail] [@exclave_if_local mo ~reasons:[ May_return_local ]]
 ;;
 
-let fold_right (type (a : ka) (acc : kacc)) (t : a t) ~(init : acc) ~f =
+let fold_right (type (a : ka') (acc : kacc)) (t : a t) ~(init : acc) ~f =
   (let rec local_ loop pos acc =
      let pos = pos - 1 in
      if [@exclave_if_local mo ~reasons:[ May_return_local ]] pos < 0
@@ -627,15 +639,6 @@ let%template find_mapi t ~f =
    loop 0 [@nontail])
   [@exclave_if_local mo ~reasons:[ May_return_local ]]
 [@@mode mi = (global, local), mo = (global, local)]
-;;
-
-let%template findi t ~f =
-  (find_mapi [@mode m m]) t ~f:(fun i x ->
-    if [@exclave_if_local m ~reasons:[ May_return_regional; Will_return_unboxed ]] f i x
-    then Some (i, x)
-    else None)
-  [@nontail] [@exclave_if_local m ~reasons:[ May_return_local ]]
-[@@mode m = (global, local)]
 ;;
 
 [%%template
@@ -708,7 +711,12 @@ let for_all t ~f = (for_alli [@mode m]) t ~f:(fun _ x -> f x) [@nontail]
 let count t ~f = (counti [@mode m]) t ~f:(fun _ x -> f x) [@nontail]]
 
 [%%template
-  let sum (type a) (module M : Container.Summable with type t = a[@mode mo]) t ~f =
+  let sum
+    (type a : value_or_null)
+    (module M : Container.Summable with type t = a[@mode mo])
+    t
+    ~f
+    =
     (fold [@mode mi mo]) t ~init:M.zero ~f:(fun acc x ->
       M.( + ) acc (f x) [@exclave_if_local mo ~reasons:[ May_return_local ]])
     [@nontail] [@exclave_if_local mo ~reasons:[ May_return_local ]]
@@ -728,14 +736,58 @@ let%template find_map t ~f =
 [%%template
 [@@@mode.default m = (global, local)]
 
+let[@inline always] findi_internal t ~(f @ local) ~if_found ~if_not_found =
+  (let length = length t in
+   let rec loop i =
+     (if i < length
+      then (
+        let x = unsafe_get t i in
+        if (f [@inlined hint]) i x then (if_found [@inlined]) ~i ~value:x else loop (i + 1))
+      else (if_not_found [@inlined]) ())
+     [@exclave_if_local m ~reasons:[ May_return_regional ]]
+   in
+   (loop [@inlined]) 0 [@nontail])
+  [@exclave_if_local m ~reasons:[ May_return_regional ]]
+;;
+
+let findi t ~f =
+  (findi_internal [@mode m] [@inlined])
+    t
+    ~f
+    ~if_found:(fun ~i ~value ->
+      Some (i, value)
+      [@exclave_if_local m ~reasons:[ May_return_regional; Will_return_unboxed ]])
+    ~if_not_found:(fun () -> None)
+  [@nontail] [@exclave_if_local m ~reasons:[ May_return_regional ]]
+;;
+
 let find t ~f =
-  (find_map [@mode m m]) t ~f:(fun x ->
-    match[@exclave_if_local m ~reasons:[ May_return_regional; Will_return_unboxed ]]
-      f x
-    with
-    | true -> Some x
-    | false -> None)
-  [@nontail] [@exclave_if_local m ~reasons:[ May_return_local ]]
+  (findi_internal [@mode m] [@inlined])
+    t
+    ~f:(fun _ x -> f x)
+    ~if_found:(fun ~i:_ ~value ->
+      Some value
+      [@exclave_if_local m ~reasons:[ May_return_regional; Will_return_unboxed ]])
+    ~if_not_found:(fun () -> None)
+  [@nontail] [@exclave_if_local m ~reasons:[ May_return_regional ]]
+;;
+
+let find_or_null t ~f =
+  (findi_internal [@mode m] [@inlined])
+    t
+    ~f:(fun _ x -> f x)
+    ~if_found:(fun ~i:_ ~value -> This value)
+    ~if_not_found:(fun () -> Null)
+  [@nontail] [@exclave_if_local m ~reasons:[ May_return_regional ]]
+;;
+
+let findi_or_null t ~f =
+  (findi_internal [@mode m] [@inlined])
+    t
+    ~f
+    ~if_found:(fun ~i ~value -> This (i, value) [@exclave_if_local m])
+    ~if_not_found:(fun () -> Null)
+  [@nontail] [@exclave_if_local m ~reasons:[ May_return_regional ]]
 ;;
 
 let[@inline] best_elt t ~first_is_better_than_second =
@@ -770,9 +822,36 @@ let max_elt t ~compare =
   [@exclave_if_local m ~reasons:[ May_return_regional; Will_return_unboxed ]]
 ;;]
 
+[%%template
+[@@@mode.default
+  li = (global, local), lo = (global, local), u = (unique, aliased), o = (many, once)]
+
+let find_mapi_or_null t ~f =
+  let n = length t in
+  (let rec local_ loop pos =
+     if [@exclave_if_local lo ~reasons:[ May_return_local ]] pos = n
+     then Null
+     else (
+       match f pos (unsafe_get t pos) with
+       | This _ as this -> this
+       | Null -> loop (pos + 1))
+   in
+   loop 0 [@nontail])
+  [@exclave_if_local lo ~reasons:[ May_return_local ]]
+;;
+
+let find_map_or_null t ~f =
+  (find_mapi_or_null [@mode li lo o u]) t ~f:(fun _ x -> f x [@exclave_if_local lo])
+  [@nontail] [@exclave_if_local lo ~reasons:[ May_return_local ]]
+;;]
+
 let%template[@alloc heap] to_list = I.to_list
 let%template[@alloc stack] to_list = I.to_list_local
-let to_array = I.to_array
+
+let%template to_array arr =
+  (Array.copy [@kind k]) (unsafe_to_array__promise_no_mutation arr)
+[@@kind k = (base_or_null, value_or_null mod external64)]
+;;
 
 (** Invariants *)
 
@@ -863,13 +942,99 @@ let%template mapi t ~f = I.mapi_local_input t ~f [@@mode local] [@@alloc heap]
 let%template mapi t ~f = exclave_ I.mapi_local t ~f [@@mode local] [@@alloc stack]
 let%template mapi t ~f = exclave_ I.mapi_local_output t ~f [@@mode global] [@@alloc stack]
 
-let%template map t ~f = init (length t) ~f:(fun i -> f (unsafe_get t i)) [@nontail]
-[@@mode global] [@@alloc heap]
+include struct
+  (* These functions are copied from stdlib_iarray_labels.ml in basement because we cannot
+     use ppx_template in that library. *)
+  open struct
+    (* VERY UNSAFE: Any of these functions can be used to violate the "no forward
+       pointers" restriction for the local stack if not used carefully. Each of these can
+       either make a local mutable array or mutate its contents, and if not careful, this
+       can lead to an array's contents pointing forwards. *)
+
+    external create_local
+      : ('a : any mod separable).
+      len:int -> 'a @ local -> 'a array @ local
+      @@ portable
+      = "%makearray_dynamic"
+    [@@layout_poly]
+
+    external unsafe_of_local_array
+      : ('a : any mod separable).
+      local_ 'a array -> local_ 'a iarray
+      @@ portable
+      = "%array_to_iarray"
+    [@@layout_poly]
+
+    external unsafe_set_local
+      : ('a : any mod separable).
+      local_ 'a array -> int -> local_ 'a -> unit
+      @@ portable
+      = "%array_unsafe_set"
+    [@@layout_poly]
+  end
+
+  let%template[@inline always] unsafe_init
+    (type a : k mod separable)
+    l
+    (local_ (f : int -> local_ a))
+    = exclave_
+    if l = 0
+    then unsafe_of_local_array [||]
+    else (
+      (* The design of this function is exceedingly delicate, and is the only way we can
+         correctly allocate a local array on the stack via mutation. We are subject to the
+         "no forward pointers" constraint on the local stack; we're not allowed to make
+         pointers to later-allocated objects even within the same stack frame. Thus, in
+         order to get this right, we consume O(n) call-stack space: we allocate the values
+         to put in the array, and only *then* recurse, creating the array as the very last
+         thing of all and *returning* it. This is why the [f i] call is the first thing in
+         the function, and why it's not tail-recursive; if it were tail-recursive, then we
+         wouldn't have anywhere to put the array elements during the whole process. *)
+      let rec go i = exclave_
+        let x = f i in
+        if i = l - 1
+        then create_local ~len:l x
+        else (
+          let res = go (i + 1) in
+          unsafe_set_local res i x;
+          res)
+      in
+      unsafe_of_local_array (go 0))
+  [@@kind k = (value_or_null, float64)] [@@alloc stack]
+  ;;
+end
+
+let%template map
+  (type (a : ki mod separable) (b : ko mod separable))
+  (t : a t @ mi)
+  ~(f : (a @ mi -> b @ local) @ local)
+  = exclave_
+  (unsafe_init [@kind ko] [@alloc stack]) (length t) (fun i -> exclave_
+    f (unsafe_get t i))
+[@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+[@@mode mi = (global, local)]
+[@@alloc stack]
 ;;
 
-let%template map t ~f = I.map_local_input t ~f [@@mode local] [@@alloc heap]
-let%template map t ~f = exclave_ I.map_local t ~f [@@mode local] [@@alloc stack]
-let%template map t ~f = exclave_ I.map_local_output t ~f [@@mode global] [@@alloc stack]
+let%template map
+  (type (a : ki mod separable) (b : ko mod separable))
+  (t : a t @ m)
+  ~(f @ local)
+  : b t
+  =
+  let l = length t in
+  if l = 0
+  then I.unsafe_of_array [||]
+  else (
+    let r = Array.create ~len:l (f (unsafe_get t 0)) in
+    for i = 1 to l - 1 do
+      Array.unsafe_set r i (f (unsafe_get t i))
+    done;
+    I.unsafe_of_array r)
+[@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+[@@mode m = (global, local)]
+[@@alloc heap]
+;;
 
 let%template[@alloc heap] filteri t ~f =
   let len = length t in
@@ -1179,11 +1344,22 @@ let is_sorted_strictly t ~compare =
   Array.is_sorted_strictly ~compare (unsafe_to_array__promise_no_mutation t)
 ;;
 
+let find_a_dup t ~compare =
+  let sorted = sort t ~compare in
+  find_mapi sorted ~f:(fun i cur ->
+    match i with
+    | 0 -> None
+    | _ ->
+      let prev = unsafe_get sorted (i - 1) in
+      Option.some_if (compare prev cur = 0) prev)
+  [@nontail]
+;;
+
 module%template Local = struct
   include Local0
 
   [%%template
-  [@@@kind.default ka = value, kacc = base_or_null]
+  [@@@kind.default ka = value_or_null, kacc = base_or_null]
 
   let fold = (fold [@kind ka kacc] [@mode local local])
   let foldi = (foldi [@kind ka kacc] [@mode local local])
@@ -1292,6 +1468,12 @@ module Unique = struct
     *)
     Obj.magic_unique (zip_exn t1 t2)
   ;;
+
+  external of_array
+    :  ('a array[@local_opt]) @ unique
+    -> ('a global t[@local_opt]) @ unique
+    @@ portable
+    = "%array_to_iarray"
 end
 
 (** Binary search *)

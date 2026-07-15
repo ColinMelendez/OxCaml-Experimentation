@@ -2,7 +2,10 @@ open! Core
 open! Import
 
 module Elem : sig
-  val keyed : compare:('a -> 'a -> int) -> 'a Type_equal.Id.t -> ('a -> Keyed.t) Staged.t
+  val keyed
+    :  comparator:('a, _) Comparator.Module.t
+    -> 'a Var_id.t
+    -> ('a -> Keyed.t) Staged.t
 
   (** We only have path nodes for places in the computation graph that could introduce a
       branch. *)

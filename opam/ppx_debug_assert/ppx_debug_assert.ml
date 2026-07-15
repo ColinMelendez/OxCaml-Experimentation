@@ -38,6 +38,30 @@ let register_assert_debug =
        expand
 ;;
 
+let register_debug_module =
+  Context_free.Rule.extension
+  @@ Extension.declare
+       "debug_assert.debug"
+       Extension.Context.structure_item
+       Ast_pattern.(pstr __)
+       (fun ~loc ~path:_ str ->
+         let loc = { loc with loc_ghost = true } in
+         match str with
+         | [%str module _ = [%m? pmb_expr]] ->
+           [%stri
+             let () =
+               if [%e !is_debug_condition ~loc]
+               then
+                 let module _ = [%m pmb_expr] in
+                 ()
+             ;;]
+         | _ ->
+           Location.raise_errorf
+             ~loc
+             "[%%debug] as a structure item may only be used as [module%%debug _ = \
+              struct ... end]")
+;;
+
 (* This cookie can be used to inject a different condition for testing *)
 let () =
   Driver.Cookies.add_simple_handler
@@ -50,4 +74,8 @@ let () =
         := fun ~loc -> Ast_builder.Default.(Located.mk ~loc x |> pexp_ident ~loc))
 ;;
 
-let () = Driver.register_transformation "debug_assert" ~rules:[ register_assert_debug ]
+let () =
+  Driver.register_transformation
+    "debug_assert"
+    ~rules:[ register_assert_debug; register_debug_module ]
+;;

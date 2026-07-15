@@ -3,4 +3,5 @@
  (public_name bonsai_concrete.metrics_histogram_buckets)
  (libraries core)
  (preprocess
-  (pps ppx_jane -require-template-extension)))
+  (pps ppx_jane -compare-require-explicit-locality
+    -require-template-extension)))

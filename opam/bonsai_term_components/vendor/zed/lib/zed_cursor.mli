@@ -1,11 +1,11 @@
 (*
-   * zed_cursor.mli
+ * zed_cursor.mli
  * --------------
  * Copyright : (c) 2011, Jeremie Dimino <jeremie@dimino.org>
  * Licence   : BSD3
  *
  * This file is a part of Zed, an editor engine.
-*)
+ *)
 
 (** Cursors *)
 

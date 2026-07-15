@@ -6,18 +6,18 @@
 open! Import
 
 (*_ {v
-  (***********************************************************************
-   *
-   *                           Objective Caml
-   *
-   *             Damien Doligez, projet Para, INRIA Rocquencourt
-   *
-   *  Copyright 1996 Institut National de Recherche en Informatique et
-   *  en Automatique.  All rights reserved.  This file is distributed
-   *  under the terms of the GNU Library General Public License, with
-   *  the special exception on linking described in file ../LICENSE.
-   *
-   ***********************************************************************)
+  (***********************************************************************)
+  (*                                                                     *)
+  (*                           Objective Caml                            *)
+  (*                                                                     *)
+  (*             Damien Doligez, projet Para, INRIA Rocquencourt         *)
+  (*                                                                     *)
+  (*  Copyright 1996 Institut National de Recherche en Informatique et   *)
+  (*  en Automatique.  All rights reserved.  This file is distributed    *)
+  (*  under the terms of the GNU Library General Public License, with    *)
+  (*  the special exception on linking described in file ../LICENSE.     *)
+  (*                                                                     *)
+  (***********************************************************************)
 
   (* $Id: gc.mli,v 1.42 2005-10-25 18:34:07 doligez Exp $ *)
     v} *)
@@ -463,7 +463,7 @@ val allocated_bytes : unit -> float
 (** [keep_alive a] ensures that [a] is live at the point where [keep_alive a] is called.
     It is like [ignore a], except that the compiler won't be able to simplify it and
     potentially collect [a] too soon. *)
-val keep_alive : _ -> unit
+val keep_alive : _ @ contended -> unit
 
 (** The policy used for allocating in the heap.
 
@@ -527,7 +527,8 @@ module (For_testing @@ nonportable) : sig
   [%%template:
   [@@@kind.default k = base_or_null]
 
-  (** [measure_allocation f] measures the words allocated by running [f ()] *)
+  (** [measure_allocation f] measures the words allocated by running [f ()] using GC
+      counters. *)
   val measure_allocation
     : ('a : k).
     (unit -> 'a) @ local once -> #('a * Allocation_report.t)
@@ -537,11 +538,15 @@ module (For_testing @@ nonportable) : sig
     : ('a : k).
     (unit -> 'a @ local) @ local once -> #('a * Allocation_report.t) @ local
 
-  (** [measure_and_log_allocation f] logs each allocation that [f ()] performs, as well as
-      reporting the total. (This can be slow if [f] allocates heavily).
+  (** [measure_and_log_allocation f] uses memprof to log each allocation that [f ()]
+      performs, as well as reporting the total. (This can be slow if [f] allocates
+      heavily).
 
-      This function is only supported since OCaml 4.11. On prior versions, the function
-      always returns an empty log. *)
+      Notes:
+      - This function is only supported since OCaml 4.11. On prior versions, the function
+        always returns an empty log.
+      - Because this uses memprof and [measure_allocation] uses GC counters, this also
+        tracks custom off-heap memory, like allocation of bigstrings. *)
   val measure_and_log_allocation
     : ('a : k).
     (unit -> 'a) @ local once -> #('a * Allocation_report.t * Allocation_log.t list)
@@ -659,10 +664,12 @@ module (Expert @@ nonportable) : sig
 
         You don't need to use this function if you use [add_finalizer] from this module.
         It's only exposed for the case when you want to use [Stdlib.Gc.finalise] directly. *)
-    val protect_finalizer
-      :  'a Heap_block.t
-      -> ('a Heap_block.t -> unit)
-      -> ('a Heap_block.t -> unit)
+    val%template protect_finalizer
+      :  'a Heap_block.t @ p
+      -> ('a Heap_block.t @ c p -> unit) @ p
+      -> ('a Heap_block.t @ c p -> unit) @ p
+      @@ portable
+    [@@mode (p, c) = ((nonportable, uncontended), (portable, contended))]
   end
 
   (** The runtime essentially maintains a bool ref:
@@ -688,7 +695,7 @@ module (Expert @@ nonportable) : sig
 
   (** A GC alarm calls a user function at the end of each major GC cycle. *)
   module Alarm : sig
-    type t [@@deriving sexp_of]
+    type t [@@deriving sexp_of ~portable]
 
     (** [create f] arranges for [f] to be called at the end of each major GC cycle,
         starting with the current cycle or the next one. [f] can be called in any thread,
@@ -698,9 +705,14 @@ module (Expert @@ nonportable) : sig
         reason about. *)
     val create : (unit -> unit) -> t
 
+    (** [create_portable f] is like {!create}, but is safe to call in portable contexts.
+        To avoid non-thread-safe [at_exit] functions being called, [f] is wrapped in
+        [Exn.handle_uncaught_and_exit_immediately]. *)
+    val create_portable : (unit -> unit) @ portable -> t @@ portable
+
     (** [delete t] will stop the calls to the function associated to [t]. Calling
         [delete t] again has no effect. *)
-    val delete : t -> unit
+    val delete : t -> unit @@ portable
   end
 end
 

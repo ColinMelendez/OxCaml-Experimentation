@@ -56,6 +56,12 @@ let copy = copy
 let globalize = globalize
 let unsafe_globalize_shared = unsafe_globalize_shared
 
+external unique_implies_uncontended
+  :  t @ contended unique
+  -> t @ unique
+  @@ portable
+  = "%identity"
+
 let%expect_test "copy" =
   assert (phys_equal copy globalize);
   let equal a b = String.equal (to_string a) (to_string b) in
@@ -80,8 +86,8 @@ let%expect_test "basic unsafe_blits" =
 ;;
 
 let to_bytes = to_bytes
-let to_string = to_string
-let sexp_of_t = sexp_of_t
+let%template[@alloc a = (heap, stack)] to_string = (to_string [@alloc a])
+let%template[@alloc a = (heap, stack)] sexp_of_t = (sexp_of_t [@alloc a])
 let of_string = of_string
 let of_bytes = of_bytes
 let t_of_sexp = t_of_sexp

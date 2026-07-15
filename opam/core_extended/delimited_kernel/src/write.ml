@@ -127,36 +127,76 @@ module Expert = struct
     quote_blit_loop ~quote ~src ~dst ~src_pos ~dst_pos (src_pos + len)
   ;;
 
-  (** Find the length of a quoted field... *)
-  let rec quote_len_loop ~quote ~sep ~pos ~end_pos ~should_escape s acc =
-    if pos = end_pos
-    then if should_escape then Some acc else None
-    else (
-      match s.[pos] with
-      | c when Char.equal c quote ->
-        quote_len_loop s ~quote ~sep ~pos:(pos + 1) ~end_pos ~should_escape:true (acc + 1)
-      | c when Char.equal c sep ->
-        quote_len_loop s ~quote ~sep ~pos:(pos + 1) ~end_pos ~should_escape:true acc
-      | '\n' ->
-        quote_len_loop s ~quote ~sep ~pos:(pos + 1) ~end_pos ~should_escape:true acc
-      | _ -> quote_len_loop s ~quote ~sep ~pos:(pos + 1) ~end_pos ~should_escape acc)
-  ;;
+  open! Unboxed
+
+  module String = struct
+    include String
+
+    (*= JS-only:
+    *)
+
+    (* i64 is the best type we have to store char--it won't tag. We don't have a usable
+       char# yet.
+
+       We can't yet _index_ string by i64.
+    *)
+    let[@inline] unsafe_get__i64 s pos = unsafe_get s pos |> Char.to_int |> I64.of_int
+  end
 
   let quote_len ~quote ~sep ~pos ~len s =
     if len = 0
     then None
     else (
-      let trailling_ws =
-        Char.is_whitespace s.[pos] || Char.is_whitespace s.[pos + len - 1]
+      let trailing_ws =
+        let open I64.O in
+        (* optimized is_whitespace: bitmask the position of whitespace chars in an i64 and
+           shift to it (checking for out of range.) *)
+        let mask =
+          let c c = #1L lsl Char.to_int c in
+          c ' ' lor c '\n' lor c '\t' lor c '\011' lor c '\012' lor c '\r'
+        in
+        let zero = Sys.opaque_identity #0L in
+        let[@inline] check c =
+          I64.select (c < #64L) ((mask lsr I64.to_int_trunc c) land #1L) zero
+        in
+        let c1 = String.unsafe_get__i64 s pos in
+        let c2 = String.unsafe_get__i64 s Int.O.(pos + len - 1) in
+        check c1 lor check c2
       in
-      quote_len_loop
-        s
-        ~quote
-        ~sep
-        ~pos
-        ~end_pos:(len + pos)
-        ~should_escape:trailling_ws
-        len)
+      (* Work in unboxed i64 (best type we have that doesn't do a lot of tagging) *)
+      let quote = Char.to_int quote |> I64.of_int in
+      let sep = Char.to_int sep |> I64.of_int in
+      let newline = Char.to_int '\n' |> I64.of_int in
+      let open I64.O in
+      let open I64.Ref.O in
+      (* we repeatedly (conditionally) move out of registers; this [opaque_identity]
+         prevents constant propagation which just means re-loading into a register
+         repeatedly. *)
+      let one = #1L |> Sys.opaque_identity in
+      let zero = #0L |> Sys.opaque_identity in
+      (* no let mutable in upstream-compatible sigh *)
+      let quote_count = ref zero in
+      let should_escape = trailing_ws |> ref in
+      (* I'd index this loop by i64, but you can't do anything efficient with accessing
+         strings yet. *)
+      let end_pos = Int.O.(pos + len) in
+      let rec loop pos =
+        let c = String.unsafe_get__i64 s pos in
+        let pos = Int.O.(pos + 1) in
+        should_escape := I64.select (c = sep) one !should_escape;
+        should_escape := I64.select (c = newline) one !should_escape;
+        quote_count += I64.select (c = quote) one zero;
+        if Int.O.(pos < end_pos) then loop pos else ()
+      in
+      loop pos;
+      let quote_count = !quote_count in
+      let should_escape = !should_escape in
+      match quote_count lor should_escape = #0L with
+      | true -> None
+      | false ->
+        let quote_count = I64.to_int_trunc quote_count in
+        let quoted_len = Int.O.(quote_count + len) in
+        Some quoted_len)
   ;;
 
   (** Tables *)

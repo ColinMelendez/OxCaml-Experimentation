@@ -1,0 +1,6 @@
+(library
+ (name xclip)
+ (public_name bonsai_term_components.xclip)
+ (libraries async core)
+ (preprocess
+  (pps ppx_jane)))

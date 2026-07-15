@@ -4,10 +4,8 @@ open Perms.Export
 module Array = Base.Array
 module Core_sequence = Sequence
 
-[@@@warning "-incompatible-with-upstream"]
-
 [%%template
-[@@@kind_set.define base_with_ext = (base, value mod external64)]
+[@@@kind_set.define base_or_null_with_ext = (base_or_null, value_or_null mod external64)]
 
 include (
   Base.Array :
@@ -207,7 +205,11 @@ module type Permissioned = sig @@ portable
   val create_float_uninitialized : len:int -> (float, [< _ perms ]) t
 
   [%%template:
-    external create : len:int -> 'a -> ('a, [< 'perm perms ]) t @ m = "%makearray_dynamic"
+    external create
+      :  len:int
+      -> 'a
+      -> ('a, [< 'perm perms ]) t @ m unique
+      = "%makearray_dynamic"
     [@@ocaml.doc
       {| [create ~len x] creates an array of length [len] with the value [x] populated in
         each element. |}]
@@ -216,7 +218,7 @@ module type Permissioned = sig @@ portable
   external create_local
     :  len:int
     -> 'a
-    -> local_ ('a, [< 'perm perms ]) t
+    -> ('a, [< 'perm perms ]) t @ local unique
     = "%makearray_dynamic"
   [@@ocaml.doc
     {| [create_local ~len x] is like [create]. It allocates the array on the local stack.
@@ -254,13 +256,7 @@ module type Permissioned = sig @@ portable
   val copy : local_ ('a, [> read ]) t -> ('a, [< _ perms ]) t
   val fill : local_ ('a, [> write ]) t -> pos:int -> len:int -> 'a -> unit
   val of_list : 'a list -> ('a, [< _ perms ]) t
-
-  [@@@warning "-incompatible-with-upstream"]
-
-  val%template map
-    : ('a : ki) ('b : ko) 'p.
-    ('a, [> read ]) t -> f:local_ ('a -> 'b) -> ('b, [< 'p perms ]) t
-  [@@kind ki = (value, value mod external64), ko = (value, value mod external64)]
+  val map : ('a, [> read ]) t -> f:local_ ('a -> 'b) -> ('b, [< _ perms ]) t
 
   val folding_map
     :  ('a, [> read ]) t
@@ -630,13 +626,18 @@ end = struct
       = "%array_safe_set"
 
     [%%template
-      external create : len:int -> 'a -> 'a t @ m @@ portable = "%makearray_dynamic"
+      external create
+        :  len:int
+        -> 'a
+        -> 'a t @ m unique
+        @@ portable
+        = "%makearray_dynamic"
       [@@alloc __ @ m = (heap_global, stack_local)]]
 
     external create_local
       :  len:int
       -> 'a
-      -> local_ 'a t
+      -> 'a t @ local unique
       @@ portable
       = "%makearray_dynamic"
 
@@ -662,18 +663,24 @@ module type S = sig @@ portable
   [@@kind k = base_non_value]
   [@@deriving compare ~localize, equal ~localize, sexp ~stackify, globalize]
 
-  type ('a : k) t [@@kind k = value mod external64]
+  type ('a : k mod separable) t [@@kind k = value_or_null mod external64]
 
   include Binary_searchable.S1 with type 'a t := 'a t
-  include Indexed_container.S1_with_creators with type 'a t := 'a t
 
   include%template
     Indexed_container.S1_with_creators
-  [@kind_set.explicit base_with_ext]
-  [@with: type ('a : any) t := 'a t [@@kind base_with_ext]]
+  [@kind_set.explicit base_or_null_with_ext]
+  [@with: type ('a : any) t := 'a t [@@kind base_or_null_with_ext]]
 
-  val%template map : ('a : ki) ('b : ko). 'a t -> f:local_ ('a -> 'b) -> 'b t
-  [@@kind ki = base_with_ext, ko = base_with_ext]
+  include
+    Indexed_container.S1_with_creators
+    [@kind_set.explicit value_or_null]
+    with type ('a : value_or_null mod separable) t := 'a t
+
+  val%template map
+    : ('a : ki mod separable) ('b : ko mod separable).
+    'a t -> f:local_ ('a -> 'b) -> 'b t
+  [@@kind ki = base_or_null_with_ext, ko = base_or_null_with_ext]
 
   external length
     : ('a : any mod separable) 'perms.
@@ -715,7 +722,7 @@ module type S = sig @@ portable
   [%%template:
     external create
       : ('a : any mod separable).
-      len:int -> 'a -> 'a t @ m
+      len:int -> 'a -> 'a t @ m unique
       = "%makearray_dynamic"
     [@@ocaml.doc
       {| [create ~len x] creates an array of length [len] with the value [x] populated in
@@ -725,7 +732,7 @@ module type S = sig @@ portable
 
   external create_local
     : ('a : any mod separable).
-    len:int -> 'a -> local_ 'a t
+    len:int -> 'a -> 'a t @ local unique
     = "%makearray_dynamic"
   [@@ocaml.doc
     {| [create_local ~len x] is like [create]. It allocates the array on the local stack.
@@ -760,121 +767,126 @@ module type S = sig @@ portable
 
   val make_matrix : dimx:int -> dimy:int -> 'a -> 'a t t
   val copy_matrix : local_ 'a t t -> 'a t t
-  val append : 'a t -> 'a t -> 'a t
 
   [%%template:
-  [@@@kind.default k = base_with_ext]
+  [@@@kind.default k' = base_or_null_with_ext]
+  [@@@kind k = k' mod separable]
 
   val concat : ('a : k). local_ 'a t list -> 'a t
   val copy : ('a : k). local_ 'a t -> 'a t
   val fill : ('a : k). local_ 'a t -> pos:int -> len:int -> 'a -> unit]
 
-  include Blit.S1 with type 'a t := 'a t
+  include
+    Blit.S1 [@kind.explicit value_or_null mod separable] with type ('a : any) t := 'a t
 
-  val%template unsafe_blit : ('a : k). ('a array, 'a array) Blit.blit
-  [@@kind k = (base_non_value, value mod external64)]
+  val%template unsafe_blit : ('a : k mod separable). ('a array, 'a array) Blit.blit
+  [@@kind k = base_or_null_with_ext]
 
-  val%template sub : ('a : k). ('a array, 'a array) Blit.sub
-  [@@kind k = (base_non_value, value mod external64)]
+  val%template sub : ('a : k mod separable). ('a array, 'a array) Blit.sub
+  [@@kind k = base_or_null_with_ext]
 
-  val of_list : 'a list -> 'a t
-  val map : 'a t -> f:local_ ('a -> 'b) -> 'b t
-  val folding_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'b t
-  val fold_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
-  val mapi : 'a t -> f:local_ (int -> 'a -> 'b) -> 'b t
-  val iteri : 'a t -> f:local_ (int -> 'a -> unit) -> unit
-  val foldi : 'a t -> init:'b -> f:local_ (int -> 'b -> 'a -> 'b) -> 'b
+  include sig
+    [@@@implicit_kind: ('a : value_or_null mod separable)]
 
-  val%template foldi_right
-    :  'a t @ local
-    -> init:'acc @ m
-    -> f:(int -> 'a -> 'acc @ m -> 'acc @ m)
-    -> 'acc @ m
-  [@@alloc a @ m = (stack_local, heap_global)]
+    val folding_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'b t
+    val fold_map : 'a t -> init:'acc -> f:local_ ('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
 
-  val folding_mapi
-    :  'a t
-    -> init:'acc
-    -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
-    -> 'b t
+    val%template foldi_right
+      :  'a t @ local
+      -> init:'acc @ m
+      -> f:(int -> 'a -> 'acc @ m -> 'acc @ m)
+      -> 'acc @ m
+    [@@alloc a @ m = (stack_local, heap_global)]
 
-  val fold_mapi
-    :  'a t
-    -> init:'acc
-    -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
-    -> 'acc * 'b t
+    val folding_mapi
+      :  'a t
+      -> init:'acc
+      -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
+      -> 'b t
 
-  val%template fold_right
-    :  'a t @ m
-    -> f:local_ ('a @ m -> 'acc -> 'acc)
-    -> init:'acc
-    -> 'acc
-  [@@mode m = (uncontended, shared)]
+    val fold_mapi
+      :  'a t
+      -> init:'acc
+      -> f:local_ (int -> 'acc -> 'a -> 'acc * 'b)
+      -> 'acc * 'b t
 
-  val sort
-    :  ?pos:int
-    -> ?len:int
-    -> local_ 'a t
-    -> compare:local_ ('a -> 'a -> int)
-    -> unit
+    val%template fold_right
+      :  'a t @ m
+      -> f:local_ ('a @ m -> 'acc -> 'acc)
+      -> init:'acc
+      -> 'acc
+    [@@mode m = (uncontended, shared)]
+  end
+
+  val%template sort
+    : ('a : k mod separable).
+    ?pos:int -> ?len:int -> local_ 'a t -> compare:local_ ('a -> 'a -> int) -> unit
+  [@@kind k = base_or_null_with_ext]
 
   val stable_sort : 'a t -> compare:('a -> 'a -> int) -> unit
-  val is_sorted : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
-  val is_sorted_strictly : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
-  val merge : 'a t -> 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
-  val concat_map : 'a t -> f:local_ ('a -> 'b t) -> 'b t
-  val concat_mapi : 'a t -> f:local_ (int -> 'a -> 'b t) -> 'b t
-  val partition_tf : 'a t -> f:local_ ('a -> bool) -> 'a t * 'a t
-  val partitioni_tf : 'a t -> f:local_ (int -> 'a -> bool) -> 'a t * 'a t
-  val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
-  val transpose : 'a t t -> 'a t t option
-  val transpose_exn : 'a t t -> 'a t t
+
+  [%%template:
+  [@@@kind.default k = base_or_null_with_ext]
+  [@@@kind k = k mod separable]
+
+  val is_sorted : ('a : k). local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
+
+  val is_sorted_strictly
+    : ('a : k).
+    local_ 'a t -> compare:local_ ('a -> 'a -> int) -> bool
+
+  val merge : ('a : k). 'a t -> 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t]
+
+  include sig
+    [@@@implicit_kind: ('a : value_or_null mod separable)]
+    [@@@implicit_kind: ('b : value_or_null mod separable)]
+
+    val partitioni_tf : 'a t -> f:local_ (int -> 'a -> bool) -> 'a t * 'a t
+    val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
+    val transpose : 'a t t -> 'a t t option
+    val transpose_exn : 'a t t -> 'a t t
+  end
+
   val normalize : 'a t -> int -> int
   val slice : 'a t -> int -> int -> 'a t
   val nget : 'a t -> int -> 'a
   val nset : 'a t -> int -> 'a -> unit
-  val filter_opt : 'a option t -> 'a t
-  val filter_map : 'a t -> f:local_ ('a -> 'b option) -> 'b t
-  val filter_mapi : 'a t -> f:local_ (int -> 'a -> 'b option) -> 'b t
-  val for_alli : 'a t -> f:local_ (int -> 'a -> bool) -> bool
-  val existsi : 'a t -> f:local_ (int -> 'a -> bool) -> bool
-  val counti : 'a t -> f:local_ (int -> 'a -> bool) -> int
-  val iter2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> unit) -> unit
-  val map2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> 'c) -> 'c t
-  val fold2_exn : 'a t -> 'b t -> init:'acc -> f:local_ ('acc -> 'a -> 'b -> 'acc) -> 'acc
+
+  include sig
+    [@@@implicit_kind: ('a : value_or_null mod separable)]
+    [@@@implicit_kind: ('b : value_or_null mod separable)]
+
+    val filter_opt : 'a option t -> 'a t
+    val iter2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> unit) -> unit
+    val map2_exn : 'a t -> 'b t -> f:local_ ('a -> 'b -> 'c) -> 'c t
+
+    val fold2_exn
+      :  'a t
+      -> 'b t
+      -> init:'acc
+      -> f:local_ ('acc -> 'a -> 'b -> 'acc)
+      -> 'acc
+  end
 
   [%%template:
-  [@@@kind.default k1 = base_with_ext]
-
-  [%%template:
-  [@@@kind.default
-    k1 = k1
-    , (k2_for_mangling, k2)
-      = ( (value, value_or_null mod separable)
-        , (bits64, bits64)
-        , (bits32, bits32)
-        , (word, word)
-        , (float64, float64)
-        , (float32, float32)
-        , (value mod external64, value mod external64) )]
+  [@@@kind.default k1' = base_or_null_with_ext, k2' = base_or_null_with_ext]
+  [@@@kind k1 = k1' mod separable, k2 = k2' mod separable]
 
   val of_list_map
-    : ('a : k1) ('b : k2).
-    ('a List.t[@kind k1 or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
+    : ('a : k1') ('b : k2).
+    ('a List.t[@kind k1' or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
 
   val of_list_mapi
-    : ('a : k1) ('b : k2).
-    ('a List.t[@kind k1 or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t]
-
-  [@@@kind.default k2 = base_with_ext]
+    : ('a : k1') ('b : k2).
+    ('a List.t[@kind k1' or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
 
   val of_list_rev_map
-    : ('a : k1) ('b : k2).
-    ('a List.t[@kind k1 or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
+    : ('a : k1') ('b : k2).
+    ('a List.t[@kind k1' or value_or_null]) -> f:local_ ('a -> 'b) -> 'b t
 
   val of_list_rev_mapi
-    : ('a : k1) ('b : k2).
-    ('a List.t[@kind k1 or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
+    : ('a : k1') ('b : k2).
+    ('a List.t[@kind k1' or value_or_null]) -> f:local_ (int -> 'a -> 'b) -> 'b t
 
   [@@@mode.default m = (global, local)]
 
@@ -886,20 +898,21 @@ module type S = sig @@ portable
     : ('a : k1) ('b : k2).
     'a t @ m -> 'b t @ m -> f:('a @ m -> 'b @ m -> bool) @ local -> bool]
 
-  val filter : 'a t -> f:local_ ('a -> bool) -> 'a t
-  val filteri : 'a t -> f:local_ (int -> 'a -> bool) -> 'a t
-  val map_inplace : local_ 'a t -> f:local_ ('a -> 'a) -> unit
+  val map_inplace
+    : ('a : value_or_null mod separable).
+    local_ 'a t -> f:local_ ('a -> 'a) -> unit
 
   [%%template:
-  [@@@kind.default k1 = base_with_ext]
+  [@@@kind.default k1' = base_or_null_with_ext]
+  [@@@kind k1 = k1' mod separable]
 
   val swap : ('a : k1). local_ 'a t -> int -> int -> unit
   val rev_inplace : ('a : k1). local_ 'a t -> unit
   val rev : ('a : k1). 'a t -> 'a t
-  val of_list_rev : ('a : k1). ('a List.t[@kind k1 or value_or_null]) -> 'a t
+  val of_list_rev : ('a : k1). ('a List.t[@kind k1' or value_or_null]) -> 'a t
   val find_exn : ('a : k1). 'a t -> f:local_ ('a -> bool) -> 'a
 
-  [@@@kind.default k2 = base]
+  [@@@kind.default k2 = base_or_null]
 
   val find_map_exn
     : ('a : k1) ('b : k2).
@@ -910,55 +923,59 @@ module type S = sig @@ portable
     'a t -> f:local_ (int -> 'a -> ('b Option.t[@kind k2 or value_or_null])) -> 'b]
 
   [%%template:
-  [@@@kind.default k = (base_non_value, value mod external64)]
-
-  val findi
-    : ('a : k).
-    'a t
-    -> f:local_ (int -> 'a -> bool)
-    -> (#(int * 'a) Option.t[@kind value & (k or value)])
+  [@@@kind.default k' = (base_non_value, value_or_null mod external64)]
+  [@@@kind k = k' mod separable]
 
   val findi_exn : ('a : k). 'a t -> f:local_ (int -> 'a -> bool) -> #(int * 'a)]
 
-  val findi : 'a t -> f:local_ (int -> 'a -> bool) -> (int * 'a) option
-  val findi_exn : 'a t -> f:local_ (int -> 'a -> bool) -> int * 'a
+  val find_or_null : ('a : value). 'a t -> f:local_ ('a -> bool) -> 'a or_null
 
-  val find_consecutive_duplicate
-    :  'a t
-    -> equal:local_ ('a -> 'a -> bool)
-    -> ('a * 'a) option
+  val findi_or_null
+    : ('a : value).
+    'a t -> f:local_ (int -> 'a -> bool) -> (int * 'a) or_null
 
-  val reduce : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a option
-  val reduce_exn : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a
+  include sig
+    [@@@implicit_kind: ('a : value_or_null mod separable)]
 
-  val permute
-    :  ?random_state:Random.State.t
-    -> ?pos:int
-    -> ?len:int
-    -> local_ 'a t
-    -> unit
+    val findi_exn : 'a t -> f:local_ (int -> 'a -> bool) -> int * 'a
 
-  val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
-  val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
-  val zip : 'a t -> 'b t -> ('a * 'b) t option
-  val zip_exn : 'a t -> 'b t -> ('a * 'b) t
-  val unzip : ('a * 'b) t -> 'a t * 'b t
-  val sorted_copy : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
-  val last : 'a t -> 'a
-  val last_exn : 'a t -> 'a
+    val find_consecutive_duplicate
+      :  'a t
+      -> equal:local_ ('a -> 'a -> bool)
+      -> ('a * 'a) option
 
-  val equal
-    : ('a : value_or_null mod separable).
-    ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+    val reduce : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a option
+    val reduce_exn : 'a t -> f:local_ ('a -> 'a -> 'a) -> 'a
 
-  val equal__local
-    : ('a : value_or_null mod separable).
-    (local_ 'a -> local_ 'a -> bool) -> local_ 'a t -> local_ 'a t -> bool
+    val permute
+      :  ?random_state:Random.State.t
+      -> ?pos:int
+      -> ?len:int
+      -> local_ 'a t
+      -> unit
 
-  val to_sequence : 'a t -> 'a Core_sequence.t
-  val to_sequence_mutable : 'a t -> 'a Core_sequence.t
-  val split_n : 'a t -> int -> 'a t * 'a t
-  val chunks_of : 'a t -> length:int -> 'a t t
+    val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
+    val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
+    val zip : 'a t -> 'b t -> ('a * 'b) t option
+    val zip_exn : 'a t -> 'b t -> ('a * 'b) t
+    val unzip : ('a * 'b) t -> 'a t * 'b t
+    val sorted_copy : local_ 'a t -> compare:local_ ('a -> 'a -> int) -> 'a t
+    val last : 'a t -> 'a
+    val last_exn : 'a t -> 'a
+
+    val equal
+      : ('a : value_or_null mod separable).
+      ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+
+    val equal__local
+      : ('a : value_or_null mod separable).
+      (local_ 'a -> local_ 'a -> bool) -> local_ 'a t -> local_ 'a t -> bool
+
+    val to_sequence : 'a t -> 'a Core_sequence.t
+    val to_sequence_mutable : 'a t -> 'a Core_sequence.t
+    val split_n : 'a t -> int -> 'a t * 'a t
+    val chunks_of : 'a t -> length:int -> 'a t t
+  end
 end
 
 include%template (
@@ -966,7 +983,9 @@ include%template (
     S
     [@with:
       type ('a : any mod separable) t := 'a array
-      type ('a : k) t = 'a array [@@kind k = (base_non_value, value mod external64)]])
+
+      type ('a : k mod separable) t = 'a array
+      [@@kind k = (base_non_value, value_or_null mod external64)]])
 [@ocaml.warning "-3"]
 
 let invariant invariant_a t = iter t ~f:invariant_a

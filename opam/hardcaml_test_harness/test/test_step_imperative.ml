@@ -16,18 +16,16 @@ end
 
 let create _scope { I.a; b } = { O.s = Signal.( +: ) a b }
 
-module Bench = Step_harness.Imperative.Make_monadic (I) (O)
+module Bench = Step_harness.Imperative.Make (I) (O)
 
 (* More thorough testing is done in [test_step.ml]; this test is primarily to ensure the
    imperative harness runs correctly. *)
 
-let testbench ~inputs:(i : _ I.t) ~outputs:_ =
-  let open Bench.Step.Let_syntax in
+let testbench h ~inputs:(i : _ I.t) ~outputs:_ =
   let open Bits in
   i.a <--. 4;
   i.b <--. 5;
-  let%bind () = Bench.Step.cycle () in
-  return ()
+  Bench.Step.cycle h
 ;;
 
 let%expect_test "no waves test" =
@@ -49,5 +47,5 @@ let%expect_test "prefix test (with test name and line numbers)" =
     ~create
     testbench;
   [%expect
-    {| Saved waves to /tmp/test_step_imperative_ml_44_hello_world.hardcamlwaveform |}]
+    {| Saved waves to /tmp/test_step_imperative_ml_42_hello_world.hardcamlwaveform |}]
 ;;

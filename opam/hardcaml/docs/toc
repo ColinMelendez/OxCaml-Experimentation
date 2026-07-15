@@ -2,6 +2,7 @@ introduction
     why {path: "../why.mdx"}
     installing_with_opam {path: "../installing_with_opam.mdx"}
     quick_overview {path: "../quick_overview.mdx"}
+    faq {path: "../faq.mdx"}
 designing-circuits
     combinational_logic {path: "../combinational_logic.mdx"}
     rom {path: "../rom.mdx"}
@@ -47,6 +48,7 @@ using-interfaces
     scopes {path:"../scopes.mdx"}
     module_hierarchies {path:"../module_hierarchy.mdx"}
     naming_with_ppx_hardcaml {path:"../ppx_naming.mdx"}
+    variant_interfaces {path:"../variant_interfaces.mdx"}
 examples
     counter {path:"../counter_example.mdx"}
     serial_multiplier {path:"../serial_multiplier_example.mdx"}

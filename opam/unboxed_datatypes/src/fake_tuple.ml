@@ -6,11 +6,9 @@ module%template T2 = struct
     { fst : 'a
     ; snd : 'b
     }
-  [@@deriving equal, compare, globalize]
+  [@@deriving equal ~localize, compare ~localize, globalize]
 
-  let create : ('a : ka) ('b : kb). 'a -> 'b -> (('a, 'b) t[@kind ka kb]) =
-    fun a b -> { fst = a; snd = b }
-  ;;
+  let create a b = { fst = a; snd = b } [@exclave_if_stack a] [@@alloc a = (heap, stack)]
 
   (* manually derive sexp as if the type definition is the following (but it can't
      actually be, because we don't support non-values in tuples): type ('a : ka, 'b : kb)
@@ -46,6 +44,11 @@ module%template T2 = struct
     and res1__015_ = _of_b__011_ arg1__013_ in
     Sexplib0.Sexp.List [ res0__014_; res1__015_ ]
   ;;
+
+  [@@@mode.default m = (global, local)]
+
+  let get1 t = t.fst
+  let get2 t = t.snd
 end
 
 module%template T3 = struct
@@ -58,24 +61,10 @@ module%template T3 = struct
     ; snd : 'b
     ; trd : 'c
     }
-  [@@deriving equal, compare, globalize]
+  [@@deriving equal ~localize, compare ~localize, globalize]
 
-  let create
-    : ('a : ka) ('b : kb) ('c : kc). 'a -> 'b -> 'c -> (('a, 'b, 'c) t[@kind ka kb kc])
-    =
-    fun a b c -> { fst = a; snd = b; trd = c }
-  ;;
-
-  let get1 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'a =
-    fun t -> t.fst
-  ;;
-
-  let get2 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'b =
-    fun t -> t.snd
-  ;;
-
-  let get3 : ('a : ka) ('b : kb) ('c : kc). (('a, 'b, 'c) t[@kind ka kb kc]) -> 'c =
-    fun t -> t.trd
+  let create a b c = { fst = a; snd = b; trd = c } [@exclave_if_stack a]
+  [@@alloc a = (heap, stack)]
   ;;
 
   (* manually derive sexp as if the type definition is the following (but it can't
@@ -119,4 +108,10 @@ module%template T3 = struct
     and res2__096_ = _of_c__090_ arg2__093_ in
     Sexplib0.Sexp.List [ res0__094_; res1__095_; res2__096_ ]
   ;;
+
+  [@@@mode.default m = (global, local)]
+
+  let get1 t = t.fst
+  let get2 t = t.snd
+  let get3 t = t.trd
 end

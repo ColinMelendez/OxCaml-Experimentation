@@ -7,11 +7,8 @@
 
 (rule
  (targets mli.diff-for-review)
+ (alias default)
  (deps ../../command_unix/src/command_unix.mli ./command_nodejs.mli)
  (action
   (bash
     "( %{bin:patdiff-for-review} %{bin:patdiff} ../../command_unix/src/command_unix.mli ./command_nodejs.mli || true ) > %{targets}")))
-
-(alias
- (name default)
- (deps ./mli.diff-for-review))

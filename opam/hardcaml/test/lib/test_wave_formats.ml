@@ -1,7 +1,6 @@
 open Core
 open Hardcaml
 open Hardcaml_waveterm_kernel
-open Hardcaml_waveterm_cyclesim
 open Signal
 
 module%test [@name "Wave formats applied to signals are correctly rendered"] _ = struct
@@ -44,7 +43,7 @@ module%test [@name "Wave formats applied to signals are correctly rendered"] _ =
 
   let%expect_test _ =
     let sim = Sim.create ~config:Cyclesim.Config.trace_all (create (Scope.create ())) in
-    let waves, sim = Waveform.create sim in
+    let waves, sim = Cyclesim.Waveform.create sim in
     let inputs = Cyclesim.inputs sim in
     let open Bits in
     for i = 5 to 11 do
@@ -150,7 +149,7 @@ struct
 
   let%expect_test _ =
     let waves, sim =
-      Waveform.create
+      Cyclesim.Waveform.create
         (Sim.create
            ~config:Cyclesim.Config.trace_all
            (hierarchy
@@ -168,12 +167,12 @@ struct
       │               ││────────────────────────                           │
       │y$a            ││ 5                                                 │
       │               ││────────────────────────                           │
-      │               ││────────┬───────┬───────                           │
-      │n              ││ 01     │00     │01                                │
-      │               ││────────┴───────┴───────                           │
       │               ││────────────────────────                           │
       │z$a            ││ -6                                                │
       │               ││────────────────────────                           │
+      │               ││────────┬───────┬───────                           │
+      │n              ││ 01     │00     │01                                │
+      │               ││────────┴───────┴───────                           │
       │gnd            ││                                                   │
       │               ││────────────────────────                           │
       │               ││────────────────────────                           │

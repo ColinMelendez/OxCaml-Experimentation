@@ -1,7 +1,7 @@
 (** Runtime support for auto-generated comparators. Users are not intended to use this
     module directly. *)
 
-[@@@warning "-incompatible-with-upstream"]
+open Basement.Or_null_shim.Export
 
 module Definitions = struct
   [%%template
@@ -93,9 +93,8 @@ module type Ppx_compare_lib = sig @@ portable
   end
 
   (** Raise when fully applied *)
-  val compare_abstract : type_name:string -> _ compare__local
-
-  val equal_abstract : type_name:string -> _ equal__local
+  val%template compare_abstract : type_name:string -> (_ compare[@mode local])
+  val%template equal_abstract : type_name:string -> (_ equal[@mode local])
 
   module Builtin : sig @@ portable
     [%%template:
@@ -117,6 +116,11 @@ module type Ppx_compare_lib = sig @@ portable
       ('a compare[@mode l]) -> ('a array compare[@mode l])
     [@@kind k = base_or_null]
 
+    val compare_iarray
+      : ('a : k mod separable).
+      ('a compare[@mode l]) -> ('a Basement.Stdlib_iarray_labels.t compare[@mode l])
+    [@@kind k = (base_or_null, value_or_null mod external64)]
+
     val compare_list
       : ('a : value_or_null).
       ('a compare[@mode l]) -> ('a list compare[@mode l])
@@ -124,6 +128,8 @@ module type Ppx_compare_lib = sig @@ portable
     val compare_option
       : ('a : value_or_null).
       ('a compare[@mode l]) -> ('a option compare[@mode l])
+
+    val compare_or_null : ('a compare[@mode l]) -> ('a or_null compare[@mode l])
 
     val compare_ref
       : ('a : value_or_null).
@@ -145,12 +151,28 @@ module type Ppx_compare_lib = sig @@ portable
       ('a equal[@mode l]) -> ('a array equal[@mode l])
     [@@kind k = base_or_null]
 
+    val equal_iarray
+      : ('a : k mod separable).
+      ('a equal[@mode l]) -> ('a Basement.Stdlib_iarray_labels.t equal[@mode l])
+    [@@kind k = (base_or_null, value_or_null mod external64)]
+
     val equal_list : ('a : value_or_null). ('a equal[@mode l]) -> ('a list equal[@mode l])
 
     val equal_option
       : ('a : value_or_null).
       ('a equal[@mode l]) -> ('a option equal[@mode l])
 
-    val equal_ref : ('a : value_or_null). ('a equal[@mode l]) -> ('a ref equal[@mode l])]
+    val equal_ref : ('a : value_or_null). ('a equal[@mode l]) -> ('a ref equal[@mode l])
+
+    (** Unboxed numeric types *)
+
+    val compare_float_u : (float# compare[@mode l]) [@@zero_alloc arity 2]
+    val compare_int32_u : (int32# compare[@mode l]) [@@zero_alloc arity 2]
+    val compare_int64_u : (int64# compare[@mode l]) [@@zero_alloc arity 2]
+    val compare_nativeint_u : (nativeint# compare[@mode l]) [@@zero_alloc arity 2]
+    val equal_float_u : (float# equal[@mode l]) [@@zero_alloc arity 2]
+    val equal_int32_u : (int32# equal[@mode l]) [@@zero_alloc arity 2]
+    val equal_int64_u : (int64# equal[@mode l]) [@@zero_alloc arity 2]
+    val equal_nativeint_u : (nativeint# equal[@mode l]) [@@zero_alloc arity 2]]
   end
 end

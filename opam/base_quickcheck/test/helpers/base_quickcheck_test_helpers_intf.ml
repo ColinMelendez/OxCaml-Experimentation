@@ -40,7 +40,7 @@ module type Base_quickcheck_test_helpers = sig
   (** Tests whether the shrinker can produce smaller versions of any of the example
       values. Prints a cr if the result is inconsistent with the [~mode] argument. *)
   val test_shrinker
-    : ('a : value_or_null).
+    : ('a : value_or_null mod separable).
     ?config:Test.Config.t
     -> ?mode:[ `compound | `atomic ] (** default: [`compound] *)
     -> ?cr:Expect_test_helpers_core.CR.t
@@ -92,6 +92,10 @@ module type Base_quickcheck_test_helpers = sig
   val m_array
     :  (module With_examples with type t = 'a)
     -> (module With_examples with type t = 'a array)
+
+  val m_iarray
+    :  (module With_examples with type t = 'a)
+    -> (module With_examples with type t = 'a iarray)
 
   val m_ref
     :  (module With_examples with type t = 'a)

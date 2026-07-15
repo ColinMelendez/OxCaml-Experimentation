@@ -4,17 +4,24 @@ include Int_intf.Definitions
 include Int0
 
 module T = struct
-  type t = int [@@deriving globalize, hash, sexp ~stackify, sexp_grammar]
+  module T0 = struct
+    type t = int [@@deriving globalize, hash, of_sexp, sexp_grammar]
 
-  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
+    let%template[@alloc a = (heap, stack)] to_string =
+      (Integer_to_string.int_to_string [@alloc a])
+    ;;
+  end
+
+  include T0
+  include Int_string_conversions.Make (T0)
+
   let compare x y = Int_replace_polymorphic_compare.compare x y
+  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
 
   let of_string s =
     try of_string s with
     | _ -> Printf.failwithf "Int.of_string: %S" (globalize_string s) ()
   ;;
-
-  let to_string = to_string
 end
 
 let num_bits = Int_conversions.num_bits_int
@@ -115,9 +122,9 @@ external of_nativeint_trunc
 let pred i = i - 1
 let succ i = i + 1
 let to_int i = i
-let to_int_exn = to_int
+let[@zero_alloc] to_int_exn i = to_int i
 let of_int i = i
-let of_int_exn = of_int
+let[@zero_alloc] of_int_exn i = of_int i
 let max_value = Stdlib.max_int
 let min_value = Stdlib.min_int
 let max_value_30_bits = 0x3FFF_FFFF
@@ -261,7 +268,7 @@ module Pre_O = struct
   external neg : (t[@local_opt]) -> t @@ portable = "%negint"
 
   let zero = zero
-  let of_int_exn = of_int_exn
+  let[@zero_alloc] of_int_exn i = of_int_exn i
 end
 
 module O = struct
@@ -295,6 +302,8 @@ module O = struct
      We won't pre-emptively do the same for new functions, unless someone cares, on a case
      by case fashion. *)
 
+  external unsafe_div : int -> int -> int @@ portable = "%int_unsafe_div"
+
   let ( % ) x y =
     if y <= zero
     then
@@ -314,8 +323,11 @@ module O = struct
         "%s /%% %s in core_int.ml: divisor should be positive"
         (to_string x)
         (to_string y)
-        ();
-    if x < zero then ((x + one) / y) - one else x / y
+        ()
+    else (
+      (* It's safe to use unchecked division here because we already raised if [y <= zero] *)
+      let offset = Bool.to_int (x < zero) in
+      unsafe_div (x + offset) y - offset)
   ;;
 
   let ( // ) x y = to_float x /. to_float y

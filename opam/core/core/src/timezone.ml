@@ -74,7 +74,7 @@ module Zone_cache = struct
     List.sort ~compare:(fun a b -> String.ascending (fst a) (fst b)) (to_alist t)
   ;;
 
-  let find_or_load_matching t zone =
+  let%template find_or_load_matching t zone =
     let file_size filename =
       let c = Stdio.In_channel.create filename in
       let l = Stdio.In_channel.length c in
@@ -87,8 +87,10 @@ module Zone_cache = struct
         let filename = String.concat ~sep:"/" [ t.basedir; zone_name ] in
         let matches =
           try
-            [%compare.equal: int64 option] t1_file_size (Some (file_size filename))
-            && [%compare.equal: Md5.t option]
+            ([%compare.equal: int64 option] [@mode local])
+              t1_file_size
+              (Some (file_size filename))
+            && ([%compare.equal: Md5.t option] [@mode local])
                  (digest zone)
                  Option.(join (map (find_or_load t zone_name) ~f:digest))
           with
@@ -109,7 +111,7 @@ module Zone_cache = struct
     end
 
     include
-      (val let (P (type k) (key : k Capsule.Expert.Key.t)) = Capsule.Expert.create () in
+      (val let (P (type k) (key : k Capsule.Prim.Key.t)) = Capsule.Prim.create () in
            let mutex = Mutex.create key in
            (module struct
              type nonrec k = k
@@ -127,7 +129,7 @@ module Zone_cache = struct
 
     let with_the_one_and_only f =
       (Mutex.with_lock mutex ~f:(fun password ->
-         Capsule.Expert.access ~password ~f:(fun access ->
+         Capsule.Prim.access ~password ~f:(fun access ->
            { contended = { aliased = f (Capsule.Data.unwrap ~access capsule) } })
          [@nontail]))
         .contended
@@ -353,6 +355,8 @@ include%template Identifiable.Make [@mode local] [@modality portable] (struct
   end)
 
 include Stable.Current
+
+let%template arg_type = (Command.Arg_type.create [@mode portable]) of_string
 
 module Private = struct
   module Zone_cache = Zone_cache

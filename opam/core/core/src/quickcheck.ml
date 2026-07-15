@@ -175,8 +175,10 @@ module Generator = struct
   let fn5 = Polymorphic_types.quickcheck_generator_fn5
   let fn6 = Polymorphic_types.quickcheck_generator_fn6
 
-  let compare_fn dom =
-    fn dom int >>| fun get_index x y -> [%compare: int] (get_index x) (get_index y)
+  let%template compare_fn dom =
+    fn dom int
+    >>| fun get_index x y ->
+    ([%compare: int] [@mode.explicit local]) (get_index x) (get_index y)
   ;;
 
   let equal_fn dom = compare_fn dom >>| fun cmp x y -> Int.( = ) (cmp x y) 0
@@ -271,6 +273,7 @@ module Configure (Config : Quickcheck_config) = struct
   let iter ?seed ?sizes ?trials gen ~f =
     let config = make_config ~seed ~sizes ~trials ~shrink_attempts:None in
     Test.with_sample_exn ~config gen ~f:(fun sequence -> Sequence.iter sequence ~f)
+    [@nontail]
   ;;
 
   let test ?seed ?sizes ?trials ?shrinker ?shrink_attempts ?sexp_of ?examples gen ~f =

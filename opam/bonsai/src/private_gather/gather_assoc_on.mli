@@ -11,11 +11,11 @@ val f
        (module Comparator.S with type comparator_witness = 'cmp_io and type t = 'io)
   -> model_comparator:
        (module Comparator.S with type comparator_witness = 'cmp_model and type t = 'model)
-  -> io_key_id:'io Type_equal.Id.t
-  -> io_cmp_id:'cmp_io Type_equal.Id.t
-  -> model_key_id:'model Type_equal.Id.t
-  -> model_cmp_id:'cmp_model Type_equal.Id.t
-  -> data_id:'v Type_equal.Id.t
+  -> io_key_id:'io Var_id.t
+  -> io_cmp_id:'cmp_io Var_id.t
+  -> model_key_id:'model Var_id.t
+  -> model_cmp_id:'cmp_model Var_id.t
+  -> data_id:'v Var_id.t
   -> by:'r Computation.t
   -> get_model_key:('io -> 'v -> 'model)
   -> here:Source_code_position.t

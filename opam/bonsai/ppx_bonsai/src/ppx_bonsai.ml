@@ -56,6 +56,8 @@ let () =
       ; ext sub Extension_kind.default_open
       ; ext arr Extension_kind.default
       ; ext arr Extension_kind.default_open
+      ; ext arr_debug Extension_kind.default
+      ; ext arr_debug Extension_kind.default_open
       ; lazy_error
       ]
 ;;

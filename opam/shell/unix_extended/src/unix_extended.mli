@@ -19,7 +19,7 @@ module Unix := Core_unix
     pass in fds with [close_on_exec] set.
 
     @param path_lookup
-      if [true] than we use PATH to find the process to exec. \@env specifies the
+      if [true] than we use PATH to find the process to exec. @env specifies the
       environment the process runs in
 
       ERRORS: Unix.unix_error. This function should not raise EINTR; it will restart
@@ -108,7 +108,7 @@ module Inet_port : sig
 
   module Stable : sig
     module V1 :
-      Stable_comparable.V1
+      Stable_comparable.With_stable_witness.V1
       with type t = t
        and type comparator_witness = comparator_witness
   end

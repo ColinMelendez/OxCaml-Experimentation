@@ -10,6 +10,13 @@ let ghoster =
   end
 ;;
 
+let unboxed_supported = true
+
+let gen_var_pat_and_exp ~loc ?prefix () =
+  let txt = gen_symbol ?prefix () in
+  ppat_var ~loc { txt; loc }, pexp_ident ~loc { txt = Lident txt; loc }
+;;
+
 module Docs = struct
   type t =
     | Toggle
@@ -145,6 +152,23 @@ let has_unboxed_attribute td =
     | _ -> false)
 ;;
 
+let unbox_name s = if unboxed_supported then s ^ "#" else s
+
+(* Converts a type constructor in a manifest to its unboxed version. For example, [t]
+   becomes [t#], [M.t] becomes [M.t#], [M(X).t] becomes [M(X).t#]. *)
+let unbox_manifest_constr manifest =
+  match manifest.ptyp_desc with
+  | Ptyp_constr (lid, args) ->
+    let rec unbox_lid lid =
+      match lid with
+      | Lident name -> Lident (unbox_name name)
+      | Ldot (path, name) -> Ldot (path, unbox_name name)
+      | Lapply (lid1, lid2) -> Lapply (lid1, unbox_lid lid2)
+    in
+    Some { manifest with ptyp_desc = Ptyp_constr (Loc.map lid ~f:unbox_lid, args) }
+  | _ -> None
+;;
+
 let implicit_unboxed_record td =
   let make_immutable ld =
     { ld with
@@ -155,24 +179,51 @@ let implicit_unboxed_record td =
     }
   in
   match td.ptype_kind with
-  | Ptype_record lds when not (has_unboxed_attribute td) ->
-    Some
+  | Ptype_record lds when (not (has_unboxed_attribute td)) && unboxed_supported ->
+    (* Also update the manifest if present (e.g., [type u = t = { ... }]) *)
+    let unboxed_manifest =
+      match td.ptype_manifest with
+      | None -> Some None
+      | Some manifest ->
+        (match unbox_manifest_constr manifest with
+         | Some unboxed -> Some (Some unboxed)
+         | None -> None)
+    in
+    Option.map unboxed_manifest ~f:(fun ptype_manifest ->
       { td with
         ptype_kind =
           Ppxlib_jane.Shim.Type_kind.Ptype_record_unboxed_product
             (List.map lds ~f:make_immutable)
           |> Ppxlib_jane.Shim.Type_kind.to_parsetree
-      ; ptype_name = { td.ptype_name with txt = td.ptype_name.txt ^ "#" }
-      }
+      ; ptype_name = { td.ptype_name with txt = unbox_name td.ptype_name.txt }
+      ; ptype_manifest
+      })
   | _ -> None
 ;;
 
-let with_implicit_unboxed_records ~loc ~unboxed tds =
-  match unboxed with
+let implicit_unboxed_alias td =
+  match td.ptype_kind, td.ptype_manifest with
+  | Ptype_abstract, Some manifest when unboxed_supported ->
+    Option.map (unbox_manifest_constr manifest) ~f:(fun unboxed_manifest ->
+      { td with
+        ptype_manifest = Some unboxed_manifest
+      ; ptype_name = { td.ptype_name with txt = unbox_name td.ptype_name.txt }
+      })
+  | _ -> None
+;;
+
+let implicit_unboxed td =
+  match implicit_unboxed_record td with
+  | Some _ as result -> result
+  | None -> implicit_unboxed_alias td
+;;
+
+let with_implicit_unboxed_types ~loc ~unboxed tds =
+  match unboxed && unboxed_supported with
   | false -> tds
   | true ->
     let with_unboxed =
-      List.concat_map tds ~f:(fun td -> td :: Option.to_list (implicit_unboxed_record td))
+      List.concat_map tds ~f:(fun td -> td :: Option.to_list (implicit_unboxed td))
     in
     if List.length tds = List.length with_unboxed
     then
@@ -204,10 +255,26 @@ module Polytype = struct
   ;;
 end
 
-let consume_phantom_params phantom_attr td =
+let is_phantom_param ~phantom_attr ~phantom_names (param, _variance) =
+  Option.is_some (Attribute.get phantom_attr param)
+  ||
+  match Ppxlib_jane.Shim.Core_type_desc.of_parsetree param.ptyp_desc with
+  | Ptyp_var (name, _) -> String.Set.mem name phantom_names
+  | _ -> false
+;;
+
+let consume_phantom_params ~phantom_attr ~phantom_td_attr td =
+  let phantom_names =
+    match phantom_td_attr with
+    | None -> String.Set.empty
+    | Some attr ->
+      (match Attribute.get attr td with
+       | None -> String.Set.empty
+       | Some names -> String.Set.of_list names)
+  in
   let non_phantom_params =
-    List.filter td.ptype_params ~f:(fun (param, _) ->
-      not (Option.is_some (Attribute.get phantom_attr param)))
+    List.filter td.ptype_params ~f:(fun param ->
+      not (is_phantom_param ~phantom_attr ~phantom_names param))
   in
   let td =
     { td with
@@ -219,12 +286,12 @@ let consume_phantom_params phantom_attr td =
   td, non_phantom_params
 ;;
 
-let combinator_type_of_type_declaration ?phantom_attr td ~f =
+let combinator_type_of_type_declaration ?phantom_attr ?phantom_td_attr td ~f =
   (* We have to name the params first to avoid repeating the gensym for [ptyp_any]. *)
   let td = name_type_params_in_td td in
   let td, non_phantom_params =
     match phantom_attr with
-    | Some attr -> consume_phantom_params attr td
+    | Some phantom_attr -> consume_phantom_params ~phantom_attr ~phantom_td_attr td
     | None -> td, td.ptype_params
   in
   let result_type = core_type_of_type_declaration td in
@@ -236,4 +303,12 @@ let combinator_type_of_type_declaration ?phantom_attr td ~f =
       ptyp_arrow ~loc Nolabel (f ~loc tp) acc)
   in
   ({ loc = td.ptype_loc; vars; body = t } : Polytype.t)
+;;
+
+external globalize_string : string @ local -> string = "%obj_dup"
+
+let rec globalize_longident : Longident.t @ local -> Longident.t @ global = function
+  | Lident s -> Lident (globalize_string s)
+  | Ldot (t, s) -> Ldot (globalize_longident t, globalize_string s)
+  | Lapply (t, t') -> Lapply (globalize_longident t, globalize_longident t')
 ;;

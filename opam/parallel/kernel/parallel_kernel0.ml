@@ -12,9 +12,14 @@ end =
   Thunk
 
 and Ops : sig @@ portable
+  (* Subtasks must not [Await] or [Yield]; [Parallel.t] does not provide the capability. *)
   type 'a t =
-    | Promise : 'a Promise.t -> 'a Result.Capsule.t t
-    | Trigger : Await.Trigger.t -> unit t
+    | Promise : 'a Promise.t -> ('a Result.Capsule.t * tokens:int) t
+    (** When filled, pushes the continuation to the local queue. Used by [Promise.t]. *)
+    | Await : Trigger.t -> unit t
+    (** When signaled, pushes the continuation to the global queue. Used by [Await.t]. *)
+    | Yield : unit t
+    (** Immediately pushes the continuation to the global queue. Used by [Yield.t]. *)
 end =
   Ops
 
@@ -29,10 +34,14 @@ and Promise : sig @@ portable
     | Claimed
     | Blocking :
         { key : 'k Capsule.Key.t @@ many
-        ; cont : ('a Result.Capsule.t continuation, 'k) Capsule.Data.t @@ many
+        ; cont : (('a Result.Capsule.t * tokens:int) continuation, 'k) Capsule.Data.t
+          @@ many
         }
         -> 'a state
-    | Ready of 'a Result.Capsule.t @@ contended many portable
+    | Ready of
+        { result : 'a Result.Capsule.t @@ contended many portable
+        ; tokens : int
+        }
 
   type 'a t = 'a state Unique.Atomic.t
 end =
@@ -64,9 +73,13 @@ end =
   Runqueue
 
 and Scheduler : sig @@ portable
-  type t : (value & value) mod contended portable =
-    #{ promote : (unit -> unit) @ once portable -> unit @@ portable
-     ; wake : n:int -> unit @@ portable
+  type t : (value & value & value) mod contended portable =
+    #{ task : (unit -> unit) @ once portable -> unit @@ portable
+     (** Pushes a concurrent task (which may await/yield) to the global queue. *)
+     ; subtask : (unit -> unit) @ once portable -> unit @@ portable
+     (** Pushes a parallel subtask (which can only sync) to the local queue. *)
+     ; try_wake : n:int -> unit @@ portable
+     (** Signals up to [n] workers that are currently asleep. *)
      }
 end =
   Scheduler

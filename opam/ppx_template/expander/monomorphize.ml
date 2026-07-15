@@ -7,7 +7,7 @@ include Monomorphize_intf.Definitions
 
 module Context = struct
   module Defaults = struct
-    type t = Value.Basic.packed list Maybe_explicit.t Axis.Map.t
+    type t = Value.Basic.packed list Explicitness.With.t Axis.Map.t
 
     let empty = Axis.Map.empty
   end
@@ -31,7 +31,7 @@ module Maybe_hide_in_docs = struct
   let hide_in_docs t = t.hide_in_docs
 end
 
-let extract_loc (type a) (ctx : a Attributes.Context.poly) (node : a) =
+let extract_loc (type a) (ctx : a Attribute_handler.Context.poly) (node : a) =
   match ctx with
   | Value_binding -> node.pvb_loc
   | Value_description -> node.pval_loc
@@ -42,7 +42,7 @@ let extract_loc (type a) (ctx : a Attributes.Context.poly) (node : a) =
   | Include_infos -> node.pincl_loc
 ;;
 
-let extract_attrs (type a) (ctx : a Attributes.Context.poly) (node : a) =
+let extract_attrs (type a) (ctx : a Attribute_handler.Context.poly) (node : a) =
   match ctx with
   | Value_binding -> node.pvb_attributes
   | Value_description -> node.pval_attributes
@@ -59,120 +59,117 @@ type error =
   ; attrs : attributes
   }
 
-let extract_bindings (type a) (ctx : a Attributes.Context.poly) node =
-  match Attributes.consume Attributes.poly ctx node with
+let extract_bindings (type a) (ctx : a Attribute_handler.Context.poly) node =
+  match Attribute_handler.consume Attribute_handler.poly ctx node with
   | Ok (node, bindings) -> Ok (node, bindings)
   | Error err -> Error { loc = extract_loc ctx node; err; attrs = extract_attrs ctx node }
 ;;
 
-let extract_floating (type a) (ctx : a Attributes.Floating.Context.poly) item =
-  match Attributes.Floating.convert ctx item with
-  | Ok _ as ok -> ok
-  | Error err ->
-    let loc =
-      match ctx with
-      | Structure_item -> item.pstr_loc
-      | Signature_item -> item.psig_loc
-    in
-    Error (loc, err)
+let merge_explicitness_or_error ~loc ~context old_explicitness new_explicitness =
+  if Explicitness.equal old_explicitness new_explicitness
+  then Ok old_explicitness
+  else
+    Error
+      (Syntax_error.createf
+         ~loc
+         "[%%template]: explicitness mismatch while %s (%s vs %s)"
+         context
+         (Explicitness.to_string old_explicitness)
+         (Explicitness.to_string new_explicitness))
 ;;
 
-let stable_dedup list ~compare =
-  List.mapi list ~f:(fun i x -> i, x)
-  |> List.sort_uniq ~cmp:(fun (_, x) (_, y) -> compare x y)
-  |> List.sort ~cmp:(fun (i, _) (j, _) -> Int.compare i j)
-  |> List.map ~f:snd
-;;
-
-let handle_one_binding
-  ~original_env
-  envs
-  ( explicitness
-  , Attributes.Poly.Binding
-      { binding = { pattern; expression; lookup }; mangle; mangle_axis } )
-  =
-  envs
-  >>| List.map ~f:(fun (env, manglers) ->
-    expression
-    |> Env.eval original_env lookup
-    (* If multiple expressions evaluate to the same value, only generate one instance. *)
-    >>| Nonempty_list.to_list
-    >>| stable_dedup ~compare:Value.compare
-    >>| List.map ~f:(fun value ->
-      let+ env =
-        Env.bind env ~loc:expression.loc ~is_set:(Axis.is_set mangle_axis) pattern value
-      in
-      let mangle_value = Value.Basic.P (mangle value) in
-      let manglers =
-        Axis.Map.update
-          (P mangle_axis)
-          (function
-            | None -> Some (explicitness, [ mangle_value ])
-            | Some (_old_explicitness, values) ->
-              (* Drop previous explicit flag and use new explicit flag *)
-              Some (explicitness, mangle_value :: values))
-          manglers
-      in
-      env, manglers)
-    >>= Result.all)
-  >>= Result.all
-  >>| List.concat
-;;
-
-let handle_one_attribute
-  ~original_env
-  envs
-  (explicit, Attributes.Poly.Poly (mangle_axis, bindings))
-  =
-  (* Explicitly set the entry in the manglers for the current [type_] to empty so that
-     putting an empty [[@@kind]] attribute disables the default kind mangling from
-     [[@@@kind.default]]. *)
-  let init =
-    envs
-    >>| List.map ~f:(fun (env, manglers) ->
-      ( env
-      , Axis.Map.add
-          (P mangle_axis)
-          (* The initial state should be no explicit mangling. *)
-          (Maybe_explicit.Drop_axis_if_all_defaults, [])
-          manglers ))
-  in
-  bindings
-  |> List.map ~f:(fun binding -> explicit, binding)
-  |> List.fold_left ~init ~f:(handle_one_binding ~original_env)
+let merge_defaults_or_error ~loc ~context old_defaults new_defaults =
+  let open Explicitness.With.Export in
+  List.fold_left
+    (Axis.Map.to_list new_defaults)
+    ~init:(Ok old_defaults)
+    ~f:(fun merged (axis, { explicitness = new_explicitness; what = new_values }) ->
+      let* merged = merged in
+      match Axis.Map.find_opt axis merged with
+      | None ->
+        Ok
+          (Axis.Map.add
+             axis
+             { explicitness = new_explicitness; what = new_values }
+             merged)
+      | Some { explicitness = old_explicitness; what = old_values } ->
+        let* explicitness =
+          match old_values, new_values with
+          | _, [] ->
+            Error
+              (Syntax_error.createf ~loc "empty floating poly attributes are not allowed")
+          | [], _ :: _ ->
+            (* [old_values] will be empty in the initial context *)
+            Ok new_explicitness
+          | _ :: _, _ :: _ ->
+            merge_explicitness_or_error ~loc ~context old_explicitness new_explicitness
+        in
+        Ok (Axis.Map.add axis { explicitness; what = old_values @ new_values } merged))
 ;;
 
 type 'a instance =
   { node : 'a
   ; env : Env.t
-  ; manglers : Value.Basic.packed list Maybe_explicit.t Axis.Map.t
+  ; manglers : Value.Basic.packed list Explicitness.With.t Axis.Map.t
   }
 
-let instantiate poly_attributes ~env:(original_env : Env.t) =
-  let envs =
-    List.fold_left
-      poly_attributes
-      ~init:(Ok [ original_env, Context.Defaults.empty ])
-      ~f:(handle_one_attribute ~original_env)
+(* For Explicit_plus_unmangled axes with "strict default" (excludes value_or_null) values,
+   return bindings that don't mangle those defaults *)
+let expand_explicit_plus_unmangled ({ node = _; env = _; manglers } as instance) =
+  let open Explicitness.With.Export in
+  let explicit_plus_unmangled_requested =
+    (* we only consider generating extra untemplated bindings if *any* axes are
+       [Explicit_plus_unmangled] *)
+    Axis.Map.exists
+      (fun _ { explicitness; what = _ } ->
+        match explicitness with
+        | Explicitness.Explicit_plus_unmangled -> true
+        | _ -> false)
+      manglers
   in
-  envs
-  >>| List.map ~f:(fun (env, manglers) ->
-    { node = ()
-    ; env
-    ; manglers =
-        (* Manglers were added in reverse order *)
-        Axis.Map.map (Maybe_explicit.map ~f:List.rev) manglers
-    })
+  let is_strict_default =
+    (* we only generate the untemplated binding when *all* axes that are
+       [Explicit_plus_unmangled] are strict defaults *)
+    Axis.Map.for_all
+      (fun _ { explicitness; what = values } ->
+        match explicitness with
+        | Explicitness.Explicit_plus_unmangled ->
+          List.for_all values ~f:(fun (Value.Basic.P v) ->
+            match Value.defaultness v with
+            | Actual_default -> true
+            | Default_for_standard_mangling | Not_a_default -> false)
+        | _ -> true)
+      manglers
+  in
+  match explicit_plus_unmangled_requested && is_strict_default with
+  | false -> Nonempty_list.singleton instance
+  | true ->
+    let dropped_manglers =
+      Axis.Map.map
+        (fun { explicitness; what = values } ->
+          match explicitness with
+          | Explicitness.Explicit_plus_unmangled ->
+            { explicitness = Drop_axis_if_all_defaults; what = values }
+          | _ -> { explicitness; what = values })
+        manglers
+    in
+    [ instance; { instance with manglers = dropped_manglers } ]
+;;
+
+let instantiate poly_attributes ~env:(original_env : Env.t) =
+  Env.instantiate original_env poly_attributes
+  >>| Nonempty_list.map ~f:(fun (env, manglers) -> { node = (); env; manglers })
 ;;
 
 let consume_poly
   (type a)
   ~env
   ~(defaults : Context.Defaults.t)
-  (attr_ctx : a Attributes.Context.poly)
-  nodes
+  (attr_ctx : a Attribute_handler.Context.poly)
+  (nodes : a Nonempty_list.t)
+  : (a instance Nonempty_list.t, error) result
   =
-  List.map nodes ~f:(fun node ->
+  Nonempty_list.Or_first_error.concat_map nodes ~f:(fun node ->
     match extract_bindings attr_ctx node with
     | Error _ as err -> err
     | Ok (node, polys) ->
@@ -182,7 +179,7 @@ let consume_poly
            { loc = extract_loc attr_ctx node; err; attrs = extract_attrs attr_ctx node }
        | Ok list ->
          let instances =
-           List.map list ~f:(fun { node = (); env; manglers } ->
+           Nonempty_list.map list ~f:(fun { node = (); env; manglers } ->
              (* Use current default manglers when axis is unspecified. *)
              let manglers =
                Axis.Map.merge
@@ -198,32 +195,6 @@ let consume_poly
              { node; env; manglers })
          in
          Ok instances))
-  |> List.fold_right ~init:(Ok []) ~f:(fun head tail ->
-    match head, tail with
-    | Ok head, Ok tail -> Ok (head :: tail)
-    | Error head, Error tail -> Error (head :: tail)
-    | Error head, Ok _ -> Error [ head ]
-    | Ok _, Error tail -> Error tail)
-  |> function
-  | Ok instances -> Ok (List.concat instances)
-  | Error errs ->
-    let locs = List.map errs ~f:(fun err -> err.loc)
-    and errs = List.map errs ~f:(fun err -> err.err)
-    and attrs = List.concat_map errs ~f:(fun err -> err.attrs) in
-    let loc =
-      List.fold_left ~init:(List.hd locs) (List.tl locs) ~f:(fun a b ->
-        { loc_start = Location.min_pos a.loc_start b.loc_start
-        ; loc_end = Location.max_pos a.loc_end b.loc_end
-        ; loc_ghost = a.loc_ghost || b.loc_ghost
-        })
-    in
-    let err =
-      match errs with
-      | err :: (_ :: _ as errs) -> Syntax_error.combine err errs
-      | [ err ] -> err
-      | [] -> Syntax_error.createf ~loc "empty error list"
-    in
-    Error { loc; err; attrs }
 ;;
 
 (* Ppxlib individually applies every [@@deriving] or [@@deriving_inline] attribute it
@@ -287,8 +258,8 @@ let is_stack (alloc : (Type.alloc, Expression.singleton) Expression.t Loc.t) ~en
 
 let should_wrap_with_exclave
   expr
-  ~(exclave_because_stack : _ Attributes.Exclave_if.t option)
-  ~(exclave_because_local : _ Attributes.Exclave_if.t option)
+  ~(exclave_because_stack : _ Attribute_handler.Exclave_if.t option)
+  ~(exclave_because_local : _ Attribute_handler.Exclave_if.t option)
   ~env
   =
   let stack_result =
@@ -308,20 +279,21 @@ let should_wrap_with_exclave
   | None ->
     (match exclave_because_local with
      | Some { expr = mode; reasons } ->
-       let rec is_ident_or_field_or_constant = function
-         | { pexp_desc = Pexp_ident _ | Pexp_constant _ | Pexp_construct (_, None); _ } ->
-           true
-         | { pexp_desc = Pexp_field (expr, _); _ } -> is_ident_or_field_or_constant expr
+       let rec is_ident_or_field_or_constant { pexp_desc; pexp_loc; _ } =
+         match Ppxlib_jane.Shim.Expression_desc.of_parsetree pexp_desc ~loc:pexp_loc with
+         | Pexp_ident _ | Pexp_constant _ | Pexp_construct (_, None) -> true
+         | Pexp_field (expr, _) | Pexp_unboxed_field (expr, _) ->
+           is_ident_or_field_or_constant expr
          | _ -> false
        in
        let rec is_pure_allocation ({ pexp_desc; pexp_loc; _ } as expr) =
          match Ppxlib_jane.Shim.Expression_desc.of_parsetree pexp_desc ~loc:pexp_loc with
-         | Pexp_tuple labeled_exprs ->
+         | Pexp_tuple labeled_exprs | Pexp_unboxed_tuple labeled_exprs ->
            List.for_all ~f:(fun (_, expr) -> is_pure_allocation expr) labeled_exprs
          | Pexp_construct (_, None) | Pexp_variant (_, None) -> true
          | Pexp_construct (_, Some expr) | Pexp_variant (_, Some expr) ->
            is_pure_allocation expr
-         | Pexp_record (fields, expr) ->
+         | Pexp_record (fields, expr) | Pexp_record_unboxed_product (fields, expr) ->
            List.for_all ~f:(fun (_, e) -> is_pure_allocation e) fields
            &&
              (match expr with
@@ -356,15 +328,16 @@ let should_wrap_with_exclave
 
 let consume_zero_alloc_if
   (type a)
-  (ctx : a Attributes.Context.zero_alloc_if)
+  (ctx : a Attribute_handler.Context.zero_alloc_if)
   (node : a)
   ~env
+  : (a, Syntax_error.t) result
   =
   let* node, zero_alloc_if_local =
-    Attributes.consume Attributes.zero_alloc_if_local ctx node
+    Attribute_handler.consume Attribute_handler.zero_alloc_if_local ctx node
   in
   let* node, zero_alloc_if_stack =
-    Attributes.consume Attributes.zero_alloc_if_stack ctx node
+    Attribute_handler.consume Attribute_handler.zero_alloc_if_stack ctx node
   in
   let* add_zero_alloc_if_local =
     match zero_alloc_if_local with
@@ -411,41 +384,26 @@ let consume_zero_alloc_if
        { node with pval_attributes = attribute :: node.pval_attributes })
 ;;
 
-let t ~mk_struct ~mk_sig :> Context.t t =
-  let mk_struct ~loc nodes ~f =
-    let loc = { loc with loc_ghost = true } in
-    (mk_struct ~loc (List.map nodes ~f:(f ~loc))).pstr_desc
-  in
-  let mk_sig ~loc nodes =
-    let loc = { loc with loc_ghost = true } in
-    (mk_sig ~loc nodes).psig_desc
-  in
-  let content_span =
-    object
-      inherit [Location.t option] Ast_traverse.fold
-
-      method! location loc acc =
-        match acc with
-        | None -> Some loc
-        | Some acc ->
-          Some
-            { loc_start = Location.min_pos acc.loc_start loc.loc_start
-            ; loc_end = Location.max_pos acc.loc_end loc.loc_end
-            ; loc_ghost = true
-            }
-    end
-  in
+let t :> Context.t t =
   object (self)
     inherit [Context.t] Ppxlib_jane.Ast_traverse.map_with_context as super
     method! location ctx loc = { loc with loc_ghost = loc.loc_ghost || ctx.ghostify }
 
-    method! jkind_annotation ctx ({ pjkind_desc; pjkind_loc } as jkind) =
-      match pjkind_desc with
-      | Pjk_abbreviation kind ->
-        (match Env.find ctx.env { ident = kind; type_ = Type.kind } with
-         | None -> super#jkind_annotation ctx jkind
-         | Some kind ->
-           let (Jkind_annotation kind) = Value.to_node ~loc:pjkind_loc kind in
+    method! jkind_annotation ctx ({ pjka_desc; pjka_loc } as jkind) =
+      match pjka_desc with
+      | Pjk_abbreviation ({ txt = Lident kind; _ }, sa) ->
+        (match sa, Env.find ctx.env { ident = kind; type_ = Type.kind } with
+         | _ :: _, Some _ ->
+           Location.Error.raise
+             (Location.Error.createf
+                ~loc:pjka_loc
+                "[ppx_template] substitution of kind variables under scannable axes is \
+                 not supported")
+         | _, None -> super#jkind_annotation ctx jkind
+         | [], Some kind ->
+           let (Jkind_annotation kind) =
+             Value.to_node ~loc:(self#location ctx pjka_loc) kind
+           in
            kind)
       | Pjk_mod (base, modifiers) ->
         (* Even though [modifiers] is represented as a list of [mode]s, they conceptually
@@ -457,8 +415,8 @@ let t ~mk_struct ~mk_sig :> Context.t t =
           |> List.map ~f:(fun { txt = Modality name; loc } ->
             { txt = Ppxlib_jane.Mode name; loc })
         in
-        { pjkind_loc = self#location ctx pjkind_loc
-        ; pjkind_desc = Pjk_mod (self#jkind_annotation ctx base, modifiers)
+        { pjka_loc = self#location ctx pjka_loc
+        ; pjka_desc = Pjk_mod (self#jkind_annotation ctx base, modifiers)
         }
       | _ -> super#jkind_annotation ctx jkind
 
@@ -485,50 +443,56 @@ let t ~mk_struct ~mk_sig :> Context.t t =
        an identifier, we check if the [@kind] attribute is present, and if so, mangle that
        identifier according to the provided layouts. An error node will be created instead
        if the attribute is attached to a node which is not an identifier. *)
-    method private visit_mono : type a. a Attributes.Context.mono -> Context.t -> a -> a =
-      fun attr_ctx ctx node ->
+    method
+      private visit_mono
+      : type a.  a Attribute_handler.Context.mono
+                -> f:(Context.t -> a -> a)
+                -> Context.t
+                -> a
+                -> a =
+      fun attr_ctx ~f ctx node ->
         (* We can't define a single [visit] function as in [visit_poly] because we need to
            call the superclass method, or else we loop infinitely, and [super] can't be
            passed around as a value (it can only be used directly with a method call). *)
-        match Attributes.consume Attributes.mono attr_ctx node with
+        match Attribute_handler.consume Attribute_handler.mono attr_ctx node with
         | Ok (node, mangle_exprs) ->
           let node = Mangle.mangle attr_ctx node mangle_exprs ~env:ctx.env in
-          (match attr_ctx with
-           | Expression -> super#expression ctx node
-           | Module_expr -> super#module_expr ctx node
-           | Core_type -> super#core_type ctx node
-           | Module_type -> super#module_type ctx node)
+          f ctx node
         | Error error ->
           Syntax_error_conversion.to_extension_node
-            (Attributes.Context.mono_to_any attr_ctx)
+            (Attribute_handler.Context.mono_to_any attr_ctx)
             node
             error
 
-    method! module_expr = self#visit_mono Module_expr
-    method! core_type = self#visit_mono Core_type
+    method! module_expr = self#visit_mono Module_expr ~f:super#module_expr
+    method! core_type = self#visit_mono Core_type ~f:super#core_type
 
     method! module_type ctx mty =
-      let mty = self#visit_mono Module_type ctx mty in
-      let mty_res =
-        let* mty, with_ = Attributes.consume Attributes.with_ Module_type mty in
-        match with_ with
-        | Some with_ ->
-          let with_ = self#signature ctx with_ in
-          With_constraint.convert mty with_
-        | None -> Ok mty
-      in
-      match mty_res with
-      | Ok mty -> mty
-      | Error err -> Syntax_error_conversion.to_extension_node Module_type mty err
+      self#visit_mono Module_type ctx mty ~f:(fun ctx mty ->
+        let mty_res =
+          let* mty, with_ =
+            Attribute_handler.consume Attribute_handler.with_ Module_type mty
+          in
+          match with_ with
+          | Some with_ ->
+            let with_ = self#signature ctx with_ in
+            With_constraint.convert mty with_
+          | None -> Ok mty
+        in
+        match mty_res with
+        | Ok mty -> super#module_type ctx mty
+        | Error err -> Syntax_error_conversion.to_extension_node Module_type mty err)
+
+    method! expression_desc _ _ = assert false
 
     method! expression ctx expr =
       let loc = { expr.pexp_loc with loc_ghost = true } in
       let expr_res =
         let* expr, exclave_because_stack =
-          Attributes.consume Attributes.exclave_if_stack Expression expr
+          Attribute_handler.consume Attribute_handler.exclave_if_stack Expression expr
         in
         let* expr, exclave_because_local =
-          Attributes.consume Attributes.exclave_if_local Expression expr
+          Attribute_handler.consume Attribute_handler.exclave_if_local Expression expr
         in
         let expr =
           match
@@ -545,24 +509,34 @@ let t ~mk_struct ~mk_sig :> Context.t t =
         consume_zero_alloc_if Expression expr ~env:ctx.env
       in
       match expr_res with
-      | Ok expr -> self#visit_mono Expression ctx expr
       | Error err -> Syntax_error_conversion.to_extension_node Expression expr err
-
-    method! expression_desc ctx pexp_desc =
-      let loc =
-        content_span#expression_desc pexp_desc None |> Option.value ~default:Location.none
-      in
-      match Ppxlib_jane.Shim.Expression_desc.of_parsetree pexp_desc ~loc with
-      | Pexp_let (mutable_flag, rec_flag, bindings, expr) ->
-        self#visit_poly Value_binding ctx bindings ~f:(fun bindings ->
-          let bindings = List.map bindings ~f:Maybe_hide_in_docs.node in
-          Pexp_let
-            ( self#mutable_flag ctx mutable_flag
-            , self#rec_flag ctx rec_flag
-            , bindings
-            , self#expression ctx expr )
-          |> Ppxlib_jane.Shim.Expression_desc.to_parsetree ~loc)
-      | _ -> super#expression_desc ctx pexp_desc
+      | Ok expr ->
+        self#visit_mono
+          Expression
+          ctx
+          expr
+          ~f:(fun ctx { pexp_attributes; pexp_loc; pexp_loc_stack; pexp_desc } ->
+            let pexp_attributes = self#attributes ctx pexp_attributes in
+            let pexp_loc = self#location ctx pexp_loc in
+            let pexp_loc_stack = self#list self#location ctx pexp_loc_stack in
+            let pexp_desc =
+              let loc = pexp_loc in
+              match Ppxlib_jane.Shim.Expression_desc.of_parsetree pexp_desc ~loc with
+              | Pexp_let (mutable_flag, rec_flag, bindings, expr) ->
+                Nonempty_list.of_list_exn bindings
+                |> self#visit_poly Value_binding ctx ~f:(fun bindings ->
+                  let bindings =
+                    Nonempty_list.to_list bindings |> List.map ~f:Maybe_hide_in_docs.node
+                  in
+                  Pexp_let
+                    ( self#mutable_flag ctx mutable_flag
+                    , self#rec_flag ctx rec_flag
+                    , bindings
+                    , self#expression ctx expr )
+                  |> Ppxlib_jane.Shim.Expression_desc.to_parsetree ~loc)
+              | _ -> super#expression_desc ctx pexp_desc
+            in
+            { pexp_attributes; pexp_loc; pexp_loc_stack; pexp_desc })
 
     method! value_binding ctx vb =
       match consume_zero_alloc_if Value_binding vb ~env:ctx.env with
@@ -582,14 +556,14 @@ let t ~mk_struct ~mk_sig :> Context.t t =
     method
       private visit_poly
       : type a
-      b.  a Attributes.Context.poly
+      b.  a Attribute_handler.Context.poly
          -> Context.t
-         -> a list
-         -> f:(a Maybe_hide_in_docs.t list -> b)
+         -> a Nonempty_list.t
+         -> f:(a Maybe_hide_in_docs.t Nonempty_list.t -> b)
          -> b =
       fun attr_ctx ctx nodes ~f ->
         let ( (visit_self : Context.t -> a -> a)
-            , (visit_mangle : Mangle.Suffix.t -> a -> a * Mangle.Result.t) )
+            , (visit_mangle : Mangle.Suffix.t -> a -> a * Mangle.Outcome.t) )
           =
           match attr_ctx with
           | Value_binding -> self#value_binding, Mangle.t#value_binding
@@ -614,10 +588,14 @@ let t ~mk_struct ~mk_sig :> Context.t t =
         in
         (match consume_poly ~env:ctx.env ~defaults:ctx.defaults attr_ctx nodes with
          | Ok instances ->
-           List.mapi
+           let instances =
+             Nonempty_list.concat_map instances ~f:expand_explicit_plus_unmangled
+           in
+           Nonempty_list.mapi
              instances
              ~f:(fun i { node; env; manglers } : _ Maybe_hide_in_docs.t ->
-               let node, res = visit_mangle (Mangle.Suffix.create manglers) node in
+               let suffix = Mangle.Suffix.create manglers in
+               let node, res = visit_mangle suffix node in
                let node =
                  visit_self
                    { Context.ghostify = ctx.ghostify || i > 0
@@ -626,16 +604,12 @@ let t ~mk_struct ~mk_sig :> Context.t t =
                    }
                    node
                in
-               { node; hide_in_docs = Mangle.Result.did_mangle res })
+               { node; hide_in_docs = Mangle.Outcome.did_mangle res })
          | Error { loc = _; err; attrs = _ } ->
-           let hd_nodes, tl_nodes =
-             match nodes with
-             | hd :: tl -> hd, tl
-             | [] -> assert false
-           in
+           let (hd_nodes :: tl_nodes) = nodes in
            [ { node =
                  Syntax_error_conversion.to_extension_node
-                   (Attributes.Context.poly_to_any attr_ctx)
+                   (Attribute_handler.Context.poly_to_any attr_ctx)
                    hd_nodes
                    ~also_drop:tl_nodes
                    err
@@ -646,339 +620,260 @@ let t ~mk_struct ~mk_sig :> Context.t t =
 
     method
       private visit_floating_poly
-      : type a.  a Attributes.Floating.Context.poly
+      : type a.  a Attribute_handler.Floating.Context.poly
                 -> local_ (Context.t -> a list -> a list) =
       fun attr_ctx -> exclave_
-        let (visit : Context.t -> a -> a), (wrap_include : loc:location -> a list -> a) =
+        let (visit : Context.t -> a -> a Nonempty_list.t) =
           match attr_ctx with
           | Structure_item ->
-            let include_ ~loc items =
-              [%stri (** @inline *)
-                     include [%m Ast_builder.pmod_structure ~loc items]]
-            in
-            self#structure_item, include_
+            (self#structure_item_inline
+             : Context.t -> structure_item -> structure_item Nonempty_list.t)
           | Signature_item ->
-            let include_ ~loc items =
-              [%sigi:
-                (** @inline *)
-                include
-                  [%m
-                (* You might think we could [simplify_doc_toggling] here, but the items
-                   are pre-[%template.inline] expansion. *)
-                Ast_builder.pmty_signature ~loc (Ast_builder.signature ~loc items)]]
-            in
-            self#signature_item, include_
+            (self#signature_item_inline
+             : Context.t -> signature_item -> signature_item Nonempty_list.t)
         in
         fun ctx nodes ->
-          match nodes with
-          | [] -> []
-          | first_item :: rest_items ->
-            let last_item = List.last rest_items |> Option.value ~default:first_item in
-            let last_item_loc =
-              match attr_ctx with
-              | Structure_item -> last_item.pstr_loc
-              | Signature_item -> last_item.psig_loc
-            in
-            let[@tail_mod_cons] rec loop ctx (nodes : a list) =
-              match nodes with
-              | [] -> []
-              | item :: items ->
-                (* [Ppxlib] complains if we give it something besides an attribute. *)
-                (match attr_ctx, item with
-                 | ( Structure_item
-                   , { pstr_desc = Pstr_attribute _; pstr_loc = attr_loc; _ } )
-                 | ( Signature_item
-                   , { psig_desc = Psig_attribute _; psig_loc = attr_loc; _ } ) ->
-                   (match extract_floating attr_ctx item with
-                    | Ok None -> visit ctx item :: loop ctx items
-                    | Ok (Some (Define (Define bindings))) ->
-                      let loc = Attributes.Floating.Context.location attr_ctx item in
-                      let original_env = ctx.env in
-                      let new_env =
-                        List.fold_left
-                          bindings
-                          ~init:(Ok original_env)
-                          ~f:(fun env ({ pattern; expression; lookup } : _ Binding.t) ->
-                            let* env = env in
-                            let* set_value = Env.eval original_env lookup expression in
-                            Env.bind_set env ~loc pattern set_value)
-                      in
-                      (match new_env with
-                       | Ok env -> loop { ctx with env } items
-                       | Error err ->
-                         Syntax_error_conversion.to_extension_node_floating
-                           attr_ctx
-                           ~loc
-                           err
-                         :: loop ctx items)
-                    | Ok (Some (Poly (explicitness, { bindings; kind }))) ->
-                      (match instantiate [ explicitness, bindings ] ~env:ctx.env with
-                       | Ok instances ->
-                         let is_many = List.length instances > 1 in
-                         List.mapi instances ~f:(fun i { node = (); env; manglers } ->
-                           let defaults =
+          let[@tail_mod_cons] rec loop ctx (nodes : a list) =
+            match nodes with
+            | [] -> []
+            | item :: items ->
+              (* [Ppxlib] complains if we give it something besides an attribute. *)
+              (match attr_ctx, item with
+               | Structure_item, { pstr_desc = Pstr_attribute _; pstr_loc = attr_loc; _ }
+               | Signature_item, { psig_desc = Psig_attribute _; psig_loc = attr_loc; _ }
+                 ->
+                 let result =
+                   let* floating = Attribute_handler.Floating.convert attr_ctx item in
+                   match floating with
+                   | None -> Ok (Nonempty_list.to_list (visit ctx item) @ loop ctx items)
+                   | Some (Define (Define bindings)) ->
+                     let loc =
+                       Attribute_handler.Floating.Context.location attr_ctx item
+                     in
+                     let original_env = ctx.env in
+                     let+ env =
+                       List.fold_left
+                         bindings
+                         ~init:(Ok original_env)
+                         ~f:
+                           (fun
+                             env
+                             ({ pattern; expression; lookup } :
+                               _ Attribute_handler.Binding.t)
+                           ->
+                           let* env = env in
+                           let* set_value = Env.eval original_env lookup expression in
+                           Env.bind_set env ~loc pattern set_value)
+                     in
+                     loop { ctx with env } items
+                   | Some (Poly { explicitness; what = { bindings; kind } }) ->
+                     let* instances =
+                       instantiate [ { explicitness; what = bindings } ] ~env:ctx.env
+                     in
+                     let is_many = Nonempty_list.length instances > 1 in
+                     let+ instances =
+                       List.Or_first_error.mapi
+                         (Nonempty_list.to_list instances)
+                         ~f:(fun i { node = (); env; manglers } ->
+                           let+ defaults =
                              match kind with
-                             | Never_add_mangler -> ctx.defaults
+                             | Never_add_mangler -> Ok ctx.defaults
                              | Add_mangler_if_more_than_one_elt when not is_many ->
-                               ctx.defaults
+                               Ok ctx.defaults
                              | Always_add_mangler | Add_mangler_if_more_than_one_elt ->
-                               Axis.Map.merge
-                                 (fun _ ctx_defaults new_defaults ->
-                                   match ctx_defaults, new_defaults with
-                                   | None, None -> None
-                                   | Some defaults, None | None, Some defaults ->
-                                     Some defaults
-                                   | ( Some (_old_explicitness, ctx_defaults)
-                                     , Some new_defaults ) ->
-                                     Some
-                                       (* Always use the explicit flag from the new
-                                          attribute. *)
-                                       (Maybe_explicit.map
-                                          new_defaults
-                                          ~f:(fun new_defaults ->
-                                            ctx_defaults @ new_defaults)))
+                               merge_defaults_or_error
+                                 ~loc:attr_loc
+                                 ~context:"merging floating defaults"
                                  ctx.defaults
                                  manglers
                            in
-                           let ctx : Context.t =
-                             { ghostify = ctx.ghostify || i > 0; env; defaults }
-                           in
-                           (* The location of the include statement spans from the start
-                              of the attribute to the end of the last item in [items].
-                              This ensures that the locations of every item is
-                              well-nested, which helps Merlin. *)
-                           wrap_include
-                             ~loc:
-                               { loc_start = attr_loc.loc_start
-                               ; loc_end = last_item_loc.loc_end
-                               ; loc_ghost = true
-                               }
-                             (loop ctx items))
-                       | Error err ->
-                         Syntax_error_conversion.to_extension_node_floating
-                           attr_ctx
-                           ~loc:attr_loc
-                           err
-                         :: loop ctx items)
-                    | Error (loc, err) ->
-                      Syntax_error_conversion.to_extension_node_floating attr_ctx ~loc err
-                      :: loop ctx items)
-                 | _ -> visit ctx item :: loop ctx items)
-            in
-            loop ctx nodes
+                           i, env, defaults)
+                     in
+                     List.concat_map instances ~f:(fun (i, env, defaults) ->
+                       let ctx : Context.t =
+                         { ghostify = ctx.ghostify || i > 0; env; defaults }
+                       in
+                       loop ctx items)
+                 in
+                 (match result with
+                  | Ok items -> items
+                  | Error err ->
+                    Syntax_error_conversion.to_extension_node_floating
+                      attr_ctx
+                      ~loc:attr_loc
+                      err
+                    :: loop ctx items)
+               | _ -> Nonempty_list.to_list (visit ctx item) @ loop ctx items)
+          in
+          loop ctx nodes
 
     method! structure ctx items = self#visit_floating_poly Structure_item ctx items
     method! signature_items ctx items = self#visit_floating_poly Signature_item ctx items
+    method! structure_item _ _ = assert false
+    method! structure_item_desc _ _ = assert false
 
-    method! structure_item ctx =
+    method structure_item_inline ctx =
       function
       | [%stri [%%template.portable [%%i? { pstr_desc = Pstr_module mod_; _ }]]] as stri
         ->
         Portable_stateless.module_binding Portable ~loc:stri.pstr_loc ~mod_
-        |> self#structure_item ctx
+        |> self#structure_item_inline ctx
       | [%stri [%%template.stateless [%%i? { pstr_desc = Pstr_module mod_; _ }]]] as stri
         ->
         Portable_stateless.module_binding Stateless ~loc:stri.pstr_loc ~mod_
-        |> self#structure_item ctx
-      | stri -> super#structure_item ctx stri
+        |> self#structure_item_inline ctx
+      | { pstr_desc = desc; pstr_loc = loc } ->
+        let loc = self#location ctx loc in
+        let visit_poly attr_ctx ctx nodes ~f =
+          self#visit_poly attr_ctx ctx nodes ~f:(fun nodes : _ Nonempty_list.t ->
+            f (Nonempty_list.map nodes ~f:Maybe_hide_in_docs.node))
+        in
+        (match desc with
+         | Pstr_value (rec_flag, bindings) ->
+           Nonempty_list.of_list_exn bindings
+           |> visit_poly Value_binding ctx ~f:(fun bindings ->
+             [ Ast_builder.pstr_value
+                 ~loc
+                 (self#rec_flag ctx rec_flag)
+                 (Nonempty_list.to_list bindings)
+             ])
+         | Pstr_primitive desc ->
+           visit_poly Value_description ctx [ desc ] ~f:(fun descs ->
+             Nonempty_list.map descs ~f:(fun desc ->
+               Ast_builder.pstr_primitive ~loc:desc.pval_loc desc))
+         | Pstr_type (rec_flag, decls) ->
+           Nonempty_list.of_list_exn decls
+           |> visit_poly Type_declaration ctx ~f:(fun decls ->
+             [ Ast_builder.pstr_type
+                 ~loc
+                 (self#rec_flag ctx rec_flag)
+                 (deduplicate_deriving_attrs (Nonempty_list.to_list decls))
+             ])
+         | Pstr_module binding ->
+           visit_poly Module_binding ctx [ binding ] ~f:(fun bindings ->
+             Nonempty_list.map bindings ~f:(fun binding ->
+               Ast_builder.pstr_module ~loc:binding.pmb_loc binding))
+         | Pstr_recmodule bindings ->
+           Nonempty_list.of_list_exn bindings
+           |> visit_poly Module_binding ctx ~f:(fun bindings ->
+             [ Ast_builder.pstr_recmodule ~loc (Nonempty_list.to_list bindings) ])
+         | Pstr_modtype decl ->
+           visit_poly Module_type_declaration ctx [ decl ] ~f:(fun decls ->
+             Nonempty_list.map decls ~f:(fun decl ->
+               Ast_builder.pstr_modtype ~loc:decl.pmtd_loc decl))
+         | Pstr_include info ->
+           visit_poly
+             Include_infos
+             ctx
+             [ { info with pincl_mod = Left info.pincl_mod } ]
+             ~f:(fun infos ->
+               Nonempty_list.map infos ~f:(fun info ->
+                 Ast_builder.pstr_include
+                   ~loc:info.pincl_loc
+                   { info with
+                     pincl_mod =
+                       (match info.pincl_mod with
+                        | Left x -> x
+                        | Right _ -> assert false)
+                   }))
+         | desc ->
+           (* We reset the defaults here since they are supposed to act "shallowly", i.e.
+              they only apply to the current layer of structure items, not nested items.
+              In particular, this avoids poor interaction with [let%expect_test] items. *)
+           [ { pstr_loc = loc
+             ; pstr_desc =
+                 super#structure_item_desc
+                   { ctx with defaults = Context.Defaults.empty }
+                   desc
+             }
+           ])
 
-    method! structure_item_desc =
-      let visit_poly attr_ctx ctx nodes ~f =
-        self#visit_poly attr_ctx ctx nodes ~f:(fun nodes ->
-          f (List.map nodes ~f:Maybe_hide_in_docs.node))
-      in
-      fun ctx -> function
-        | Pstr_value (rec_flag, bindings) ->
-          visit_poly Value_binding ctx bindings ~f:(fun bindings ->
-            Pstr_value (self#rec_flag ctx rec_flag, bindings))
-        | Pstr_primitive desc ->
-          visit_poly Value_description ctx [ desc ] ~f:(function
-            | [ desc ] -> Pstr_primitive desc
-            | descs -> mk_struct ~loc:desc.pval_loc descs ~f:Ast_builder.pstr_primitive)
-        | Pstr_type (rec_flag, decls) ->
-          visit_poly Type_declaration ctx decls ~f:(fun decls ->
-            Pstr_type (self#rec_flag ctx rec_flag, deduplicate_deriving_attrs decls))
-        | Pstr_module binding ->
-          visit_poly Module_binding ctx [ binding ] ~f:(function
-            | [ binding ] -> Pstr_module binding
-            | bindings ->
-              mk_struct ~loc:binding.pmb_loc bindings ~f:Ast_builder.pstr_module)
-        | Pstr_recmodule bindings ->
-          visit_poly Module_binding ctx bindings ~f:(fun bindings ->
-            Pstr_recmodule bindings)
-        | Pstr_modtype decl ->
-          visit_poly Module_type_declaration ctx [ decl ] ~f:(function
-            | [ decl ] -> Pstr_modtype decl
-            | decls -> mk_struct ~loc:decl.pmtd_loc decls ~f:Ast_builder.pstr_modtype)
-        | Pstr_include info ->
-          visit_poly
-            Include_infos
-            ctx
-            [ { info with pincl_mod = Left info.pincl_mod } ]
-            ~f:(fun (infos : _ Either.t include_infos list) ->
-              List.map infos ~f:(fun info ->
-                { info with
-                  pincl_mod =
-                    (match info.pincl_mod with
-                     | Left x -> x
-                     | Right _ -> assert false)
-                })
-              |> function
-              | [ info ] -> Pstr_include info
-              | infos -> mk_struct ~loc:info.pincl_loc infos ~f:Ast_builder.pstr_include)
-        | desc ->
-          (* We reset the defaults here since they are supposed to act "shallowly", i.e.
-             they only apply to the current layer of structure items, not nested items. In
-             particular, this avoids poor interaction with [let%expect_test] items. *)
-          super#structure_item_desc { ctx with defaults = Context.Defaults.empty } desc
+    method! signature_item _ _ = assert false
+    method! signature_item_desc _ _ = assert false
 
-    method! signature_item ctx =
+    method signature_item_inline ctx =
       function
       | [%sigi: [%%template.portable: [%%i? { psig_desc = Psig_module mod_; _ }]]] as sigi
         ->
         Portable_stateless.module_declaration Portable ~loc:sigi.psig_loc ~mod_
-        |> self#signature_item ctx
+        |> self#signature_item_inline ctx
       | [%sigi: [%%template.stateless: [%%i? { psig_desc = Psig_module mod_; _ }]]] as
         sigi ->
         Portable_stateless.module_declaration Stateless ~loc:sigi.psig_loc ~mod_
-        |> self#signature_item ctx
-      | sigi -> super#signature_item ctx sigi
-
-    method! signature_item_desc =
-      let visit_poly attr_ctx ctx item ~loc ~f =
-        self#visit_poly attr_ctx ctx [ item ] ~f:(fun items ->
-          let loc = { loc with loc_ghost = true } in
-          items
-          |> List.concat_map ~f:(fun { Maybe_hide_in_docs.node = desc; hide_in_docs } ->
-            let sig_ = [ f ~loc desc ] in
-            if hide_in_docs then Ppx_helpers.Docs.hide ~loc sig_ else sig_)
-          |> Ppx_helpers.Docs.simplify
-          |> function
-          | [ { psig_desc; psig_loc = _ } ] -> psig_desc
-          | sigis -> mk_sig ~loc sigis)
-      in
-      (* It is difficult to isolate individual types in e.g. a [type ... and ...] group.
-         In particular, a [(**/**)] above the first item hides the entire group (and is
-         not disabled by a [(**/**)] inside the group). For now, it's probably enough to
-         hide the entire group if all items in it should be hidden, and to leave the
-         entire group otherwise. *)
-      let visit_poly_group attr_ctx ctx items ~loc ~f =
-        self#visit_poly attr_ctx ctx items ~f:(fun items ->
-          let all_hidden = List.for_all items ~f:Maybe_hide_in_docs.hide_in_docs in
-          let nodes = List.map items ~f:(fun { node; hide_in_docs = _ } -> node) in
-          let sigi = f nodes in
-          let loc = { loc with loc_ghost = true } in
-          if all_hidden
-          then
-            Ppx_helpers.Docs.hide ~loc [ { psig_desc = sigi; psig_loc = loc } ]
-            |> mk_sig ~loc
-          else sigi)
-      in
-      fun ctx desc ->
-        match Ppxlib_jane.Shim.Signature_item_desc.of_parsetree desc with
-        | Psig_value desc ->
-          visit_poly
-            Value_description
-            ctx
-            desc
-            ~loc:desc.pval_loc
-            ~f:Ast_builder.psig_value
-        | Psig_type (rec_flag, decls) ->
-          visit_poly_group
-            Type_declaration
-            ctx
-            decls
-            ~loc:(List.hd decls).ptype_loc
-            ~f:(fun decls ->
-              Psig_type (self#rec_flag ctx rec_flag, deduplicate_deriving_attrs decls))
-        | Psig_typesubst decls ->
-          visit_poly_group
-            Type_declaration
-            ctx
-            decls
-            ~loc:(List.hd decls).ptype_loc
-            ~f:(fun decls -> Psig_typesubst decls)
-        | Psig_module decl ->
-          visit_poly
-            Module_declaration
-            ctx
-            decl
-            ~loc:decl.pmd_loc
-            ~f:Ast_builder.psig_module
-        | Psig_recmodule decls ->
-          visit_poly_group
-            Module_declaration
-            ctx
-            decls
-            ~loc:(List.hd decls).pmd_loc
-            ~f:(fun decls -> Psig_recmodule decls)
-        | Psig_modtype decl ->
-          visit_poly
-            Module_type_declaration
-            ctx
-            decl
-            ~loc:decl.pmtd_loc
-            ~f:Ast_builder.psig_modtype
-        | Psig_modtypesubst decl ->
-          visit_poly
-            Module_type_declaration
-            ctx
-            decl
-            ~loc:decl.pmtd_loc
-            ~f:Ast_builder.psig_modtypesubst
-        | Psig_include (info, moda) ->
-          visit_poly
-            Include_infos
-            ctx
-            { info with pincl_mod = Right info.pincl_mod }
-            ~loc:info.pincl_loc
-            ~f:(fun ~loc info ->
-              Ast_builder.psig_include
-                ~loc
-                { info with
-                  pincl_mod =
-                    (match info.pincl_mod with
-                     | Left _ -> assert false
-                     | Right x -> x)
-                }
-                ~modalities:(self#modalities ctx moda))
-        | _ ->
-          (* We reset the defaults here since they are supposed to act "shallowly", i.e.
-             they only apply to the current layer of structure items, not nested items. *)
-          super#signature_item_desc { ctx with defaults = Context.Defaults.empty } desc
+        |> self#signature_item_inline ctx
+      | { psig_desc = desc; psig_loc = loc } ->
+        let loc = self#location ctx loc in
+        let visit_poly attr_ctx ctx item ~f =
+          self#visit_poly attr_ctx ctx [ item ] ~f:(fun items ->
+            let loc = { loc with loc_ghost = true } in
+            Nonempty_list.to_list items
+            |> List.concat_map ~f:(fun { Maybe_hide_in_docs.node = desc; hide_in_docs } ->
+              let sig_ = [ f ~loc desc ] in
+              if hide_in_docs then Ppx_helpers.Docs.hide ~loc sig_ else sig_)
+            |> Ppx_helpers.Docs.simplify
+            |> Nonempty_list.of_list_exn)
+        in
+        (* It is difficult to isolate individual types in e.g. a [type ... and ...] group.
+           In particular, a [(**/**)] above the first item hides the entire group (and is
+           not disabled by a [(**/**)] inside the group). For now, it's probably enough to
+           hide the entire group if all items in it should be hidden, and to leave the
+           entire group otherwise. *)
+        let visit_poly_group attr_ctx ctx items ~f =
+          self#visit_poly attr_ctx ctx items ~f:(fun items ->
+            let items = Nonempty_list.to_list items in
+            let all_hidden = List.for_all items ~f:Maybe_hide_in_docs.hide_in_docs in
+            let nodes = List.map items ~f:(fun { node; hide_in_docs = _ } -> node) in
+            let sigi = f nodes in
+            let loc = { loc with loc_ghost = true } in
+            (if all_hidden
+             then Ppx_helpers.Docs.hide ~loc [ { psig_desc = sigi; psig_loc = loc } ]
+             else [ { psig_desc = sigi; psig_loc = loc } ])
+            |> Nonempty_list.of_list_exn)
+        in
+        (match Ppxlib_jane.Shim.Signature_item_desc.of_parsetree desc with
+         | Psig_value desc ->
+           visit_poly Value_description ctx desc ~f:Ast_builder.psig_value
+         | Psig_type (rec_flag, decls) ->
+           Nonempty_list.of_list_exn decls
+           |> visit_poly_group Type_declaration ctx ~f:(fun decls ->
+             Psig_type (self#rec_flag ctx rec_flag, deduplicate_deriving_attrs decls))
+         | Psig_typesubst decls ->
+           Nonempty_list.of_list_exn decls
+           |> visit_poly_group Type_declaration ctx ~f:(fun decls -> Psig_typesubst decls)
+         | Psig_module decl ->
+           visit_poly Module_declaration ctx decl ~f:Ast_builder.psig_module
+         | Psig_recmodule decls ->
+           Nonempty_list.of_list_exn decls
+           |> visit_poly_group Module_declaration ctx ~f:(fun decls ->
+             Psig_recmodule decls)
+         | Psig_modtype decl ->
+           visit_poly Module_type_declaration ctx decl ~f:Ast_builder.psig_modtype
+         | Psig_modtypesubst decl ->
+           visit_poly Module_type_declaration ctx decl ~f:Ast_builder.psig_modtypesubst
+         | Psig_include (info, moda) ->
+           visit_poly
+             Include_infos
+             ctx
+             { info with pincl_mod = Right info.pincl_mod }
+             ~f:(fun ~loc info ->
+               Ast_builder.psig_include
+                 ~loc
+                 { info with
+                   pincl_mod =
+                     (match info.pincl_mod with
+                      | Left _ -> assert false
+                      | Right x -> x)
+                 }
+                 ~modalities:(self#modalities ctx moda))
+         | _ ->
+           (* We reset the defaults here since they are supposed to act "shallowly", i.e.
+              they only apply to the current layer of structure items, not nested items. *)
+           [ { psig_loc = loc
+             ; psig_desc =
+                 super#signature_item_desc
+                   { ctx with defaults = Context.Defaults.empty }
+                   desc
+             }
+           ])
   end
 ;;
-
-let inline_struct ~loc nodes =
-  Ast_builder.pstr_extension ~loc ({ txt = "template.inline"; loc }, PStr nodes) []
-;;
-
-let inline_sig ~loc nodes =
-  Ast_builder.psig_extension
-    ~loc
-    ({ txt = "template.inline"; loc }, PSig (Ast_builder.signature ~loc nodes))
-    []
-;;
-
-let t_inline = t ~mk_struct:inline_struct ~mk_sig:inline_sig
-
-let include_struct ~loc items =
-  Ast_builder.pstr_include
-    ~loc
-    (Ast_builder.include_infos
-       ~loc
-       ~kind:Structure
-       (Ast_builder.pmod_structure ~loc items))
-;;
-
-let include_sig ~loc nodes =
-  Ast_builder.psig_include
-    ~loc
-    ~modalities:[]
-    (Ast_builder.include_infos
-       ~loc
-       ~kind:Structure
-       (Ast_builder.pmty_signature ~loc (Ast_builder.signature ~loc nodes)))
-;;
-
-let t_no_inline = t ~mk_struct:include_struct ~mk_sig:include_sig

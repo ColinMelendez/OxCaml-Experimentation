@@ -16,7 +16,7 @@ module Signified = struct
     | Incomplete of { prefix_of_prefix : string }
     (** [Incomplete] means the parser is uncertain how to handle some suffix of the input
         it has seen so far. E.g. midway through a backslash-escape sequence *)
-  [@@deriving compare, sexp_of]
+  [@@deriving compare ~localize, sexp_of]
 
   module Unstable = struct
     type nonrec t = t =
@@ -33,10 +33,10 @@ module Create_result = struct
     | Some of 't
 end
 
-module type Atom_prefix = sig
+module type%template [@mode m = (local, global)] Atom_prefix = sig
   module Signified = Signified
 
-  type t [@@deriving compare, sexp_of]
+  type t [@@deriving (compare [@mode.explicit m]), sexp_of]
 
   (** [create state] inspects the parser state and returns [Some t] if the parser is known
       to be in a (non-comment) atom.

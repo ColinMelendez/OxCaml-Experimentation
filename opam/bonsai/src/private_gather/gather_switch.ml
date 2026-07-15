@@ -74,7 +74,7 @@ let f ~gather ~recursive_scopes ~time_source ~match_ ~arms ~here =
       in
       let input =
         let%mapn input = Input.to_incremental (Snapshot.input snapshot) in
-        Some (Meta.Input.Hidden.T { input; type_id = input_info; key = index })
+        Meta.Input.Hidden.T { input; type_id = input_info; key = index }
       in
       Incr.return
         (Snapshot.result snapshot, input, Snapshot.lifecycle_or_empty ~here snapshot)
@@ -92,7 +92,7 @@ let f ~gather ~recursive_scopes ~time_source ~match_ ~arms ~here =
     let input =
       match resolved.input with
       | Yes_or_maybe -> Input.dynamic input
-      | No -> Input.static_none
+      | No -> Input.static_dummy_for_switch
     in
     Trampoline.return (Snapshot.create ~here ~result ~input ~lifecycle, ())
   in
@@ -124,8 +124,8 @@ let f ~gather ~recursive_scopes ~time_source ~match_ ~arms ~here =
     with
     | Some T, Some T ->
       let new_model =
-        match Option.join input with
-        | Some
+        match input with
+        | Computation_status.Active
             (Meta.Input.Hidden.T
               { input = chosen_input; type_id = chosen_input_info; key = index' }) ->
           (match index = index', Meta.Input.same_witness chosen_input_info im with
@@ -133,21 +133,21 @@ let f ~gather ~recursive_scopes ~time_source ~match_ ~arms ~here =
              apply_action
                ~inject:(wrap_switch ~type_id:am ~branch:index inject)
                ~schedule_event
-               (Some chosen_input)
+               (Active chosen_input)
                chosen_model
                action
            | _ ->
              apply_action
                ~inject:(wrap_switch ~type_id:am ~branch:index inject)
                ~schedule_event
-               None
+               Inactive
                chosen_model
                action)
-        | None ->
+        | Inactive ->
           apply_action
             ~inject:(wrap_switch ~type_id:am ~branch:index inject)
             ~schedule_event
-            None
+            Inactive
             chosen_model
             action
       in

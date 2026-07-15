@@ -1,5 +1,5 @@
 (library
- (name bonsai_tui_border_box)
+ (name bonsai_term_border_box)
  (public_name bonsai_term_components.border_box)
  (libraries bonsai_term core)
  (preprocess

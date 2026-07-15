@@ -31,7 +31,7 @@ end
 let generate_clear clock_50 reset_n =
   let reset_chain =
     reg_fb
-      (Reg_spec.create ~clock:clock_50 ~reset:reset_n ~reset_edge:Falling ())
+      (Reg_spec.create ~clock:clock_50 ~reset:reset_n ~reset_level:Low ())
       ~reset_to:(Bits.ones 16)
       ~width:16
       ~f:(fun d -> sll d ~by:1)

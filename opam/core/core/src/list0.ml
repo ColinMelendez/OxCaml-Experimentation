@@ -2,6 +2,14 @@ open! Import
 open! Typerep_lib.Std
 include Base.List
 
+[%%template
+[@@@kind_set.define all_ks_non_value = base_non_value]
+
+type ('a : k) t = ('a Constructors.t[@kind k]) =
+  | []
+  | ( :: ) of 'a * ('a t[@kind k])
+[@@kind k = all_ks_non_value] [@@deriving bin_io ~localize]]
+
 [%%rederive.portable
   type ('a : value_or_null) t = 'a list
   [@@deriving bin_io ~localize, typerep, stable_witness]]
@@ -12,7 +20,11 @@ module Assoc = struct
   type ('a : value_or_null, 'b : value_or_null) t = ('a * 'b) list
   [@@deriving bin_io ~localize]
 
-  let compare (type a b) compare_a compare_b = [%compare: (a * b) list]
+  let%template[@mode m = (local, global)] compare (type a b) compare_a compare_b =
+    let[@mode m] compare_a = compare_a in
+    let[@mode m] compare_b = compare_b in
+    [%compare: (a * b) list] [@mode.explicit m]
+  ;;
 end
 
 let to_string ~f t =

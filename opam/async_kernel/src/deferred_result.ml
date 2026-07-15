@@ -3,7 +3,7 @@ open Deferred_std
 module Deferred = Deferred1
 
 module T = struct
-  type ('a, 'error) t = ('a, 'error) Result.t Deferred.t
+  type ('a : value_or_null, 'error) t = ('a, 'error) Result.t Deferred.t
 end
 
 include T
@@ -13,7 +13,7 @@ let combine t1 t2 ~ok ~err =
   Result.combine t1 t2 ~ok ~err
 ;;
 
-include Monad.Make2 (struct
+include Monad.Make2 [@kind value_or_null mod maybe_null] (struct
     include T
 
     let return a = Deferred.return (Ok a)
@@ -38,6 +38,8 @@ let rec repeat_until_finished state f =
     | `Finished state -> return state)
 ;;
 
+let ok_unit = return ()
+
 module List = struct
   open Let_syntax
 
@@ -60,6 +62,8 @@ module List = struct
     >>| List.rev
   ;;
 
+  let all ds = seqmapi ds ~f:(fun _ x -> x)
+  let all_unit ds = ignore_m (fold ds ~init:() ~f:(fun () d -> d))
   let iteri t ~f = foldi t ~init:() ~f:(fun i () x -> f i x)
   let mapi t ~f = seqmapi t ~f
   let filter_mapi t ~f = mapi t ~f >>| List.filter_opt

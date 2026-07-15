@@ -230,7 +230,7 @@ let sec_websocket_accept_header_value ~sec_websocket_key =
   ^ "="
 ;;
 
-let close
+let close_internal
   ~code
   ~reason
   ~masked
@@ -239,11 +239,19 @@ let close
   Frame.write_frame ws.writer ~masked (Frame.create_close ~code reason);
   (* Wait for the writer to be flushed before actually closing it, otherwise the closing
      frame won't be sent. *)
-  let%bind () = Writer.flushed ws.writer in
+  let%bind () = Writer.flushed_or_failed_unit ws.writer in
   let%bind () = Writer.close ws.writer in
   let%bind () = Reader.close ws.reader in
   Pipe.close_read pipe_reader;
   Pipe.close pipe_writer;
+  return ()
+;;
+
+let close t ~code ~reason =
+  let%bind () =
+    close_internal ~code:(Connection_close_reason.to_int code) ~reason ~masked:t.masked t
+  in
+  close_cleanly ~code ~reason ~info:(Pipes.close_info ()) t.raw;
   return ()
 ;;
 
@@ -294,7 +302,7 @@ let create_gen
   in
   let when_closed__close_everything t =
     let%bind code, reason, _info = Ivar.read closed in
-    close ~code:(Connection_close_reason.to_int code) ~reason ~masked t
+    close_internal ~code:(Connection_close_reason.to_int code) ~reason ~masked t
   in
   don't_wait_for when_reader_closes__close_t;
   let t = { pipes = reader, writer; raw = ws; read_opcode_bus; masked } in

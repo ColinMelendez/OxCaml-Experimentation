@@ -143,19 +143,20 @@ let recurse ~recursive_scopes ~input ~input_id ~fix_id ~here =
     in
     let new_model =
       match input with
-      | Some (Meta.Input.Hidden.T { input; type_id = input_type_id; key = () }) ->
+      | Computation_status.Active
+          (Meta.Input.Hidden.T { input; type_id = input_type_id; key = () }) ->
         let T = Meta.Input.same_witness_exn input_type_id input_info in
         apply_action
           ~inject:(wrap_lazy ~type_id:action_info inject)
           ~schedule_event
-          (Some input)
+          (Computation_status.Active input)
           chosen_model
           action
-      | None ->
+      | Inactive ->
         apply_action
           ~inject:(wrap_lazy ~type_id:action_info inject)
           ~schedule_event
-          None
+          Computation_status.Inactive
           chosen_model
           action
     in

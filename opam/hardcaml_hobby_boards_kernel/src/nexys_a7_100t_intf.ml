@@ -189,5 +189,77 @@ module type Nexys_a7_100t = sig
     include M_IO(I)(O).S with type board := Board.t
   end
 
+  module Pmod_ja : sig
+    module T : sig
+      type 'a t =
+        { pin1 : 'a
+        ; pin2 : 'a
+        ; pin3 : 'a
+        ; pin4 : 'a
+        ; pin7 : 'a
+        ; pin8 : 'a
+        ; pin9 : 'a
+        ; pin10 : 'a
+        }
+      [@@deriving hardcaml]
+    end
+
+    include M_T(T).S with type board := Board.t
+  end
+
+  module Pmod_jb : sig
+    module T : sig
+      type 'a t =
+        { pin1 : 'a
+        ; pin2 : 'a
+        ; pin3 : 'a
+        ; pin4 : 'a
+        ; pin7 : 'a
+        ; pin8 : 'a
+        ; pin9 : 'a
+        ; pin10 : 'a
+        }
+      [@@deriving hardcaml]
+    end
+
+    include M_T(T).S with type board := Board.t
+  end
+
+  module Pmod_jc : sig
+    module T : sig
+      type 'a t =
+        { pin1 : 'a
+        ; pin2 : 'a
+        ; pin3 : 'a
+        ; pin4 : 'a
+        ; pin7 : 'a
+        ; pin8 : 'a
+        ; pin9 : 'a
+        ; pin10 : 'a
+        }
+      [@@deriving hardcaml]
+    end
+
+    include M_T(T).S with type board := Board.t
+  end
+
+  module Pmod_jd : sig
+    module T : sig
+      type 'a t =
+        { pin1 : 'a
+        ; pin2 : 'a
+        ; pin3 : 'a
+        ; pin4 : 'a
+        ; pin7 : 'a
+        ; pin8 : 'a
+        ; pin9 : 'a
+        ; pin10 : 'a
+        }
+      [@@deriving hardcaml]
+    end
+
+    include M_T(T).S with type board := Board.t
+  end
+
   val generate_top : ?dir:string -> Board.t -> unit
 end

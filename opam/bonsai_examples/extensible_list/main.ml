@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Extendy = Bonsai_web_ui_extendy
+module Extendy = Bonsai_kernel_extendy
 
 let component (local_ graph) =
   let wrap_remove view remove_event =
@@ -24,4 +24,4 @@ let component (local_ graph) =
      :: views)
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

@@ -1,7 +1,0 @@
-(library
- (name immediate)
- (public_name unboxed.immediate)
- (libraries core core_extended.immediate_kernel int_repr core_kernel.iobuf
-   core_kernel.pooled_hashtbl ppx_stable_witness.stable_witness unboxed)
- (preprocess
-  (pps ppx_jane -require-template-extension)))

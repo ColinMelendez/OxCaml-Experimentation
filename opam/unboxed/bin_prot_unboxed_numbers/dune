@@ -2,5 +2,6 @@
  (name bin_prot_unboxed_numbers)
  (public_name unboxed.bin_prot_unboxed_numbers)
  (libraries base float32)
+ (ocamlopt_flags :standard -O3)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

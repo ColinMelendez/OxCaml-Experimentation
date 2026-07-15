@@ -4,4 +4,4 @@
  (libraries bin_prot_unboxed_numbers core float32 ocaml_intrinsics_kernel
    stdlib_stable)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

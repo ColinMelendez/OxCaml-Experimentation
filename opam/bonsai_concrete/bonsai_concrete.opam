@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/bonsai_concrete/issues"
 dev-repo: "git+https://github.com/janestreet/bonsai_concrete.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/bonsai_concrete/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -21,7 +22,10 @@ depends: [
   "virtual_dom"
   "dune"        {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Shared dependencies of bonsai and incr_dom."
 description: "
 This repo contains shared dependencies between incr_dom and bonsai: ui_incr

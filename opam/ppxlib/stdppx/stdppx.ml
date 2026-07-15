@@ -98,7 +98,8 @@ module type Comparisons = sig
 end
 
 module Poly = struct
-  let compare = compare
+  let compare__local (a @ local) (b @ local) = compare a b
+  let compare a b = compare__local a b
   let equal = ( = )
   let ( = ) = ( = )
   let ( < ) = ( < )

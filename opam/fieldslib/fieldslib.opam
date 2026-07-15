@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/fieldslib/issues"
 dev-repo: "git+https://github.com/janestreet/fieldslib.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/fieldslib/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -14,7 +15,10 @@ depends: [
   "base"
   "dune" {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Syntax extension to define first class values representing record fields, to get and set record fields, iterate and fold over all fields of a record and create new record values"
 description: "
 Part of Jane Street's Core library

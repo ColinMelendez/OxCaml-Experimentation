@@ -1,6 +1,6 @@
 (library
  (name filesystem)
  (public_name filesystem)
- (libraries core file_path filesystem_types)
+ (libraries core file_path filesystem_types_unix)
  (preprocess
   (pps ppx_jane)))

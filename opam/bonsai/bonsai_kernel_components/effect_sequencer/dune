@@ -1,0 +1,6 @@
+(library
+ (name effect_sequencer)
+ (public_name bonsai.kernel_components.effect_sequencer)
+ (libraries bonsai bonsai_proc core virtual_dom.ui_effect)
+ (preprocess
+  (pps ppx_jane)))

@@ -3,14 +3,26 @@ open! Stdlib.Int32
 module Sexp = Sexp0
 
 module T = struct
-  type t = int32 [@@deriving globalize, hash, sexp ~stackify, sexp_grammar]
+  module T0 = struct
+    type t = int32 [@@deriving globalize, hash, of_sexp ~unboxed, sexp_grammar]
 
-  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
-  let compare (x : t) y = compare x y
+    let%template[@alloc a = (heap, stack)] to_string =
+      (Integer_to_string.int32_to_string [@alloc a])
+    ;;
+
+    type unboxed = int32#
+
+    let box = Basement.Primitives.box_int32
+  end
+
+  include T0
+
+  include%template Int_string_conversions.Make_unboxed [@kind bits32] (T0)
 
   external format : string -> local_ int32 -> string @@ portable = "caml_int32_format"
 
-  let to_string = Integer_to_string.int32_to_string
+  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
+  let compare (x : t) y = compare x y
 
   external of_string
     :  local_ string

@@ -11,6 +11,10 @@ open! Core
     - time spans are converted into a (decimal) number of {e seconds} for the [le] label
     - A bucket is automatically added with an upper bound of [+Inf]
 
+    All bucket boundaries must be non-negative (>= 0). Attempting to create buckets with
+    negative boundaries will return an error. Negative observations are permitted but
+    would be bucketed in the smallest bucket.
+
     Note that the [compare] and [equal] functions completely ignore the passed in
     comparison or equality function for ['a] and always use the standard comparison or
     equality function of whatever type ['a] actually represents (e.g. [Int.compare]). *)
@@ -87,7 +91,8 @@ module Linear : sig
 
       The function returns an error if:
       - [range_start >= range_end]
-      - [count <= 1] *)
+      - [count <= 1]
+      - any resulting bucket boundary is negative *)
   val create_from_range
     :  ('param, 'out) Bucket_spec.t
     -> range_start:'param
@@ -109,7 +114,8 @@ module Linear : sig
 
       The function returns an error if:
       - [step <= 0]
-      - [count <= 1] *)
+      - [count <= 1]
+      - any resulting bucket boundary is negative *)
   val create_from_step
     :  ('param, 'out) Bucket_spec.t
     -> range_start:'param
@@ -204,6 +210,7 @@ module Expert : sig
       - the list of boundaries is not strictly monotonically increasing (i.e. if there are
         consecutive elements [a] and [b] where [not (a < b)]);
       - the list of boundaries contains NaNs;
+      - the list of boundaries contains negative values;
       - the list of boundaries is empty or only contains infinity. *)
   val create : 'a Type.t -> 'a Nonempty_list.t -> 'a t Or_error.t
 
@@ -216,6 +223,16 @@ module Expert : sig
   (** [create_seconds_exn floats] is equivalent to
       [create_exn Span (Nonempty_list.map ~f:Time_ns.Span.of_sec floats)] *)
   val create_seconds_exn : float Nonempty_list.t -> Time_ns.Span.t t
+
+  (** Do not use. Same as [create_exn] but allows negative boundaries. *)
+  val create_allow_deprecated_negative_boundaries_exn
+    :  'a Type.t
+    -> 'a Nonempty_list.t
+    -> 'a t
+  [@@alert
+    deprecated
+      "Please try to avoid negative buckets. They lead to unexpected results during \
+       querying"]
 end
 
 (** Boundaries for the buckets. When using these boundaries, one should implicitly add

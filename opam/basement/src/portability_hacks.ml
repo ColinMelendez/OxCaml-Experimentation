@@ -49,13 +49,31 @@ external magic_portable__needs_portable_functors
   = "%identity"
 
 external magic_uncontended__promise_deeply_immutable
-  :  'a @ contended
-  -> 'a
+  : ('a : value_or_null).
+  'a @ contended -> 'a
+  @@ portable
+  = "%identity"
+
+external magic_uncontended__promise_deeply_immutable__portable
+  :  'a @ contended portable
+  -> 'a @ portable
   @@ portable
   = "%identity"
 
 external magic_uncontended__promise_deeply_immutable_module
   :  'a @ contended
   -> 'a
+  @@ portable
+  = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model
+  :  'a @ contended
+  -> 'a
+  @@ portable
+  = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model__portable
+  :  'a @ contended portable
+  -> 'a @ portable
   @@ portable
   = "%identity"

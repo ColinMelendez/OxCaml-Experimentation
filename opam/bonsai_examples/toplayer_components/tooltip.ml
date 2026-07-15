@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-module Gallery = Bonsai_web_ui_gallery
-module Toplayer = Bonsai_web_ui_toplayer
+module Gallery = Bonsai_web_contrib_gallery
+module Toplayer = Bonsai_web_themed_toplayer
 
 module Tooltip = struct
   let name = "Basic Tooltip"
@@ -92,10 +92,10 @@ module Tooltip_with_arbitrary_content = struct
         Toplayer.Tooltip.create
           ~hoverable_inside:true
           {%html|
-            <%{View.vbox}>
-              do not click this button
-              <button on_click=%{fun _ -> rickroll}>no clicky!</button>
-            </>
+            <%{View.vbox}
+              >#{" do not click this button "}<button on_click=%{fun _ -> rickroll}>
+                #{"no clicky!"}
+              </button></>
           |}
       in
       {%html|<span %{tooltip}>cursed knowledge</span>|}]

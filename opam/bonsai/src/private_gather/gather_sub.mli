@@ -6,7 +6,7 @@ val gather
   :  here:Source_code_position.t
   -> info_from:(_, _, _, 'from_result, unit) Computation.info
   -> info_into:(_, _, _, 'into_result, unit) Computation.info
-  -> via:'from_result Type_equal.Id.t
+  -> via:'from_result Var_id.t
   -> invert_lifecycles:bool
   -> ('into_result, unit) Computation.packed_info
 

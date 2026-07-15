@@ -1,5 +1,6 @@
 open Core
 open Async_kernel
+open! Import
 open Util
 module P = Protocol
 
@@ -26,10 +27,6 @@ type 'connection_state on_unknown_rpc =
     -> rpc_tag:string
     -> version:int
     -> [ `Close_connection | `Continue ]
-  ]
-
-type 'connection_state on_unknown_rpc_with_expert =
-  [ 'connection_state on_unknown_rpc
   | `Expert of
     'connection_state
     -> rpc_tag:string
@@ -44,7 +41,7 @@ type 'connection_state on_unknown_rpc_with_expert =
 
 type 'connection_state t =
   { implementations : 'connection_state Implementation.t Description.Table.t
-  ; on_unknown_rpc : 'connection_state on_unknown_rpc_with_expert
+  ; on_unknown_rpc : 'connection_state on_unknown_rpc
   ; on_exception : On_exception.t
   }
 
@@ -73,24 +70,24 @@ module Instance = struct
 
   type 'a unpacked =
     { implementations : ('a implementations[@sexp.opaque])
-    ; menu : Menu.t option
+    ; menu : Menu.t or_null
     ; writer : Protocol_writer.t
-    ; tracing_events : (local_ Tracing_event.t -> unit) Bus.Read_write.t
+    ; tracing_events : (Tracing_event.t @ local -> unit) Bus.Read_write.t
     ; no_open_queries_event : (unit, read_write) Bvar.t
     ; open_streaming_responses : (Protocol.Query_id.t, Streaming_response.t) Hashtbl.t
     ; mutable open_queries : int
     ; mutable stopped : bool
     ; connection_state : 'a
-    ; connection_description : Info.t
+    ; connection_description : Info.Portable.t
     ; connection_close_started : Close_reason.t Deferred.t
-    ; connection_close_started_info : Info.t Deferred.t
+    ; connection_close_started_info : Info.Portable.t Deferred.t
     ; mutable last_dispatched_implementation :
         (Description.t * ('a Implementation.t[@sexp.opaque]) * Protocol.Impl_menu_index.t)
           option
     ; on_receive :
-        local_ Description.t
+        Description.t @ local
         -> query_id:P.Query_id.t
-        -> Rpc_metadata.V2.t option
+        -> Rpc_metadata.V2.t or_null
         -> Execution_context.t
         -> Execution_context.t
     }
@@ -100,7 +97,7 @@ module Instance = struct
 
   let sexp_of_t (T t) = [%sexp_of: _ unpacked] t
 
-  let write_tracing_event t (local_ event) =
+  let write_tracing_event t (event @ local) =
     if not (Bus.is_closed t.tracing_events) then Bus.write_local t.tracing_events event
   ;;
 
@@ -190,8 +187,8 @@ module Instance = struct
 
   let get_description_from_menu_rank (T t) rank = exclave_
     match t.menu with
-    | None -> None
-    | Some menu -> Menu.get menu rank
+    | Null -> Null
+    | This menu -> Menu.get menu rank
   ;;
 
   module Direct_stream_writer = struct
@@ -982,7 +979,7 @@ module Instance = struct
               check_responded ()
               |> Rpc_result.or_error
                    ~rpc_description:rpc
-                   ~connection_description:t.connection_description
+                   ~connection_description:(Info.of_portable t.connection_description)
                    ~connection_close_started:t.connection_close_started_info
               |> ok_exn);
             Ok ())
@@ -1009,7 +1006,7 @@ module Instance = struct
             ok_exn
               (Rpc_result.or_error
                  ~rpc_description:rpc
-                 ~connection_description:t.connection_description
+                 ~connection_description:(Info.of_portable t.connection_description)
                  ~connection_close_started:t.connection_close_started_info
                  result))
        | Some result ->
@@ -1165,11 +1162,11 @@ module Instance = struct
     | None | Some _ ->
       let impl_menu_index =
         match t.menu with
-        | None -> P.Impl_menu_index.none
-        | Some menu ->
+        | Null -> P.Impl_menu_index.none
+        | This menu ->
           (match Menu.index menu description with
-           | None -> P.Impl_menu_index.none
-           | Some index -> P.Impl_menu_index.some (Nat0.of_int_exn index))
+           | Null -> P.Impl_menu_index.none
+           | This index -> P.Impl_menu_index.some (Nat0.of_int_exn index))
       in
       (match Hashtbl.find implementations description with
        | Some implementation ->
@@ -1203,7 +1200,7 @@ module Instance = struct
                 t.connection_state
                 ~rpc_tag
                 ~version
-                ~metadata
+                ~metadata:(Or_null.to_option metadata)
                 responder
                 read_buffer
                 ~pos:!read_buffer_pos_ref
@@ -1286,8 +1283,7 @@ let create ~implementations:i's ~on_unknown_rpc ~on_exception =
     | `Duplicate -> Hash_set.add dups description);
   if not (Hash_set.is_empty dups)
   then Error (`Duplicate_implementations (Hash_set.to_list dups))
-  else
-    Ok { implementations; on_unknown_rpc :> _ on_unknown_rpc_with_expert; on_exception }
+  else Ok { implementations; on_unknown_rpc; on_exception }
 ;;
 
 let instantiate
@@ -1407,7 +1403,7 @@ module Expert = struct
         cannot_send ([%globalize: unit Transport.Send_result.t] r)
     ;;
 
-    let handle_send_result : local_ unit Transport.Send_result.t -> unit = function
+    let handle_send_result : unit Transport.Send_result.t @ local -> unit = function
       | Sent { result = (); bytes = (_ : int) } | Closed -> ()
       | Message_too_big _ as r ->
         cannot_send ([%globalize: unit Transport.Send_result.t] r)
@@ -1456,8 +1452,6 @@ module Expert = struct
       ()
     ;;
   end
-
-  let create_exn = create_exn
 end
 
 module Private = struct

@@ -5,26 +5,7 @@ open! Core
 module Bonsai := Bonsai.Cont
 module Effect := Bonsai.Effect
 module Computation_status := Bonsai.Computation_status
-module Url_var := Bonsai_web_ui_url_var
-
-(* $MDX part-begin=assoc *)
-val assoc
-  :  here:[%call_pos]
-  -> ('k, 'cmp) Comparator.Module.t
-  -> ('k, 'v, 'cmp) Map.t Bonsai.t
-  -> f:('k Bonsai.t -> 'v Bonsai.t -> local_ Bonsai.graph -> 'result Bonsai.t)
-  -> local_ Bonsai.graph
-  -> ('k, 'result, 'cmp) Map.t Bonsai.t
-(* $MDX part-end *)
-
-(* $MDX part-begin=state_machine *)
-val state_machine
-  :  default_model:'model
-  -> apply_action:
-       (('action, unit) Bonsai.Apply_action_context.t -> 'model -> 'action -> 'model)
-  -> local_ Bonsai.graph
-  -> 'model Bonsai.t * ('action -> unit Effect.t) Bonsai.t
-(* $MDX part-end *)
+module Url_var := Bonsai_web_url_var
 
 (* $MDX part-begin=peek *)
 val peek
@@ -83,6 +64,7 @@ end
 (* $MDX part-begin=mirror *)
 val mirror
   :  ?sexp_of_model:('m -> Sexp.t)
+  -> ?trigger:[ `Before_display | `After_display ]
   -> equal:('m -> 'm -> bool)
   -> store_set:('m -> unit Effect.t) Bonsai.t
   -> store_value:'m Bonsai.t

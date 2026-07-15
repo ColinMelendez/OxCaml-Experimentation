@@ -1,6 +1,6 @@
 module Stable = struct
   module V1 = struct
-    type +'a t = 'a [@@deriving sexp, bin_io, compare, equal]
+    type +'a t = 'a [@@deriving sexp, bin_io, compare ~localize, equal ~localize]
 
     let map x ~f = f x
   end

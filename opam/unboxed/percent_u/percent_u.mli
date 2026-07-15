@@ -3,20 +3,18 @@
 open! Core
 open Import
 
-type t : float64 mod everything [@@deriving quickcheck]
+type t : float64 mod everything [@@deriving quickcheck, sexp ~stackify]
 
 val globalize : local_ t -> t
 
 (** Serializers *)
 
-val sexp_of_t : t -> Sexp.t
-val t_of_sexp : Sexp.t -> t
 val to_string : t -> string
 val of_string : string -> t
 
 include%template Bin_prot.Binable.S [@mode local] with type t := t
 
-include Ppx_hash_lib.Hashable.S_any with type t := t
+include Ppx_hash_lib.Hashable.S with type t := t
 
 val typerep_of_t : t Typerep.t
 val box : t -> Percent.t
@@ -73,29 +71,31 @@ val to_bp_int : t -> int [@@zero_alloc]
 
 (** Misc *)
 
-val zero : unit -> t [@@zero_alloc]
-val one_hundred_percent : unit -> t [@@zero_alloc]
+val zero : t
+val one_hundred_percent : t
 val apply : t -> Float_u.t -> Float_u.t [@@zero_alloc]
 val scale : t -> Float_u.t -> t [@@zero_alloc]
+val neg : t -> t [@@zero_alloc]
 val select : bool -> t -> t -> t [@@zero_alloc]
+
+(** 0.0123456% ~significant_digits:4 is 1.235bp *)
+val round_significant : t -> significant_digits:int -> t
 
 module Option : sig
   type value := t
-  type t : float64 mod everything
+  type t : float64 mod everything [@@deriving sexp ~stackify]
 
   val globalize : local_ t -> t
   val box : t -> Percent.Option.t
   val unbox : local_ Percent.Option.t -> t [@@zero_alloc]
   val to_string : t -> string
-  val sexp_of_t : t -> Sexp.t
-  val t_of_sexp : Sexp.t -> t
 
   include%template Bin_prot.Binable.S [@mode local] with type t := t
 
-  include Ppx_hash_lib.Hashable.S_any with type t := t
+  include Ppx_hash_lib.Hashable.S with type t := t
 
   val typerep_of_t : t Typerep.t
-  val none : unit -> t [@@zero_alloc]
+  val none : t
   val is_none : t -> bool [@@zero_alloc]
   val is_some : t -> bool [@@zero_alloc]
   val some : value -> t [@@zero_alloc]
@@ -151,20 +151,14 @@ end
 
 module Stable : sig
   module V1 : sig
-    type nonrec t = t
-
-    val sexp_of_t : t -> Sexp.t
-    val t_of_sexp : Sexp.t -> t
+    type nonrec t = t [@@deriving compare, globalize, sexp ~stackify]
 
     include%template Bin_prot.Binable.S [@mode local] with type t := t
   end
 
   module Option : sig
     module V1 : sig
-      type nonrec t = Option.t
-
-      val sexp_of_t : t -> Sexp.t
-      val t_of_sexp : Sexp.t -> t
+      type nonrec t = Option.t [@@deriving compare, globalize, sexp ~stackify]
 
       include%template Bin_prot.Binable.S [@mode local] with type t := t
     end

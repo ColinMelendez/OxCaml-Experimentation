@@ -32,19 +32,23 @@ type 'a t = private
       ; type_id : 'a id
       }
       -> lazy_ t
+  (*_ We use [comparator] for:
+      - Initializing maps where necessary
+      - Compare function for stabilization tracker
+      - Sexp_of function for paths + debugging/logging *)
   | Assoc :
       { key : 'key
       ; action : 'a t
-      ; id : 'key Type_equal.Id.t
-      ; compare : 'key -> 'key -> int
+      ; id : 'key Var_id.t
+      ; comparator : ('key, _) Comparator.Module.t
       }
       -> ('key, 'a) assoc t
   | Assoc_on :
       { io_key : 'io_key
       ; model_key : 'model_key
       ; action : 'a t
-      ; io_id : 'io_key Type_equal.Id.t
-      ; io_compare : 'io_key -> 'io_key -> int
+      ; io_id : 'io_key Var_id.t
+      ; io_comparator : ('io_key, _) Comparator.Module.t
       }
       -> ('io_key, 'model_key, 'a) assoc_on t
 
@@ -53,17 +57,24 @@ module Type_id : sig
   type 'a t := 'a id
 
   val nothing : Nothing.t leaf t
-  val leaf : 'a Type_equal.Id.t -> 'a leaf t
+
+  val leaf
+    :  'action Var_id.t
+    -> action_name:string
+    -> sexp_of_action:('action -> Sexp.t) option
+    -> 'action leaf t
+
   val sub : from:'from t -> into:'into t -> ('from, 'into) sub t
-  val wrap : inner:'a t -> outer:'outer Type_equal.Id.t -> ('a, 'outer) wrap t
+  val wrap : inner:'a t -> outer:'outer Var_id.t -> ('a, 'outer) wrap t
   val model_reset : 'a t -> 'a model_resetter t
   val switch : switch t
   val lazy_ : lazy_ t
-  val assoc : key:'key Type_equal.Id.t -> action:'a t -> ('key, 'a) assoc t
+  val assoc : key:'key Var_id.t -> action:'a t -> ('key, 'a) assoc t
 
   val assoc_on
-    :  io_key:'io_key Type_equal.Id.t
-    -> model_key:'model_key Type_equal.Id.t
+    :  io_key:'io_key Var_id.t
+    -> model_key:'model_key Var_id.t
+    -> sexp_of_model_key:('model_key -> Sexp.t)
     -> action:'a t
     -> ('io_key, 'model_key, 'a) assoc_on t
 
@@ -86,15 +97,15 @@ val lazy_ : type_id:'a id -> 'a t -> lazy_ t
 
 val assoc
   :  key:'key
-  -> id:'key Type_equal.Id.t
-  -> compare:('key -> 'key -> int)
+  -> id:'key Var_id.t
+  -> comparator:('key, _) Comparator.Module.t
   -> 'a t
   -> ('key, 'a) assoc t
 
 val assoc_on
   :  io_key:'io_key
-  -> io_id:'io_key Type_equal.Id.t
-  -> io_compare:('io_key -> 'io_key -> int)
+  -> io_id:'io_key Var_id.t
+  -> io_comparator:('io_key, _) Comparator.Module.t
   -> model_key:'model_key
   -> 'a t
   -> ('io_key, 'model_key, 'a) assoc_on t

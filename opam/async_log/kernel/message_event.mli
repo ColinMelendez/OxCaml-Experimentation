@@ -19,6 +19,7 @@ val create
   -> ?level:Level.t
   -> Message_data.t
   -> t
+  @@ portable
 
 val raw_message : t -> Message_data.t
 val message : t -> string

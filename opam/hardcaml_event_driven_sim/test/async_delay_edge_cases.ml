@@ -69,10 +69,7 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
           ])
       in
       run simulator ~time_limit:10;
-      Hardcaml_event_driven_sim.Waveterm.Waveform.expect
-        waves
-        ~wave_width:1
-        ~display_width:50
+      Hardcaml_waveterm.Waveform.expect waves ~wave_width:1 ~display_width:50
     ;;
 
     (* For both of these tests, the order of operations when the clocks ticks is:
@@ -92,12 +89,12 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
         │          ││    └───┘   └───┘   └───┘   └───┘   │
         │data      ││────────┐       ┌───────┐       ┌───│
         │          ││        └───────┘       └───────┘   │
-        │delay     ││        ┌───────┐       ┌───────┐   │
-        │          ││────────┘       └───────┘       └───│
         │direct    ││────────┐       ┌───────┐       ┌───│
         │          ││        └───────┘       └───────┘   │
+        │delay     ││        ┌───────┐       ┌───────┐   │
+        │          ││────────┘       └───────┘       └───│
         └──────────┘└────────────────────────────────────┘
-        7d2db14f42d455b97ff4b58504f0b7a7
+        5ed1b4a162ce4df19577b7e0c4624597
         |}]
     ;;
 
@@ -110,12 +107,12 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
         │          ││────┘   └───┘   └───┘   └───┘   └───│
         │data      ││    ┌───────┐       ┌───────┐       │
         │          ││────┘       └───────┘       └───────│
-        │delay     ││            ┌───────┐       ┌───────│
-        │          ││────────────┘       └───────┘       │
         │direct    ││    ┌───────┐       ┌───────┐       │
         │          ││────┘       └───────┘       └───────│
+        │delay     ││            ┌───────┐       ┌───────│
+        │          ││────────────┘       └───────┘       │
         └──────────┘└────────────────────────────────────┘
-        ea275f11ac42c367c03fbdc068af4473
+        b645fd92360ddffb082cd8b45e3ce572
         |}]
     ;;
   end
@@ -155,7 +152,7 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
           ])
       in
       run simulator ~time_limit:10;
-      Waveterm.Waveform.expect waves ~wave_width:1 ~display_width:50
+      Hardcaml_waveterm.Waveform.expect waves ~wave_width:1 ~display_width:50
     ;;
 
     (* When [initial_delay=0], both [direct] and [delay] are set with [clock]s old value
@@ -177,14 +174,14 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
         ┌Signals───┐┌Waves───────────────────────────────┐
         │clock     ││────┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
         │          ││    └───┘   └───┘   └───┘   └───┘   │
-        │clock_dela││────┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
-        │          ││    └───┘   └───┘   └───┘   └───┘   │
-        │delay     ││                                    │
-        │          ││────────────────────────────────────│
         │direct    ││                                    │
         │          ││────────────────────────────────────│
+        │delay     ││                                    │
+        │          ││────────────────────────────────────│
+        │clock_dela││────┐   ┌───┐   ┌───┐   ┌───┐   ┌───│
+        │          ││    └───┘   └───┘   └───┘   └───┘   │
         └──────────┘└────────────────────────────────────┘
-        48469aea3b493d038e483dfdf1c74c2f
+        2243aaff971ccfd553460357fb9bbe42
         |}]
     ;;
 
@@ -212,14 +209,14 @@ module Test (Simulator : Hardcaml_event_driven_sim.S) = struct
         ┌Signals───┐┌Waves───────────────────────────────┐
         │clock     ││    ┌───┐   ┌───┐   ┌───┐   ┌───┐   │
         │          ││────┘   └───┘   └───┘   └───┘   └───│
-        │clock_dela││    ┌───┐   ┌───┐   ┌───┐   ┌───┐   │
-        │          ││────┘   └───┘   └───┘   └───┘   └───│
-        │delay     ││                                    │
-        │          ││────────────────────────────────────│
         │direct    ││    ┌───────┐                       │
         │          ││────┘       └───────────────────────│
+        │delay     ││                                    │
+        │          ││────────────────────────────────────│
+        │clock_dela││    ┌───┐   ┌───┐   ┌───┐   ┌───┐   │
+        │          ││────┘   └───┘   └───┘   └───┘   └───│
         └──────────┘└────────────────────────────────────┘
-        d899c476a4bef7855d14ba8baeed3205
+        96cdafe649df8106dd293761ce85b83c
         |}]
     ;;
   end

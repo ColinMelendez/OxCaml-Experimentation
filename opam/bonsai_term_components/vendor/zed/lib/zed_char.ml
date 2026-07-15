@@ -3,7 +3,7 @@ open Poly
 
 type t = int [@@deriving bin_io]
 
-let compare = Int.compare
+let%template[@mode m = (local, global)] compare = (Int.compare [@mode m])
 let of_int x = if x < 0 || x > 0x10ffff then invalid_arg "Zed_char.of_int" else x
 let to_int t = t
 let code = to_int

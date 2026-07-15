@@ -1,5 +1,7 @@
 @@ portable
 
+open! Base
+
 (** An atomic (mutable) reference to a value of type ['a].
 
     Atomic references mode cross both contention and portability, meaning they are always
@@ -61,6 +63,7 @@ type (!'a : value_or_null) t : value mod contended portable =
 val make
   : ('a : value_or_null).
   ?padded:bool (** default:[false] *) @ local -> 'a @ contended portable -> 'a t
+  @@ stateless
 
 (** [get r] gets the the current value of [r]. *)
 external get
@@ -145,9 +148,30 @@ external logxor : (int t[@local_opt]) -> int -> unit = "%atomic_lxor"
 
 (** [incr r] atomically increments the value of [r] by [1]. *)
 val incr : int t @ local -> unit
+[@@zero_alloc]
 
 (** [decr r] atomically decrements the value of [r] by [1]. *)
 val decr : int t @ local -> unit
+[@@zero_alloc]
+
+(** Operations on atomic lists *)
+module List : sig
+  type nonrec ('a : value_or_null) t = 'a list t
+
+  (** [push t a] atomically updates the atomic list [t] to have [a] as its first element. *)
+  val push : ('a : value_or_null). 'a t @ local -> 'a @ contended portable -> unit
+
+  (** [pop t] atomically removes and returns the first element of the atomic list [t], or
+      returns [Null] if it is empty. *)
+  val pop : 'a t @ local -> 'a Or_null.t @ contended portable
+
+  (** [pop_opt t] is like [pop], but it returns an [option] instead of [or_null], making
+      it usable with lists of [value_or_null] elements. *)
+  val pop_opt : ('a : value_or_null). 'a t @ local -> 'a option @ contended portable
+
+  (** [pop_exn t] is like [pop], but it raises an exception if the list is empty. *)
+  val pop_exn : ('a : value_or_null). 'a t @ local -> 'a @ contended portable
+end
 
 module Loc : sig
   type ('a : value_or_null mod contended portable) t : mutable_data with 'a =
@@ -230,14 +254,14 @@ module Loc : sig
 
   val update
     : ('a : value_or_null mod contended portable).
-    'a t @ contended local -> pure_f:local_ ('a -> 'a) -> unit
+    'a t @ contended local -> pure_f:('a -> 'a) @ local -> unit
   [@@ocaml.doc
     {| [update t ~pure_f] atomically updates [t] to be the result of [pure_f (get t)].
       [pure_f] may be called multiple times, so should be free of side effects. |}]
 
   val get_and_update
     : ('a : value_or_null mod contended portable).
-    'a t @ contended local -> pure_f:local_ ('a -> 'a) -> 'a
+    'a t @ contended local -> pure_f:('a -> 'a) @ local -> 'a
   [@@ocaml.doc
     {| [get_and_update t ~pure_f] atomically updates [t] to be the result of
       [pure_f (get t)]. [pure_f] may be called multiple times, so should be free of side
@@ -271,10 +295,12 @@ module Loc : sig
   val incr : int t @ contended local -> unit
   [@@ocaml.doc
     {| [incr [%atomic.loc r.f]] atomically increments the value of [r.f] by [1]. |}]
+  [@@zero_alloc]
 
   val decr : int t @ contended local -> unit
   [@@ocaml.doc
     {| [decr [%atomic.loc r.f]] atomically decrements the value of [r.f] by [1]. |}]
+  [@@zero_alloc]
 end
 [@@ocaml.doc {| Atomic "locations" |}]
 
@@ -292,4 +318,5 @@ module Expert : sig
       model - and may do the wrong thing entirely on backends with weak memory models such
       as ARM. Use with caution! *)
   val fenceless_get : ('a : value_or_null). 'a t @ local -> 'a @ contended portable
+  [@@zero_alloc]
 end

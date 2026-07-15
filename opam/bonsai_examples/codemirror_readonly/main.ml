@@ -1,7 +1,7 @@
 open! Core
 open! Bonsai_web
 open Bonsai.Let_syntax
-module Cm_ro = Bonsai_web_ui_codemirror_read_only
+module Cm_ro = Bonsai_web_codemirror_read_only
 module Animation = Bonsai_experimental_animation
 
 let this_source_code = [%embed_file_as_string "./main.ml"]
@@ -87,4 +87,4 @@ let component graph =
     [ pause_controlls; Cm_ro.make ~language:OCaml ~theme:Basic_light source_code ]
 ;;
 
-let () = Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+let () = Bonsai_web.Start.start component

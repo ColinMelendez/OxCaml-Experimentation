@@ -124,11 +124,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
           ; port_name_is ~alignment:Right "waddr_rd" ~wave_format:Hex
           ]
       in
-      Hardcaml_event_driven_sim.Waveterm.Waveform.expect
-        waves
-        ~display_rules
-        ~wave_width:0
-        ~display_width
+      Hardcaml_waveterm.Waveform.expect waves ~display_rules ~wave_width:0 ~display_width
   ;;
 
   let%expect_test "Line rate at even number clock skew" =
@@ -169,7 +165,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0            │3  │2  │0  │1  │3  │2  │0  │1  │3  │2  │0  │1        │
       │                  ││──────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴─────────│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      59624e49ff83a2a6806539568ab58c6a
+      f4f14506c73d39670034f6bc3ba75ea5
       |}]
   ;;
 
@@ -211,7 +207,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0          │3  │2  │0  │1  │3  │2  │0  │1  │3  │2  │0  │1          │
       │                  ││────────────┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───────────│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      8b04669f599ff2b828a56670a60d8bb5
+      ba5773767c5a9dc37d23f9dfe7aec85b
       |}]
   ;;
 
@@ -255,7 +251,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0      │1  │3  │2            │0  │2  │0  │1  │3  │2  │0  │1        │
       │                  ││────────┴───┴───┴─────────────┴───┴───┴───┴───┴───┴───┴───┴─────────│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      804b5c10649b091aec4a772e6fe68409
+      86f674c5e01bd0a20570e6901407f795
       |}];
     reader_writer_test
       ~reader_glitch_at:(Int.Set.of_list [ 10 ])
@@ -296,7 +292,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0      │1  │3  │2  │0            │1  │0  │1  │3  │2  │0  │1        │
       │                  ││────────┴───┴───┴───┴─────────────┴───┴───┴───┴───┴───┴───┴─────────│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      026d06694cf8408ffefecc9ad14c1c1c
+      42cba8fef467ac0773144a808e47755d
       |}];
     (* write and read clock are offset by a fraction of a half cycle. *)
     reader_writer_test
@@ -339,7 +335,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0            │1        │3      │2      │0      │1      │3      │2  │
       │                  ││──────────────┴─────────┴───────┴───────┴───────┴───────┴───────┴───│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      6558648e0908db25850c15743e7b25aa
+      4896632c8c6606529d4f3eab67841765
       |}]
   ;;
 
@@ -387,7 +383,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0      │1  │3  │2              │0      │1  │3  │2  │0  │1                    │
       │                  ││────────┴───┴───┴───────────────┴───────┴───┴───┴───┴───┴─────────────────────│
       └──────────────────┘└──────────────────────────────────────────────────────────────────────────────┘
-      6a8e2714cda3b5390436343e55c90ad4
+      51ff2e9f2a3e3925a336d9a23094fcd7
       |}];
     reader_writer_test
       ~raise_on_output_error:false
@@ -432,7 +428,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0            │1                              │3              │2              │
       │                  ││──────────────┴───────────────────────────────┴───────────────┴───────────────│
       └──────────────────┘└──────────────────────────────────────────────────────────────────────────────┘
-      b3f81040823b46e0e5797ba1af0c1c60
+      f88a782dcf33848550c57dac88aecfbf
       |}]
   ;;
 
@@ -475,7 +471,7 @@ module Test (Logic : Hardcaml_event_driven_sim.Logic.S) = struct
       │waddr_rd          ││ 0      │1  │3  │2          │0  │1  │3  │2  │0          │1          │
       │                  ││────────┴───┴───┴───────────┴───┴───┴───┴───┴───────────┴───────────│
       └──────────────────┘└────────────────────────────────────────────────────────────────────┘
-      fdaeeb28ed534bd74a0c1d480b2018f2
+      30b6a2d04124caefb2eb1051b13e0335
       |}]
   ;;
 end

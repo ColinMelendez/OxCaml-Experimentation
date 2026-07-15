@@ -1,10 +1,227 @@
 open Base
 
-type ('a, 'b, 'c) tag =
-  | Ok : ('a, 'b, 'a) tag
-  | Error : ('a, 'b, 'b) tag
+[%%template
+[@@@kind_set.define k_supported = (value & value, value)]
 
-type ('a, 'b) t = T : #(('a, 'b, 'c) tag * 'c) -> ('a, 'b) t [@@unboxed]
+[%%template
+[@@@kind.default k = k_supported]
+
+type ('a : k, 'b : k, 'c : k) tag =
+  | Ok : (('a, 'b, 'a) tag[@kind k])
+  | Error : (('a, 'b, 'b) tag[@kind k])
+
+type ('a : k, 'b : k) t =
+  | T : #((('a, 'b, 'c) tag[@kind k]) * 'c) -> (('a, 'b) t[@kind k])
+[@@unboxed]]
+
+[%%template
+[@@@mode.default m = (global, local)]
+[@@@kind.default k = k_supported]
+
+let[@inline] compare
+  (type (a : k) (b : k))
+  (cmp_a : a @ m -> a @ m -> int)
+  (cmp_b : b @ m -> b @ m -> int)
+  (t1 : ((a, b) t[@kind k]))
+  (t2 : ((a, b) t[@kind k]))
+  =
+  match #(t1, t2) with
+  | #(T #(Ok, a1), T #(Ok, a2)) -> cmp_a a1 a2
+  | #(T #(Ok, _), T #(Error, _)) -> -1
+  | #(T #(Error, _), T #(Ok, _)) -> 1
+  | #(T #(Error, b1), T #(Error, b2)) -> cmp_b b1 b2
+;;
+
+let[@inline] equal
+  (type (a : k) (b : k))
+  (equal_a : a @ m -> a @ m -> bool)
+  (equal_b : b @ m -> b @ m -> bool)
+  (t1 : ((a, b) t[@kind k]))
+  (t2 : ((a, b) t[@kind k]))
+  =
+  match #(t1, t2) with
+  | #(T #(Ok, a1), T #(Ok, a2)) -> equal_a a1 a2
+  | #(T #(Ok, _), T #(Error, _)) -> false
+  | #(T #(Error, _), T #(Ok, _)) -> false
+  | #(T #(Error, b1), T #(Error, b2)) -> equal_b b1 b2
+;;]
+
+[@@@kind.default k = k_supported]
+
+let sexp_of_t
+  (type (a : k) (b : k))
+  (of_a : a @ m -> Sexp.t @ m)
+  (of_b : b @ m -> Sexp.t @ m)
+  (T #(tag, x) : ((a, b) t[@kind k]))
+  =
+  match[@exclave_if_stack a] tag with
+  | Ok -> Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Ok"; of_a x ]
+  | Error -> Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Error"; of_b x ]
+[@@alloc a @ m = (heap_global, stack_local)]
+;;
+
+let t_of_sexp a_of b_of s : ((_, _) t[@kind k]) =
+  match (s : Sexp.t) with
+  | Sexp.List [ Sexp.Atom "Ok"; a ] | Sexp.List [ Sexp.Atom "ok"; a ] -> T #(Ok, a_of a)
+  | Sexp.List [ Sexp.Atom "Error"; b ] | Sexp.List [ Sexp.Atom "error"; b ] ->
+    T #(Error, b_of b)
+  | _ ->
+    (match
+       Sexplib0.Sexp_conv_error.unexpected_stag "result_u.ml.t" [ "Ok"; "Error" ] s
+     with
+     | (_ : Nothing.t) -> .)
+;;
+
+let globalize
+  (type (a : k) (b : k))
+  (globalize_a : a @ local -> a)
+  (globalize_b : b @ local -> b)
+  (T #(tag, x) : ((a, b) t[@kind k]))
+  : ((a, b) t[@kind k])
+  =
+  match tag with
+  | Ok -> T #(tag, globalize_a x)
+  | Error -> T #(tag, globalize_b x)
+;;
+
+let hash_fold_t
+  (type (a : k) (b : k))
+  (hash_a : Ppx_hash_lib.Std.Hash.state -> a -> Ppx_hash_lib.Std.Hash.state)
+  (hash_b : Ppx_hash_lib.Std.Hash.state -> b -> Ppx_hash_lib.Std.Hash.state)
+  (hsv : Ppx_hash_lib.Std.Hash.state)
+  (T #(tag, x) : ((a, b) t[@kind k]))
+  =
+  match tag with
+  | Ok ->
+    let hsv = Ppx_hash_lib.Std.Hash.fold_int hsv 0 in
+    let hsv = hsv in
+    hash_a hsv x
+  | Error ->
+    let hsv = Ppx_hash_lib.Std.Hash.fold_int hsv 1 in
+    let hsv = hsv in
+    hash_b hsv x
+;;
+
+let bin_shape_t bin_shape_a bin_shape_b =
+  Bin_prot.Shape.(basetype (Uuid.of_string "result_u") [ bin_shape_a; bin_shape_b ])
+;;
+
+include struct
+  [@@@mode.default m = (global, local)]
+
+  let bin_size_t
+    (type (a : k) (b : k))
+    (bin_size_a : a @ m -> int)
+    (bin_size_b : b @ m -> int)
+    (T #(tag, x) : ((a, b) t[@kind k]) @ m)
+    =
+    match tag with
+    | Ok -> 1 + bin_size_a x
+    | Error -> 1 + bin_size_b x
+  [@@kind k]
+  ;;
+
+  let bin_write_t
+    (type (a : k) (b : k))
+    (bin_write_a : (a Bin_prot.Write.writer[@mode m]))
+    (bin_write_b : (b Bin_prot.Write.writer[@mode m]))
+    (buf : Bin_prot.Common.buf)
+    ~(pos : int)
+    (T #(tag, x) : ((a, b) t[@kind k]) @ m)
+    =
+    match tag with
+    | Ok ->
+      let next = Bin_prot.Write.bin_write_int_8bit buf ~pos 0 in
+      bin_write_a buf ~pos:next x
+    | Error ->
+      let next = Bin_prot.Write.bin_write_int_8bit buf ~pos 1 in
+      bin_write_b buf ~pos:next x
+  [@@kind k]
+  ;;
+end
+
+let bin_read_t
+  (type (a : k) (b : k))
+  (bin_read_a : a Bin_prot.Read.reader)
+  (bin_read_b : b Bin_prot.Read.reader)
+  (buf : Bin_prot.Common.buf)
+  ~(pos_ref : int ref @ local)
+  : ((a, b) t[@kind k])
+  =
+  let pos = Bin_prot.Common.safe_get_pos buf pos_ref in
+  Bin_prot.Common.assert_pos pos;
+  match Bin_prot.Read.bin_read_int_8bit buf ~pos_ref with
+  | 0 -> T #(Ok, bin_read_a buf ~pos_ref)
+  | 1 -> T #(Error, bin_read_b buf ~pos_ref)
+  | _ ->
+    (match
+       Bin_prot.Common.raise_read_error (Bin_prot.Common.ReadError.Sum_tag "result_u") pos
+     with
+     | (_ : Nothing.t) -> .)
+;;
+
+let __bin_read_t__ (type (a : k) (b : k)) _bin_read_a _bin_read_b _buf ~pos_ref _n
+  : ((a, b) t[@kind k])
+  =
+  match Bin_prot.Common.raise_variant_wrong_type "result_u" !pos_ref with
+  | (_ : Nothing.t) -> .
+;;
+
+let bin_writer_t
+  (type (a : k) (b : k))
+  (bin_writer_a : a Bin_prot.Type_class.writer)
+  (bin_writer_b : b Bin_prot.Type_class.writer)
+  =
+  { Bin_prot.Type_class.size =
+      (fun v -> (bin_size_t [@kind k]) bin_writer_a.size bin_writer_b.size v)
+  ; write =
+      (fun (buf @ local) ~pos v ->
+        (bin_write_t [@kind k]) bin_writer_a.write bin_writer_b.write buf ~pos v)
+  }
+;;
+
+let bin_reader_t
+  (type (a : k) (b : k))
+  (bin_reader_a : a Bin_prot.Type_class.reader)
+  (bin_reader_b : b Bin_prot.Type_class.reader)
+  =
+  { Bin_prot.Type_class.read =
+      (fun buf ~pos_ref ->
+        (bin_read_t [@kind k]) bin_reader_a.read bin_reader_b.read buf ~pos_ref)
+  ; vtag_read =
+      (fun buf ~pos_ref n ->
+        (__bin_read_t__ [@kind k])
+          bin_reader_a.vtag_read
+          bin_reader_b.vtag_read
+          buf
+          ~pos_ref
+          n)
+  }
+;;
+
+let bin_t bin_a bin_b =
+  { Bin_prot.Type_class.shape =
+      (bin_shape_t [@kind k])
+        bin_a.Bin_prot.Type_class.shape
+        bin_b.Bin_prot.Type_class.shape
+  ; writer =
+      (bin_writer_t [@kind k])
+        bin_a.Bin_prot.Type_class.writer
+        bin_b.Bin_prot.Type_class.writer
+  ; reader =
+      (bin_reader_t [@kind k])
+        bin_a.Bin_prot.Type_class.reader
+        bin_b.Bin_prot.Type_class.reader
+  }
+;;
+
+[@@@mode.default m = (global, local)]
+
+let[@inline] return (type a : k) x : ((a, _) t[@kind k]) = T #(Ok, x)
+let[@inline] fail (type a : k) x : ((_, a) t[@kind k]) = T #(Error, x)]
+
+(* [ppx_template] doesn't mangle this to fit the [Binable] intf so we must by hand. *)
+let __bin_read_t__'value_value'__ = (__bin_read_t__ [@kind value & value])
 
 [%%template
 [@@@mode.default m = (global, local)]
@@ -20,8 +237,6 @@ let[@inline] match_
   | Error -> err x [@exclave_if_local m]
 ;;
 
-let[@inline] fail x = T #(Error, x)
-
 let[@inline] to_result (type a b) (T #(tag, x) : (a, b) t) : (a, b) Result.t =
   match tag with
   | Ok -> Ok x [@exclave_if_local m]
@@ -33,41 +248,11 @@ let[@inline] of_result = function
   | Result.Error x -> T #(Error, x)
 ;;
 
-let[@inline] compare
-  (type a b)
-  (cmp_a : (a @ m -> a @ m -> int) @ local)
-  (cmp_b : (b @ m -> b @ m -> int) @ local)
-  (t1 : (a, b) t)
-  (t2 : (a, b) t)
-  =
-  match #(t1, t2) with
-  | #(T #(Ok, a1), T #(Ok, a2)) -> cmp_a a1 a2
-  | #(T #(Ok, _), T #(Error, _)) -> -1
-  | #(T #(Error, _), T #(Ok, _)) -> 1
-  | #(T #(Error, b1), T #(Error, b2)) -> cmp_b b1 b2
-;;
-
-let[@inline] equal
-  (type a b)
-  (equal_a : (a @ m -> a @ m -> bool) @ local)
-  (equal_b : (b @ m -> b @ m -> bool) @ local)
-  (t1 : (a, b) t)
-  (t2 : (a, b) t)
-  =
-  match #(t1, t2) with
-  | #(T #(Ok, a1), T #(Ok, a2)) -> equal_a a1 a2
-  | #(T #(Ok, _), T #(Error, _)) -> false
-  | #(T #(Error, _), T #(Ok, _)) -> false
-  | #(T #(Error, b1), T #(Error, b2)) -> equal_b b1 b2
-;;
-
 let[@inline] bind (type a b c) (t : (a, b) t @ m) ~(f : a @ m -> (c, b) t @ m) : (c, b) t =
   match t with
   | T #(Ok, x) -> f x [@exclave_if_local m]
   | T #(Error, _) as t -> t
 ;;
-
-let[@inline] return x = T #(Ok, x)
 
 let ignore_m (type a b) (T #(tag, x) : (a, b) t) : (unit, b) t =
   match tag with
@@ -153,48 +338,6 @@ let[@inline] is_error (type a b) (T #(tag, _) : (a, b) t) =
   match tag with
   | Ok -> false
   | Error -> true
-;;
-
-let%template[@alloc a @ m = (heap @ global, stack @ local)] sexp_of_t
-  (type a b)
-  (of_a : a @ m -> Sexp.t @ m)
-  (of_b : b @ m -> Sexp.t @ m)
-  (T #(tag, x) : (a, b) t)
-  =
-  match[@exclave_if_stack a] tag with
-  | Ok -> Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Ok"; of_a x ]
-  | Error -> Sexplib0.Sexp.List [ Sexplib0.Sexp.Atom "Error"; of_b x ]
-;;
-
-let globalize
-  (type a b)
-  (globalize_a : a @ local -> a)
-  (globalize_b : b @ local -> b)
-  (T #(tag, x) : (a, b) t)
-  =
-  match tag with
-  | Ok -> T #(tag, globalize_a x)
-  | Error -> T #(tag, globalize_b x)
-;;
-
-let t_of_sexp a_of b_of s = of_result (Result.t_of_sexp a_of b_of s)
-
-let hash_fold_t
-  (type a b)
-  (hash_a : Ppx_hash_lib.Std.Hash.state -> a -> Ppx_hash_lib.Std.Hash.state)
-  (hash_b : Ppx_hash_lib.Std.Hash.state -> b -> Ppx_hash_lib.Std.Hash.state)
-  (hsv : Ppx_hash_lib.Std.Hash.state)
-  (T #(tag, x) : (a, b) t)
-  =
-  match tag with
-  | Ok ->
-    let hsv = Ppx_hash_lib.Std.Hash.fold_int hsv 0 in
-    let hsv = hsv in
-    hash_a hsv x
-  | Error ->
-    let hsv = Ppx_hash_lib.Std.Hash.fold_int hsv 1 in
-    let hsv = hsv in
-    hash_b hsv x
 ;;
 
 let ok_exn (type a) (T #(tag, x) : (a, exn) t) : a =
@@ -310,12 +453,12 @@ end
 
 module Local = struct
   module Let_syntax = struct
-    let return = [%eta1.exclave return [@mode local]]
+    let return = [%eta1 exclave_ return [@mode local]]
     let[@inline] ( >>= ) a f = exclave_ (bind [@mode local]) a ~f
     let[@inline] ( >>| ) a f = exclave_ (map [@mode local]) a ~f
 
     module Let_syntax = struct
-      let return = [%eta1.exclave return [@mode local]]
+      let return = [%eta1 exclave_ return [@mode local]]
       let bind = (bind [@mode local])
       let map = (map [@mode local])
 

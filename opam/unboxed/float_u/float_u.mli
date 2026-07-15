@@ -20,9 +20,16 @@ module Boxed = Float
 external to_float : float# -> (float[@local_opt]) = "%box_float"
 external of_float : (float[@local_opt]) -> float# = "%unbox_float"
 
-(** [max] and [min] will return nan if either argument is nan.
+(** {2 Validation}
 
-    The [validate_*] functions always fail if class is [Nan] or [Infinite]. *)
+    [validate_lbound], [validate_ubound], and [validate_bound] always fail if class is
+    [Nan] or [Infinite]. The other validation functions still fail on [Nan], but permit
+    [Infinite] values of the correct sign. *)
+
+include Comparable.Validate_with_zero [@kind float64] with type t := t
+
+(** [validate_ordinary] fails if class is [Nan] or [Infinite]. *)
+val validate_ordinary : t Validate.check
 
 (** {2 Inlined from [Identifiable], which comprises [Sexpable], [Stringable],
     [Comparable], and [Pretty_printer]} *)
@@ -41,7 +48,7 @@ include%template Bin_prot.Binable.S [@mode local] with type t := t
 
 (** {3 For [hash]} *)
 
-include Ppx_hash_lib.Hashable.S_any with type t := t
+include Ppx_hash_lib.Hashable.S with type t := t
 
 (** {3 From [Typerep]} *)
 
@@ -60,6 +67,8 @@ val equal : t @ m -> t @ m -> bool [@@zero_alloc]
 val compare : t @ m -> t @ m -> int
 [@@zero_alloc]]
 
+(** [max] and [min] will return nan if either argument is nan. *)
+
 val min : t -> t -> t [@@zero_alloc]
 val max : t -> t -> t [@@zero_alloc]
 
@@ -68,11 +77,13 @@ val max : t -> t -> t [@@zero_alloc]
     [List.sort ~cmp:descending], since they cause the list to be sorted in ascending or
     descending order, respectively. *)
 val ascending : t -> t -> int
+[@@zero_alloc]
 
-val descending : t -> t -> int
+val descending : t -> t -> int [@@zero_alloc]
 
 (** [between t ~low ~high] means [low <= t <= high] *)
 val between : t -> low:t -> high:t -> bool
+[@@zero_alloc]
 
 (** [clamp_exn t ~min ~max] returns [t'], the closest value to [t] such that
     [between t' ~low:min ~high:max] is true.
@@ -89,37 +100,33 @@ val pp : Formatter.t -> t -> unit
 
 val invariant : float# -> unit
 
-(** {2 Constants}
+(** {2 Constants} *)
 
-    Unfortunately, these must be functions (for now), because module-level [float64]
-    constants are not yet supported. *)
-
-val nan : unit -> t [@@zero_alloc strict]
-val infinity : unit -> t [@@zero_alloc strict]
-val neg_infinity : unit -> t [@@zero_alloc strict]
+val nan : t
+val infinity : t
+val neg_infinity : t
 
 (** Equal to [infinity]. *)
-val max_value : unit -> t [@@zero_alloc strict]
+val max_value : t
 
 (** Equal to [neg_infinity]. *)
-val min_value : unit -> t [@@zero_alloc strict]
+val min_value : t
 
-val zero : unit -> t [@@zero_alloc strict]
-val one : unit -> t [@@zero_alloc strict]
-val minus_one : unit -> t [@@zero_alloc strict]
+val zero : t
+val one : t
+val minus_one : t
 
 (** The constant pi. *)
-val pi : unit -> t [@@zero_alloc strict]
+val pi : t
 
 (** The constant sqrt(pi). *)
-val sqrt_pi : unit -> t [@@zero_alloc strict]
+val sqrt_pi : t
 
 (** The constant sqrt(2 * pi). *)
-val sqrt_2pi : unit -> t [@@zero_alloc strict]
+val sqrt_2pi : t
 
 (** Euler-Mascheroni constant (γ). *)
-val euler_gamma_constant : unit -> t
-[@@zero_alloc strict]
+val euler_gamma_constant : t
 
 (** The difference between 1.0 and the smallest exactly representable floating-point
     number greater than 1.0. That is:
@@ -130,16 +137,15 @@ val euler_gamma_constant : unit -> t
     order of [x], the roundoff error is on the order of [x *. float_epsilon].
 
     See also: {{:http://en.wikipedia.org/wiki/Machine_epsilon} Machine epsilon}. *)
-val epsilon_float : unit -> t
-[@@zero_alloc strict]
+val epsilon_float : t
 
-val max_finite_value : unit -> t [@@zero_alloc strict]
+val max_finite_value : t
 
 (** - [min_positive_subnormal_value = 2 ** -1074]
     - [min_positive_normal_value    = 2 ** -1022] *)
 
-val min_positive_subnormal_value : unit -> t [@@zero_alloc strict]
-val min_positive_normal_value : unit -> t [@@zero_alloc strict]
+val min_positive_subnormal_value : t
+val min_positive_normal_value : t
 
 (** {2 Rounding and integer conversion} *)
 
@@ -161,15 +167,15 @@ val one_ulp : [ `Up | `Down ] -> t -> t
 val to_int : t -> int [@@zero_alloc]
 val to_int_unchecked : t -> int [@@zero_alloc]
 val truncate : t -> int
-val of_int63 : Int63.t -> t
+val of_int63 : Int63.t -> t [@@zero_alloc]
 val of_int64 : int64 -> t
 val to_int64 : t -> int64
 
 (* Convert a float# to the nearest representable float32#. *)
-val to_float32_u : t -> float32#
+val to_float32_u : t -> float32# [@@zero_alloc]
 
 (* Convert a float32# to a float# (exactly). *)
-val of_float32_u : float32# -> t
+val of_float32_u : float32# -> t [@@zero_alloc]
 
 (** [round] rounds a float to an integer float. [iround{,_exn}] rounds a float to an int.
     Both round according to a direction [dir], with default [dir] being [`Nearest].
@@ -225,17 +231,21 @@ val iround_towards_zero : t -> int option
 val iround_down : t -> int option
 val iround_up : t -> int option
 val iround_nearest : t -> int option
+val iround_towards_zero_or_null : t -> int or_null [@@zero_alloc]
+val iround_down_or_null : t -> int or_null [@@zero_alloc]
+val iround_up_or_null : t -> int or_null [@@zero_alloc]
+val iround_nearest_or_null : t -> int or_null [@@zero_alloc]
 val iround_towards_zero_exn : t -> int [@@zero_alloc]
 val iround_down_exn : t -> int [@@zero_alloc]
 val iround_up_exn : t -> int [@@zero_alloc]
 val iround_nearest_exn : t -> int [@@zero_alloc]
 val int63_round_down_exn : t -> Int63.t
 val int63_round_up_exn : t -> Int63.t
-val int63_round_nearest_exn : t -> Int63.t
-val iround_lbound : unit -> t
-val iround_ubound : unit -> t
-val int63_round_lbound : unit -> t
-val int63_round_ubound : unit -> t
+val int63_round_nearest_exn : t -> Int63.t [@@zero_alloc]
+val iround_lbound : t
+val iround_ubound : t
+val int63_round_lbound : t
+val int63_round_ubound : t
 
 (** [round_significant x ~significant_digits:n] rounds to the nearest number with [n]
     significant digits. More precisely: it returns the representable float closest to
@@ -327,6 +337,14 @@ val is_finite : t -> bool
 (** [is_integer x] is [true] if and only if [x] is an integer. *)
 val is_integer : t -> bool
 [@@zero_alloc]
+
+(** [is_positive], [is_non_negative], [is_negative], and [is_non_positive] return [false]
+    if [t] is [nan]. *)
+
+val is_positive : t @ local -> bool [@@zero_alloc]
+val is_non_negative : t @ local -> bool [@@zero_alloc]
+val is_negative : t @ local -> bool [@@zero_alloc]
+val is_non_positive : t @ local -> bool [@@zero_alloc]
 
 (** {2 Arithmetic} *)
 
@@ -427,7 +445,7 @@ end
 val to_string : t -> string
 
 (** [of_string] is inverse to [to_string]. *)
-val of_string : string -> t
+val of_string : string @ local -> t
 
 (** Pretty print float, for example [to_string_hum ~decimals:3 1234.1999 = "1_234.200"]
     [to_string_hum ~decimals:3 ~strip_zero:true 1234.1999 = "1_234.2" ]. No delimiters are
@@ -539,89 +557,103 @@ val to_padded_compact_string_custom
 val int_pow : t -> int -> t
 
 (** [square x] returns [x *. x]. *)
-val square : t -> t
+val square : t -> t [@@zero_alloc]
 
 (** [ldexp x n] returns [x *. 2 ** n] *)
-val ldexp : t -> int -> t
+val ldexp : t -> int -> t [@@zero_alloc]
 
 (** Base 10 logarithm. *)
-val log10 : t -> t
+val log10 : t -> t [@@zero_alloc]
 
 (** Base 2 logarithm. *)
-val log2 : t -> t
+val log2 : t -> t [@@zero_alloc]
 
 (** [expm1 x] computes [exp x -. 1.0], giving numerically-accurate results even if [x] is
     close to [0.0]. *)
 val expm1 : t -> t
+[@@zero_alloc]
 
 (** [log1p x] computes [log(1.0 +. x)] (natural logarithm), giving numerically-accurate
     results even if [x] is close to [0.0]. *)
 val log1p : t -> t
+[@@zero_alloc]
 
 (** [copysign x y] returns a float whose absolute value is that of [x] and whose sign is
     that of [y]. If [x] is [nan], returns [nan]. If [y] is [nan], returns either [x] or
     [-. x], but it is not specified which. *)
 val copysign : t -> t -> t
+[@@zero_alloc]
 
 (** Cosine. Argument is in radians. *)
-val cos : t -> t
+val cos : t -> t [@@zero_alloc]
 
 (** Sine. Argument is in radians. *)
-val sin : t -> t
+val sin : t -> t [@@zero_alloc]
 
 (** Tangent. Argument is in radians. *)
-val tan : t -> t
+val tan : t -> t [@@zero_alloc]
 
 (** Arc cosine. The argument must fall within the range [[-1.0, 1.0]]. Result is in
     radians and is between [0.0] and [pi]. *)
 val acos : t -> t
+[@@zero_alloc]
 
 (** Arc sine. The argument must fall within the range [[-1.0, 1.0]]. Result is in radians
     and is between [-pi/2] and [pi/2]. *)
 val asin : t -> t
+[@@zero_alloc]
 
 (** Arc tangent. Result is in radians and is between [-pi/2] and [pi/2]. *)
 val atan : t -> t
+[@@zero_alloc]
 
 (** [atan2 y x] returns the arc tangent of [y /. x]. The signs of [x] and [y] are used to
     determine the quadrant of the result. Result is in radians and is between [-pi] and
     [pi]. *)
 val atan2 : t -> t -> t
+[@@zero_alloc]
 
 (** [hypot x y] returns [sqrt(x *. x + y *. y)], that is, the length of the hypotenuse of
     a right-angled triangle with sides of length [x] and [y], or, equivalently, the
     distance of the point [(x,y)] to origin. *)
 val hypot : t -> t -> t
+[@@zero_alloc]
 
 (** Hyperbolic cosine. Argument is in radians. *)
-val cosh : t -> t
+val cosh : t -> t [@@zero_alloc]
 
 (** Hyperbolic sine. Argument is in radians. *)
-val sinh : t -> t
+val sinh : t -> t [@@zero_alloc]
 
 (** Hyperbolic tangent. Argument is in radians. *)
-val tanh : t -> t
+val tanh : t -> t [@@zero_alloc]
 
 (** Hyperbolic arc cosine. The argument must fall within the range [[1.0, inf]]. Result is
     in radians and is between [0.0] and [inf]. *)
 val acosh : t -> t
+[@@zero_alloc]
 
 (** Hyperbolic arc sine. The argument and result range over the entire real line. Result
     is in radians. *)
 val asinh : t -> t
+[@@zero_alloc]
 
 (** Hyperbolic arc tangent. The argument must fall within the range [[-1.0, 1.0]]. Result
     is in radians and ranges over the entire real line. *)
 val atanh : t -> t
+[@@zero_alloc]
 
 (** Square root. *)
-val sqrt : t -> t
+val sqrt : t -> t [@@zero_alloc]
+
+(** Cube root. *)
+val cbrt : t -> t
 
 (** Exponential. *)
-val exp : t -> t
+val exp : t -> t [@@zero_alloc]
 
 (** Natural logarithm. *)
-val log : t -> t
+val log : t -> t [@@zero_alloc]
 
 (** {2 Classification and representation} *)
 
@@ -638,7 +670,7 @@ val log : t -> t
     v} *)
 module Class = Base.Float.Class
 
-val classify : t -> Class.t
+val classify : t -> Class.t [@@zero_alloc]
 
 (*_ Caution: If we remove this sig item, [sign] will still be present from
     [Comparable.With_zero]. *)
@@ -649,10 +681,12 @@ val sign : t -> Sign.t
 (** The sign of a float. Both [-0.] and [0.] map to [Zero]. Raises on nan. All other
     values map to [Neg] or [Pos]. *)
 val sign_exn : t -> Sign.t
+[@@zero_alloc]
 
 (** The sign of a float, with support for NaN. Both [-0.] and [0.] map to [Zero]. All NaN
     values map to [Nan]. All other values map to [Neg] or [Pos]. *)
 val sign_or_nan : t -> Sign_or_nan.t
+[@@zero_alloc]
 
 (** These functions construct and destruct 64-bit floating point numbers based on their
     IEEE representation with a sign bit, an 11-bit non-negative (biased) exponent, and a
@@ -715,6 +749,7 @@ module type Array = sig
     -> unit
 
   val compare : t -> t -> int
+  val globalize : local_ t -> t
   val copy : t -> t
   val t_of_sexp : Sexp.t -> t @@ portable
   val sexp_of_t : t -> Sexp.t @@ portable
@@ -775,9 +810,138 @@ module Ref : sig
   include Ref with type elt := float# and type t := t
 end
 
+(** The moral equivalent of [t option] implemented in-place with [is_none] as [is_nan].
+
+    By design, we can do math on this type and propagate NaN (none) status. *)
+
 module Option : sig
-  include Immediate_option.S_unboxed_float64 with type value := t
-  module Array : Array with type elt := t
+  type t : float64 mod everything
+  [@@deriving globalize, quickcheck, sexp ~stackify, typerep, bin_io ~localize, hash]
+
+  include Immediate_option.S_unboxed_float64 with type t := t with type value := float#
+
+  val unsafe_value : t -> float#
+  val to_string : t -> string
+  val none : t
+  val is_some : t -> bool [@@zero_alloc]
+  val some : float# -> t [@@zero_alloc]
+  val unchecked_some : float# -> t [@@zero_alloc]
+  val of_float_nan_as_none : float# -> t [@@zero_alloc strict]
+  val to_float_none_as_nan : t -> float# [@@zero_alloc]
+  val zero : t
+  val one : t
+  val scale : t -> float# -> t [@@zero_alloc]
+  val div : t -> float# -> t [@@zero_alloc]
+
+  [%%template:
+  [@@@mode.default m = (global, local)]
+
+  val equal : t @ m -> t @ m -> bool [@@zero_alloc]
+  val of_option : float option @ m -> t [@@zero_alloc]
+  val to_option : t -> float option @ m]
+
+  val%template of_or_null : float or_null @ m -> t
+  [@@mode m = (global, local)] [@@zero_alloc]
+
+  val%template to_or_null : t -> float or_null @ m
+  [@@alloc a @ m = (heap @ global, stack @ local)] [@@zero_alloc_if_stack a]
+
+  val select : bool -> t -> t -> t [@@zero_alloc]
+  val some_if : bool -> float# -> t [@@zero_alloc]
+
+  (** A workaround for the lack of unboxed float literals; strictly speaking one can use
+      it for non constants but the name is a helpful reminder. *)
+  val const : float -> t
+  [@@zero_alloc]
+
+  (** [first_some x y] returns x if x is not none, else returns y *)
+  val first_some : t -> t -> t
+  [@@zero_alloc]
+
+  (** [some_or t ~default = first_some t (unchecked_some t)] *)
+  val some_or : t -> default:float# -> t
+  [@@zero_alloc]
+
+  val merge : t -> t -> f:(float# -> float# -> float#) -> t
+
+  (** Computes [numerator / denominator] when [denominator] is nonzero, otherwise returns
+      [else_]. This is done without allocating or branching by using [Unboxed.select]. *)
+  val divide_if_denominator_nonzero_else : numerator:t -> denominator:t -> else_:t -> t
+  [@@zero_alloc]
+
+  val value : t -> default:float# -> float# [@@zero_alloc]
+  val value_exn : t -> float# [@@zero_alloc]
+  val compare : t -> t -> int [@@zero_alloc]
+
+  (** [clamp_exn t ~min ~max] clamps [t] to the range [[min, max]]. A [none] bound does
+      not clamp on that side. Returns [none] if [t] is [none]. *)
+  val clamp_exn : t -> min:t -> max:t -> t
+
+  (** Returns [false] if [t] is [none] *)
+
+  val is_finite : t -> bool [@@zero_alloc]
+  val is_inf : t -> bool [@@zero_alloc]
+  val is_positive : t -> bool [@@zero_alloc]
+  val is_non_negative : t -> bool [@@zero_alloc]
+  val is_negative : t -> bool [@@zero_alloc]
+  val is_non_positive : t -> bool [@@zero_alloc]
+  val is_integer : t -> bool [@@zero_alloc]
+
+  module O : sig
+    val ( + ) : t -> t -> t [@@zero_alloc]
+    val ( - ) : t -> t -> t [@@zero_alloc]
+    val ( * ) : t -> t -> t [@@zero_alloc]
+    val ( / ) : t -> t -> t [@@zero_alloc]
+    val ( ** ) : t -> t -> t [@@zero_alloc]
+    val ( = ) : t -> t -> bool [@@zero_alloc]
+    val ( <> ) : t -> t -> bool [@@zero_alloc]
+    val abs : t -> t [@@zero_alloc]
+    val neg : t -> t [@@zero_alloc]
+
+    (** The result of [min] will be [none] if either operand is. *)
+    val min : t -> t -> t
+    [@@zero_alloc]
+
+    (** The result of [max] will be [none] if either operand is. (Note that this disagrees
+        with [compare], which thinks [none] is less than all other values!) *)
+    val max : t -> t -> t
+    [@@zero_alloc]
+  end
+
+  include module type of O
+
+  (** Operations where we use NaN semantics even though they are inconsistent with the
+      remaining operators, e.g., [>=] violates the equivalance [a >= b <-> a > b || a = b]
+      because it returns [false] for two [none] inputs. *)
+  module Ieee_nan : sig
+    val ( < ) : t -> t -> bool [@@zero_alloc]
+    val ( <= ) : t -> t -> bool [@@zero_alloc]
+    val ( > ) : t -> t -> bool [@@zero_alloc]
+    val ( >= ) : t -> t -> bool [@@zero_alloc]
+  end
+
+  module Ref : sig
+    include Ref_intf.T with type elt := t
+
+    val create_none : unit -> t
+    val set_none : local_ t -> unit [@@zero_alloc]
+    val set_float_nan_as_none : local_ t -> float# -> unit [@@zero_alloc]
+  end
+
+  module Stable : sig
+    module V1 : sig
+      type nonrec t = t
+      [@@deriving
+        globalize
+        , stable_witness
+        , sexp ~stackify
+        , bin_io ~localize
+        , hash
+        , typerep
+        , equal
+        , compare]
+    end
+  end
 end
 
 module Stable : sig
@@ -786,12 +950,14 @@ module Stable : sig
 
     (** We derive [sexp], [bin_io], [hash], [typerep], [string], [equal], and [compare]. *)
 
-    val sexp_of_t : t -> Sexp.t
+    val%template sexp_of_t : t @ m -> Sexp.t @ m
+    [@@alloc a @ m = (heap @ global, stack @ local)]
+
     val t_of_sexp : Sexp.t -> t
 
     include%template Bin_prot.Binable.S [@mode local] with type t := t
 
-    include Ppx_hash_lib.Hashable.S_any with type t := t
+    include Ppx_hash_lib.Hashable.S with type t := t
 
     val typerep_of_t : t Typerep.t
     val typename_of_t : t Typerep_lib.Typename.t

@@ -1,6 +1,10 @@
 open! Import
 
-type 'a t = 'a or_null [@@or_null_reexport]
+module T = struct
+  type 'a t = 'a or_null [@@or_null_reexport]
+end
+
+include T
 
 external is_null : _ or_null @ immutable local -> bool @@ portable = "%is_null"
 
@@ -25,17 +29,9 @@ module Optional_syntax = struct
   end
 end
 
-include (
-struct
-  type 'a t = 'a or_null [@@deriving globalize, sexp ~stackify]
-end :
-  sig
-  @@ portable
-    type 'a t = 'a or_null [@@deriving globalize, sexp ~stackify]
-  end
-  with type 'a t := 'a or_null)
-
-[%%rederive.portable type ('a : value mod non_null) t = 'a or_null [@@deriving hash]]
+[%%rederive.portable
+  type ('a : value mod non_null) t = 'a or_null
+  [@@deriving globalize, sexp ~stackify, hash]]
 
 let[@cold] raise_value_exn ~here =
   let error =
@@ -296,3 +292,7 @@ module Local = struct
     end
   end
 end
+
+let[@inline] invariant invariant_a = iter ~f:invariant_a
+
+module Export = Basement.Or_null_shim.Export

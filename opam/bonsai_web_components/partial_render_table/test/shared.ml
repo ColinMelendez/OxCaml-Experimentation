@@ -2,10 +2,10 @@ open! Core
 open! Bonsai_web
 open! Bonsai_web_test
 open Bonsai.Let_syntax
-module Indexed_column_id = Bonsai_web_ui_partial_render_table.Indexed_column_id
-module Table = Bonsai_web_ui_partial_render_table.Basic
-module Table_expert = Bonsai_web_ui_partial_render_table.Expert
-module Sort_state = Bonsai_web_ui_partial_render_table_protocol.Sort_state
+module Indexed_column_id = Bonsai_web_partial_render_table.Indexed_column_id
+module Table = Bonsai_web_partial_render_table.Basic
+module Table_expert = Bonsai_web_partial_render_table.Expert
+module Sort_state = Bonsai_web_partial_render_table_protocol.Sort_state
 
 module Action = struct
   type 'column_id t =
@@ -255,7 +255,7 @@ module Test = struct
       { component : local_ Bonsai.graph -> 'a Bonsai.t
       ; get_vdom : 'a -> Vdom.Node.t
       ; get_inject : 'a -> 'column_id Action.t -> unit Ui_effect.t
-      ; get_testing : 'a -> Bonsai_web_ui_partial_render_table.For_testing.t Lazy.t
+      ; get_testing : 'a -> Bonsai_web_partial_render_table.For_testing.t Lazy.t
       ; get_focus : 'a -> 'focus
       ; summarize_focus : ?num_filtered_rows:int -> 'focus -> string
       ; get_num_filtered_rows : 'a -> int option
@@ -270,17 +270,14 @@ module Test = struct
       | Unlock_focus -> Focus_control.unlock_focus focus
       | Focus_down -> Focus_control.focus_down focus
       | Focus_up -> Focus_control.focus_up focus
+      | Focus_top -> Focus_control.focus_top focus
+      | Focus_bottom -> Focus_control.focus_bottom focus
       | Page_up -> Focus_control.page_up focus
       | Page_down -> Focus_control.page_down focus
       | Focus_row k -> (Focus_control.focus focus) k ()
       | Focus_index index -> (Focus_control.focus_index focus) index ()
-      | Focus_cell _
-      | Focus_left
-      | Focus_right
-      | Focus_top
-      | Focus_bottom
-      | Focus_leftmost
-      | Focus_rightmost -> Effect.print_s [%message "Unsupported"]
+      | Focus_cell _ | Focus_left | Focus_right | Focus_leftmost | Focus_rightmost ->
+        Effect.print_s [%message "Unsupported"]
       | Set_column_width { column_id; width } ->
         (get_set_column_width t) ~column_id (`Px_float width)
     ;;
@@ -549,10 +546,10 @@ module Test = struct
       ~get_vdom
       ~selector:"div[bounds-change]"
       ~name:"bounds-change"
-      Bonsai_web_ui_element_size_hooks.Visibility_tracker.For_testing.type_id
+      Bonsai_web_element_size_hooks.Visibility_tracker.For_testing.type_id
       ~f:(fun { visible_rect_changed; _ } -> visible_rect_changed)
       (Option.map low_and_high ~f:(fun (low, high) ->
-         { Bonsai_web_ui_element_size_hooks.Visibility_tracker.Bbox.min_x = 0.0
+         { Bonsai_web_element_size_hooks.Visibility_tracker.Bbox.min_x = 0.0
          ; min_y = Float.of_int low
          ; max_x = 100.0
          ; max_y = Float.of_int high
@@ -580,8 +577,8 @@ module Test = struct
            (if resize_column_widths_to_fit then "th" else "td")
            (idx + 1))
       ~name:"size_tracker"
-      Bonsai_web_ui_element_size_hooks.Size_tracker.For_testing.type_id
-      { Bonsai_web_ui_element_size_hooks.Size_tracker.Dimensions.border_box =
+      Bonsai_web_element_size_hooks.Size_tracker.For_testing.type_id
+      { Bonsai_web_element_size_hooks.Size_tracker.Dimensions.border_box =
           { width; height = 0.0 }
       ; content_box = { width = 0.0; height = 0.0 }
       }

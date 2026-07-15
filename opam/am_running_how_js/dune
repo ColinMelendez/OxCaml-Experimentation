@@ -3,4 +3,4 @@
  (public_name am_running_how_js)
  (libraries core js_of_ocaml)
  (preprocess
-  (pps js_of_ocaml-ppx ppx_jane)))
+  (pps js_of_ocaml-ppx ppx_jane -compare-require-explicit-locality)))

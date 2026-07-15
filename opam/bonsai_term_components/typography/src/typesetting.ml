@@ -40,7 +40,7 @@ module Chunk = struct
         let seg_total_width = ref 0 in
         let seg_last_non_ws_width = ref 0 in
         Vec.iteri seg.Mutable_segment.chars ~f:(fun _j c ->
-          let c_width = Notty.Tty_width_hint.tty_width_hint c in
+          let c_width = Bonsai_term.View.uchar_tty_width c in
           seg_total_width := !seg_total_width + c_width;
           if not (is_whitespace c) then seg_last_non_ws_width := !seg_total_width);
         total_width := !total_width + !seg_total_width;
@@ -208,7 +208,7 @@ let typeset_line ~max_width (line : 'attr Text.t list) : 'attr Text.t list list 
         let current_segment_chars = Vec.create () in
         while !char_idx <= last_non_ws_idx do
           let c = chars.(!char_idx) in
-          let c_width = Notty.Tty_width_hint.tty_width_hint c in
+          let c_width = Bonsai_term.View.uchar_tty_width c in
           if !current_line_width + c_width <= max_width
           then (
             (* Character fits on current line *)
@@ -233,7 +233,7 @@ let typeset_line ~max_width (line : 'attr Text.t list) : 'attr Text.t list list 
         let trailing_ws_width =
           let w = ref 0 in
           for i = last_non_ws_idx + 1 to Array.length chars - 1 do
-            w := !w + Notty.Tty_width_hint.tty_width_hint chars.(i)
+            w := !w + Bonsai_term.View.uchar_tty_width chars.(i)
           done;
           !w
         in

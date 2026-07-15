@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/pipe_with_writer_error/issues"
 dev-repo: "git+https://github.com/janestreet/pipe_with_writer_error.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/pipe_with_writer_error/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -16,7 +17,10 @@ depends: [
   "ppx_jane"
   "dune"         {>= "3.17.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Pipe that forces readers to consider errors from writers while reading"
 description: "
 `Pipe_with_writer_error.t` abstracts the read end of a pipe and a

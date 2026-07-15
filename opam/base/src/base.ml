@@ -22,7 +22,10 @@
     - [Comparable], [Comparator], and [Comparisons] in lieu of polymorphic compare.
     - [Container], which provides a consistent interface across container-like data
       structures (arrays, lists, strings).
-    - [Result], [Error], and [Or_error], supporting the or-error pattern. *)
+    - [Result], [Error], and [Or_error], supporting the or-error pattern.
+
+    Base turns on backtraces by default at startup. See [Backtrace.Exn], specifically the
+    documentation of the initial value for [am_recording ()], for details. *)
 
 (*_ We hide this from the web docs because the line wrapping is bad, making it pretty much
     inscrutable. *)
@@ -139,6 +142,7 @@ module Option = Option
 module Option_array = Option_array
 module Or_error = Or_error
 module Or_null = Or_null
+module Or_nullable = Or_nullable
 module Ordered_collection_common = Ordered_collection_common
 module Ordering = Ordering
 module Poly = Poly
@@ -165,7 +169,6 @@ module String = String
 module Stringable = Stringable
 module Sys = Sys
 module T = T
-module Toplevel_value = Toplevel_value
 module Type_equal = Type_equal
 module Uniform_array = Uniform_array
 module Unit = Unit
@@ -205,19 +208,36 @@ module Export = struct
     [@@deriving
       compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]]
 
+  type nonrec floatarray = floatarray [@@deriving globalize, sexp ~stackify, sexp_grammar]
+
   type bool = Bool.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type char = Char.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type exn = Exn.t [@@deriving sexp_of]
 
   type float = Float.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type ('a : any mod separable) iarray = 'a Iarray.t
 
@@ -232,11 +252,21 @@ module Export = struct
 
   type int32 = Int32.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type int64 = Int64.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type ('a : value_or_null) list = 'a List.t
   [@@deriving
@@ -244,7 +274,12 @@ module Export = struct
 
   type nativeint = Nativeint.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   type ('a : value_or_null) option = 'a Option.t
   [@@deriving
@@ -266,15 +301,23 @@ module Export = struct
   [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]
 
   type string = String.t
-  [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+  [@@deriving compare ~localize, equal ~localize, hash, sexp ~stackify, sexp_grammar]
+
+  let globalize_string : string @ local -> string @ unique = Globalize.globalize_string
 
   type bytes = Bytes.t
-  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]
+  [@@deriving compare ~localize, equal ~localize, sexp ~stackify, sexp_grammar]
+
+  let globalize_bytes : bytes @ local -> bytes @ unique = Globalize.globalize_bytes
 
   type unit = Unit.t
   [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+    compare ~localize
+    , equal ~localize
+    , globalize
+    , hash
+    , sexp ~stackify ~unboxed
+    , sexp_grammar]
 
   (** Format stuff *)
 
@@ -412,6 +455,10 @@ module Export = struct
   type 'a or_null = 'a Or_null.t
   [@@or_null_reexport]
   [@@deriving compare ~localize, equal ~localize, globalize, hash, sexp ~stackify]
+
+  let%template[@alloc a = (heap, stack)] maybe_globalize =
+    (Globalize.maybe_globalize [@alloc a])
+  ;;
 end
 
 include Export
@@ -419,6 +466,8 @@ include Export
 include Container.Export (** @inline *)
 
 include Modes.Export (** @inline *)
+
+include Ppx_enumerate_lib.Export
 
 exception Not_found_s = Not_found_s
 

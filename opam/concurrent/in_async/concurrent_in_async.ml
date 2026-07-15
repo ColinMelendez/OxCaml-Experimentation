@@ -2,45 +2,54 @@ open! Base
 open Async
 open Await
 
-[@@@alert "-experimental_runtime5"]
+let send_exn = Capsule.Initial.Data.wrap Monitor.send_exn
 
 let scheduler ?monitor ?priority () =
   let open struct
     type spawn =
       { spawn :
-          'r 'a.
+          ('r : value_or_null) 'a.
           ('r, 'a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
+        @@ unyielding
       }
     [@@unboxed]
   end in
   let rec spawn
-    : type r a.
+    : type (r : value_or_null) a.
       (r, a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
     =
     fun scope #{ fn; affinity = _; name = _ } r ->
-    let token = Scope.add scope in
+    let token = Concurrent.Scope.add scope in
     schedule ?monitor ?priority (fun () ->
       try
-        Await_in_async.Expert.with_await Terminator.never ~f:(fun await ->
-          Scope.Token.use token ~f:(fun terminator task_handle ->
+        Await_in_async.Expert.with_await Terminator.unkillable ~f:(fun await ->
+          Concurrent.Scope.Token.use token ~f:(fun terminator task_handle ->
             let spawn = (Capsule.Initial.Data.wrap [@mode local]) { spawn } in
-            Capsule.Expert.Password.with_current
-              (Capsule.Access.unbox Capsule.Initial.access)
-              (fun password ->
-                 let scheduler =
-                   (Concurrent.Scheduler.create [@alloc stack] [@mode portable])
-                     ~spawn:(fun (type s b) (scope : b Scope.t @ local) task (r : s) ->
-                       Capsule.Expert.access ~password ~f:(fun access ->
-                         let { spawn } = Capsule.Expert.Data.Local.unwrap ~access spawn in
-                         spawn scope task r [@nontail])
-                       [@nontail])
-                 in
-                 let concurrent =
-                   (Concurrent.create [@mode portable])
-                     (Await.with_terminator await terminator)
-                     ~scheduler
-                 in
-                 fn task_handle Capsule.Expert.initial concurrent r [@nontail])
+            Capsule.Prim.Password.with_current Capsule.Initial.access (fun password ->
+              let scheduler =
+                (Concurrent.Scheduler.create [@alloc stack] [@mode portable])
+                  ~spawn:
+                    (fun
+                      (type (s : value_or_null) b)
+                      (scope : b Concurrent.Scope.t @ local)
+                      task
+                      (r : s)
+                    ->
+                    Capsule.Prim.access ~password ~f:(fun access ->
+                      let { spawn } = Capsule.Prim.Data.Local.unwrap ~access spawn in
+                      spawn scope task r [@nontail])
+                    [@nontail])
+              in
+              let concurrent =
+                (Concurrent.create [@mode portable])
+                  (Await.with_terminator await terminator)
+                  ~scheduler
+              in
+              fn
+                task_handle
+                (Capsule.Access.box Capsule.Initial.access)
+                concurrent
+                r [@nontail])
             [@nontail])
           [@nontail])
         [@nontail]
@@ -71,6 +80,33 @@ let[@inline] spawn_deferred s ~f =
   [@nontail]
 ;;
 
+let spawn_join ?(monitor = Monitor.current ()) sched ~f =
+  let scope =
+    let execution_context =
+      Async_kernel_scheduler.current_execution_context () |> Capsule.Initial.Data.wrap
+    in
+    let monitor = { aliased = monitor } |> Capsule.Initial.Data.wrap in
+    Concurrent.Scope.Global.create () ~on_exit:(fun _scope maybe_exn ->
+      Or_null.iter maybe_exn ~f:(fun (exn, bt) ->
+        Async_kernel_scheduler.portable_enqueue_job
+          execution_context
+          (Capsule.Data.create (fun () : _ ->
+             fun #(access, { aliased = monitor }) ->
+             let send_exn = Capsule.Data.unwrap ~access send_exn in
+             send_exn monitor exn ~backtrace:(`This bt)))
+          monitor))
+  in
+  let ivar = Ivar.Portable.create () in
+  Concurrent.Scheduler.spawn
+    sched
+    scope
+    (Concurrent.task (fun _ ctx concurrent ->
+       let result = f ctx concurrent in
+       Ivar.Portable.fill_if_empty ivar { portended = result }));
+  Ivar.Portable.read ivar
+  |> Deferred.map ~f:(fun { portended } -> Modes.Contended.cross portended)
+;;
+
 module Portable = struct
   let with_await = Capsule.Initial.Data.wrap Await_in_async.Expert.with_await
   let monitor_send_exn = Capsule.Initial.Data.wrap Monitor.send_exn
@@ -81,19 +117,19 @@ module Portable = struct
       Async_kernel_scheduler.current_execution_context () |> Capsule.Initial.Data.wrap
     in
     let rec spawn
-      : type r a.
+      : type (r : value_or_null) a.
         (r, a, Capsule.Initial.k Capsule.Access.boxed) Concurrent.Scheduler.spawn_fn
       =
       fun scope #{ fn; affinity = _; name = _ } r ->
-      let token = Scope.add scope in
+      let token = Concurrent.Scope.add scope in
       Async_kernel_scheduler.portable_enqueue_job
         execution_context
-        (Capsule.Expert.Data.create_once (fun () : _ ->
+        (Capsule.Prim.Data.create_once (fun () : _ ->
            fun #(access, token) ->
            let with_await = Capsule.Data.unwrap ~access with_await in
            try
-             with_await Terminator.never ~f:(fun await ->
-               Scope.Token.use token ~f:(fun terminator task_handle ->
+             with_await Terminator.unkillable ~f:(fun await ->
+               Concurrent.Scope.Token.use token ~f:(fun terminator task_handle ->
                  let concurrent =
                    (Concurrent.create [@mode portable])
                      (Await.with_terminator await terminator)
@@ -107,7 +143,7 @@ module Portable = struct
              (Capsule.Data.unwrap ~access monitor_send_exn)
                ((Capsule.Data.unwrap ~access monitor_current) ())
                exn))
-        (Capsule.Expert.Data.create_unique (fun () -> token));
+        (Capsule.Prim.Data.create_unique (fun () -> token));
       Spawned
     in
     (Concurrent.Scheduler.create [@mode portable]) ~spawn

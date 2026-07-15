@@ -2,11 +2,11 @@ open Core
 
 type t =
   { header_map : int String.Map.t
-  ; fields : string array
+  ; fields : string iarray
   }
-[@@deriving compare]
+[@@deriving compare ~localize]
 
-let is_empty t = Array.for_all t.fields ~f:String.is_empty
+let is_empty t = Iarray.for_all t.fields ~f:String.is_empty
 
 let sexp_of_t t =
   let names_by_indices =
@@ -14,14 +14,14 @@ let sexp_of_t t =
     |> Sequence.fold ~init:Int.Map.empty ~f:(fun init (name, index) ->
       Map.set init ~key:index ~data:name)
   in
-  Array.mapi t.fields ~f:(fun i v ->
+  Iarray.mapi t.fields ~f:(fun i v ->
     let k =
       match Map.find names_by_indices i with
       | None -> Int.to_string i
       | Some name -> name
     in
     k, v)
-  |> [%sexp_of: (string * string) array]
+  |> [%sexp_of: (string * string) iarray]
 ;;
 
 let to_string t = Sexp.to_string_hum (sexp_of_t t)
@@ -33,7 +33,7 @@ let index_exn t header =
 
 let get_exn_p t header here =
   let i = index_exn t header in
-  try t.fields.(i) with
+  try t.fields.:(i) with
   | _ ->
     raise_s
       [%message
@@ -85,7 +85,7 @@ let get_conv_opt_exn t header here conv =
              (exn : exn)])
 ;;
 
-let nth_exn t i = t.fields.(i)
+let nth_exn t i = t.fields.:(i)
 
 let nth_conv_exn t i here conv =
   try conv (nth_exn t i) with
@@ -119,22 +119,33 @@ let create header_table fields =
   }
 ;;
 
-let to_list t = Array.to_list t.fields
-let to_array t = t.fields
-let length t = Array.length t.fields
-let equal t1 t2 = 0 = [%compare: t] t1 t2
+let to_list t = Iarray.to_list t.fields
+let to_array t = Iarray.to_array t.fields
+
+let unsafe_to_array__promise_no_mutation t =
+  Iarray.unsafe_to_array__promise_no_mutation t.fields
+;;
+
+let to_iarray t = t.fields
+let length t = Iarray.length t.fields
+let%template[@mode m = (local, global)] equal = ([%compare.equal: t] [@mode.explicit m])
 
 let fold t ~init ~f =
-  Map.fold t.header_map ~init ~f:(fun ~key:header ~data:i acc ->
-    f acc ~header ~data:t.fields.(i))
+  Map.fold t.header_map ~init ~f:(stack_ fun ~key:header ~data:i acc ->
+    f acc ~header ~data:t.fields.:(i))
+  [@nontail]
 ;;
 
 let fold_opt t ~init ~f =
-  Map.fold t.header_map ~init ~f:(fun ~key:header ~data:i acc ->
+  Map.fold t.header_map ~init ~f:(stack_ fun ~key:header ~data:i acc ->
     f acc ~header ~data:(nth t i))
+  [@nontail]
 ;;
 
-let iter t ~f = fold t ~init:() ~f:(fun () ~header ~data -> f ~header ~data)
+let iter t ~f =
+  fold t ~init:() ~f:(stack_ fun () ~header ~data -> f ~header ~data) [@nontail]
+;;
+
 let headers t = t.header_map
 
 let list_of_headers t =
@@ -145,6 +156,6 @@ let list_of_headers t =
 
 module Expert = struct
   let of_buffer header_map row_queue =
-    create' header_map (Append_only_buffer.to_array row_queue)
+    create' header_map (Append_only_buffer.to_iarray row_queue)
   ;;
 end

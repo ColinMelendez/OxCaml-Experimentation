@@ -10,6 +10,9 @@ module _ : module type of struct
 end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
   type ('a : any mod separable) t = 'a Iarray.t
 
+  type%template ('a : k) t = ('a Iarray.t[@kind k])
+  [@@kind k = (base_non_value, value_or_null mod external64)]
+
   [%%rederive.portable
     type 'a t = 'a Iarray.t [@@deriving bin_io ~localize, quickcheck ~portable, typerep]]
 
@@ -153,14 +156,18 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     end
   end
 
-  let globalize = Iarray.globalize
+  let%template globalize = (Iarray.globalize [@kind k])
+  [@@kind k = (base_or_null, value_or_null mod external64)]
+  ;;
 
   let%expect_test _ =
     quickcheck_m (module Int_t) ~f:(fun iarray ->
       require_equal (module Int_t) iarray (globalize Int.globalize iarray))
   ;;
 
-  let compare = Iarray.compare
+  let%template compare = (Iarray.compare [@kind k] [@mode l])
+  [@@kind k = (base_or_null, value_or_null mod external64)] [@@mode l = (global, local)]
+  ;;
 
   let%expect_test "reflexive" =
     quickcheck_m (module Int_t) ~f:(fun iarray ->
@@ -201,7 +208,9 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
            && ordering_is_transitive c a b ~f:order))
   ;;
 
-  let equal = Iarray.equal
+  let%template equal = (Iarray.equal [@kind k] [@mode l])
+  [@@kind k = (base_or_null, value_or_null mod external64)] [@@mode l = (global, local)]
+  ;;
 
   let%expect_test "consistent with [compare]" =
     quickcheck_m
@@ -211,8 +220,6 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       ~f:(fun (a, b) ->
         require_equal (module Bool) (equal Int.equal a b) (compare Int.compare a b = 0))
   ;;
-
-  let compare__local = Iarray.compare__local
 
   let%expect_test "consistent with [compare]" =
     quickcheck_m
@@ -225,8 +232,6 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
           (Ordering.of_int (compare__local Int.compare__local a b))
           (Ordering.of_int (compare Int.compare a b)))
   ;;
-
-  let equal__local = Iarray.equal__local
 
   let%expect_test "consistent with [equal]" =
     quickcheck_m
@@ -246,9 +251,11 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     test_hash_can_distinguish_sample (hash_fold_t Int.hash_fold_t)
   ;;
 
-  let t_of_sexp = Iarray.t_of_sexp
-  let sexp_of_t = Iarray.sexp_of_t
-  let sexp_of_t__stack = Iarray.sexp_of_t__stack
+  [%%template
+  [@@@kind.default k = (base_or_null, value_or_null mod external64)]
+
+  let t_of_sexp = (Iarray.t_of_sexp [@kind k])
+  let sexp_of_t = (Iarray.sexp_of_t [@kind k] [@alloc a]) [@@alloc a = (heap, stack)]]
 
   let%expect_test "test round-trip" =
     print_and_check_sexpable (module Int_t) (10 |> List.init ~f:(Iarray.init ~f:Int.succ));
@@ -622,7 +629,7 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       let list = Iarray.to_list t in
       for n = -2 to Iarray.length t + 2 do
         let first_arr, second_arr = split_n t n in
-        let first_list, second_list = List.split_n list n in
+        let #(first_list, second_list) = List.split_n list n in
         require_equal (module Int_t) first_arr (Iarray.of_list first_list);
         require_equal (module Int_t) second_arr (Iarray.of_list second_list)
       done)
@@ -756,6 +763,186 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
         (module Int_t)
         (of_list_rev_map list ~f:Int.succ)
         (Iarray.of_list (List.rev_map list ~f:Int.succ)))
+  ;;
+
+  let%template[@mode m = (global, local)] find_or_null = (Iarray.find_or_null [@mode m])
+
+  let%expect_test "find_or_null examples" =
+    let f x = x % 2 = 0 in
+    print_s [%sexp (find_or_null (Iarray.of_list []) ~f : int Or_null.t)];
+    [%expect {| () |}];
+    print_s [%sexp (find_or_null (Iarray.of_list [ 1; 3; 5 ]) ~f : int Or_null.t)];
+    [%expect {| () |}];
+    print_s [%sexp (find_or_null (Iarray.of_list [ 1; 2; 3; 4 ]) ~f : int Or_null.t)];
+    [%expect {| (2) |}]
+  ;;
+
+  let%expect_test "find_or_null agrees with find" =
+    let module Int_opt = struct
+      type t = int option [@@deriving equal, sexp_of]
+    end
+    in
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      let f x = x % 3 = 0 in
+      require_equal
+        (module Int_opt)
+        (find_or_null t ~f |> Or_null.to_option)
+        (Iarray.find t ~f))
+  ;;
+
+  let%expect_test "find_or_null does not allocate" =
+    let arr = Iarray.of_list [ 1; 2; 3; 4; 5; 6; 7; 8; 9; 10 ] in
+    let result =
+      require_no_allocation ~here:[%here] (fun () ->
+        Iarray.find_or_null arr ~f:(fun x -> x = 7))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| (7) |}];
+    let result =
+      require_no_allocation ~here:[%here] (fun () ->
+        Iarray.find_or_null arr ~f:(fun x -> x > 100))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| () |}]
+  ;;
+
+  let%template[@mode m = (global, local)] findi_or_null = (Iarray.findi_or_null [@mode m])
+
+  let%expect_test "findi_or_null examples" =
+    let f i x = i = x in
+    print_s [%sexp (findi_or_null (Iarray.of_list []) ~f : (int * int) Or_null.t)];
+    [%expect {| () |}];
+    print_s
+      [%sexp (findi_or_null (Iarray.of_list [ 1; 3; 5 ]) ~f : (int * int) Or_null.t)];
+    [%expect {| () |}];
+    print_s
+      [%sexp (findi_or_null (Iarray.of_list [ 5; 3; 2; 0 ]) ~f : (int * int) Or_null.t)];
+    [%expect {| ((2 2)) |}]
+  ;;
+
+  let%expect_test "findi_or_null agrees with findi" =
+    let module Int_pair_opt = struct
+      type t = (int * int) option [@@deriving equal, sexp_of]
+    end
+    in
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      let f i x = (i + x) % 3 = 0 in
+      require_equal
+        (module Int_pair_opt)
+        (findi_or_null t ~f |> Or_null.to_option)
+        (Iarray.findi t ~f))
+  ;;
+
+  let%template[@mode
+                li = (global, local)
+                , lo = (global, local)
+                , o = (many, once)
+                , u = (unique, aliased)] find_map_or_null
+    =
+    (Iarray.find_map_or_null [@mode li lo o u])
+  ;;
+
+  let%expect_test "find_map_or_null examples" =
+    let f x = if x % 2 = 0 then This x else Null in
+    print_s [%sexp (find_map_or_null (Iarray.of_list []) ~f : int Or_null.t)];
+    [%expect {| () |}];
+    print_s [%sexp (find_map_or_null (Iarray.of_list [ 1; 3; 5 ]) ~f : int Or_null.t)];
+    [%expect {| () |}];
+    print_s [%sexp (find_map_or_null (Iarray.of_list [ 1; 2; 3; 4 ]) ~f : int Or_null.t)];
+    [%expect {| (2) |}]
+  ;;
+
+  let%expect_test "find_map_or_null agrees with find_map" =
+    let module Int_opt = struct
+      type t = int option [@@deriving equal, sexp_of]
+    end
+    in
+    let f x = if x % 3 = 0 then Some 1 else None in
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      require_equal
+        (module Int_opt)
+        (find_map_or_null t ~f:(fun x -> f x |> Or_null.of_option) |> Or_null.to_option)
+        (Iarray.find_map t ~f))
+  ;;
+
+  let%expect_test "find_map_or_null does not allocate" =
+    let t = Iarray.of_list [ 1; 2; 3; 4; 5; 6; 7; 8; 9; 10 ] in
+    let result =
+      require_no_allocation (fun () ->
+        Iarray.find_map_or_null t ~f:(fun x ->
+          match x % 5 = 0 with
+          | true -> This (x * 2)
+          | false -> Null))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| (10) |}];
+    let result =
+      require_no_allocation (fun () ->
+        Iarray.find_map_or_null t ~f:(fun x ->
+          match x > 100 with
+          | true -> This 1
+          | false -> Null))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| () |}]
+  ;;
+
+  let%template[@mode
+                li = (global, local)
+                , lo = (global, local)
+                , o = (many, once)
+                , u = (unique, aliased)] find_mapi_or_null
+    =
+    (Iarray.find_mapi_or_null [@mode li lo o u])
+  ;;
+
+  let%expect_test "find_mapi_or_null examples" =
+    let f i x = if i = x then This (i, x) else Null in
+    print_s [%sexp (find_mapi_or_null (Iarray.of_list []) ~f : (int * int) Or_null.t)];
+    [%expect {| () |}];
+    print_s
+      [%sexp (find_mapi_or_null (Iarray.of_list [ 1; 3; 5 ]) ~f : (int * int) Or_null.t)];
+    [%expect {| () |}];
+    print_s
+      [%sexp
+        (find_mapi_or_null (Iarray.of_list [ 5; 3; 2; 0 ]) ~f : (int * int) Or_null.t)];
+    [%expect {| ((2 2)) |}]
+  ;;
+
+  let%expect_test "find_mapi_or_null agrees with find_mapi" =
+    let module Int_opt = struct
+      type t = int option [@@deriving equal, sexp_of]
+    end
+    in
+    let f i x = if i + x > 10 then Some (i * x) else None in
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      require_equal
+        (module Int_opt)
+        (find_mapi_or_null t ~f:(fun i x -> f i x |> Or_null.of_option)
+         |> Or_null.to_option)
+        (Iarray.find_mapi t ~f))
+  ;;
+
+  let%expect_test "find_mapi_or_null does not allocate" =
+    let t = Iarray.of_list [ 1; 2; 3; 4; 5; 6; 7; 8; 9; 10 ] in
+    let result =
+      require_no_allocation (fun () ->
+        Iarray.find_mapi_or_null t ~f:(fun i x ->
+          match (x + i) % 5 = 0 with
+          | true -> This (x * 2)
+          | false -> Null))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| (6) |}];
+    let result =
+      require_no_allocation (fun () ->
+        Iarray.find_mapi_or_null t ~f:(fun i x ->
+          match i + x > 100 with
+          | true -> This 1
+          | false -> Null))
+    in
+    print_s [%sexp (result : int Or_null.t)];
+    [%expect {| () |}]
   ;;
 
   let reduce = Iarray.reduce
@@ -958,6 +1145,23 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       require_equal (module Bool) true (is_sorted_strictly ~compare:Int.compare sorted))
   ;;
 
+  let find_a_dup = Iarray.find_a_dup
+
+  let%expect_test _ =
+    let module Int_option = struct
+      type t = int option [@@deriving equal, globalize, sexp_of]
+    end
+    in
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      require_equal
+        (module Int_option)
+        (find_a_dup ~compare:Int.compare t)
+        (List.find_a_dup ~compare:Int.compare (Iarray.to_list t)));
+    quickcheck_m (module Int_t) ~f:(fun t ->
+      let sorted = dedup_and_sort ~compare:Int.compare t in
+      require_equal (module Int_option) None (find_a_dup ~compare:Int.compare sorted))
+  ;;
+
   let random_element = Iarray.random_element
   let random_element_exn = Iarray.random_element_exn
 
@@ -1022,26 +1226,15 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     Iarray :
     sig
     @@ portable
-      include Indexed_container.S1_with_creators [@alloc stack] with type 'a t := 'a t
+      include
+        Indexed_container.S1_with_creators
+        [@kind_set.explicit value_or_null] [@alloc stack]
+        with type ('a : any) t := 'a t
 
       [@@@mode.default li = (global, local), lo = (global, local)]
 
-      val fold
-        : ('a : value) ('acc : value_or_null).
-        'a t @ li
-        -> init:'acc @ lo
-        -> f:('acc @ lo -> 'a @ li -> 'acc @ lo) @ local
-        -> 'acc @ lo
-
-      val foldi
-        : ('a : value) ('acc : value_or_null).
-        'a t @ li
-        -> init:'acc @ lo
-        -> f:(int -> 'acc @ lo -> 'a @ li -> 'acc @ lo) @ local
-        -> 'acc @ lo
-
       val fold_right
-        : ('a : value) ('acc : value_or_null).
+        : ('a : value_or_null mod separable) ('acc : value_or_null).
         'a t @ li
         -> init:'acc @ lo
         -> f:('a @ li -> 'acc @ lo -> 'acc @ lo) @ local
@@ -1051,6 +1244,35 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
         : ('a : value_or_null mod separable).
         int -> f:(int -> 'a @ m) @ local -> 'a t @ m
       [@@alloc __ @ m = (heap_global, stack_local)]
+
+      val%template map
+        : ('a : ki mod separable) ('b : ko mod separable).
+        'a t @ mi -> f:('a @ mi -> 'b @ mo) @ local -> 'b t @ mo
+      [@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+      [@@mode mi = (global, local)]
+      [@@alloc __ @ mo = (heap_global, stack_local)]
+
+      val%template mapi
+        : ('a : ki mod separable) ('b : ko mod separable).
+        'a t @ mi -> f:(int -> 'a @ mi -> 'b @ mo) @ local -> 'b t @ mo
+      [@@kind ki = value_or_null, ko = value_or_null]
+      [@@mode mi = (global, local)]
+      [@@alloc __ @ mo = (heap_global, stack_local)]
+
+      val%template iteri
+        : ('a : ki mod separable).
+        'a t @ mi -> f:(int -> 'a @ mi -> unit) @ local -> unit
+      [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+      val%template iter
+        : ('a : ki mod separable).
+        'a t @ mi -> f:('a @ mi -> unit) @ local -> unit
+      [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+      val%template for_all
+        : ('a : ki mod separable).
+        'a t @ mi -> f:('a @ mi -> bool) @ local -> bool
+      [@@kind ki = value_or_null] [@@mode mi = (global, local)]
     end)
 
   include struct
@@ -1069,7 +1291,7 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     end
 
     [%%template
-    [@@@kind.default ka = value, kacc = base_non_value]
+    [@@@kind.default ka = value_or_null, kacc = base_non_value]
     [@@@mode.default li = (global, local), lo = (global, local)]
 
     let fold = (Iarray.fold [@kind ka kacc] [@mode li lo])
@@ -1096,6 +1318,141 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     ;;]
   end
 
+  (* Tests for templated map functions over float64 kinds *)
+  include struct
+    open struct
+      let int_to_float64 (i @ local) = Float_u.of_int i
+      let float64_to_int (f @ local) = Float_u.to_int f
+
+      let print_int_iarray (local_ arr) =
+        for i = 0 to Iarray.length arr - 1 do
+          printf "%d " (Int.globalize (Iarray.get arr i))
+        done
+      ;;
+
+      let print_float64_iarray (local_ arr) =
+        for i = 0 to Iarray.length arr - 1 do
+          printf "%.1f " (Float_u.box (Iarray.get arr i))
+        done
+      ;;
+
+      let%template make_int_iarray () : int Iarray.t @ m =
+        (Iarray.of_list [@alloc a]) [ 1; 2; 3; 4; 5 ] [@exclave_if_stack a]
+      [@@alloc a @ m = (heap_global, stack_local)]
+      ;;
+    end
+
+    (* Test map from value_or_null to float64 *)
+    let%expect_test "map value_or_null -> float64" =
+      let arr = make_int_iarray () in
+      (* heap allocation *)
+      let result = (Iarray.map [@kind value_or_null float64]) arr ~f:int_to_float64 in
+      print_float64_iarray result;
+      [%expect {| 1.0 2.0 3.0 4.0 5.0 |}];
+      (* stack allocation *)
+      let result =
+        (Iarray.map [@kind value_or_null float64] [@alloc stack]) arr ~f:int_to_float64
+      in
+      print_float64_iarray result;
+      [%expect {| 1.0 2.0 3.0 4.0 5.0 |}];
+      (* local input, heap allocation *)
+      let local_arr = (make_int_iarray [@alloc stack]) () in
+      let result =
+        (Iarray.map [@kind value_or_null float64] [@mode local])
+          local_arr
+          ~f:int_to_float64
+      in
+      print_float64_iarray result;
+      [%expect {| 1.0 2.0 3.0 4.0 5.0 |}];
+      (* local input, stack allocation *)
+      let result =
+        (Iarray.map [@kind value_or_null float64] [@mode local] [@alloc stack])
+          local_arr
+          ~f:int_to_float64
+      in
+      print_float64_iarray result;
+      [%expect {| 1.0 2.0 3.0 4.0 5.0 |}]
+    ;;
+
+    (* Test map from float64 to value_or_null *)
+    let%expect_test "map float64 -> value_or_null" =
+      let arr =
+        (Iarray.map [@kind value_or_null float64]) (make_int_iarray ()) ~f:int_to_float64
+      in
+      (* heap allocation *)
+      let result = (Iarray.map [@kind float64 value_or_null]) arr ~f:float64_to_int in
+      print_int_iarray result;
+      [%expect {| 1 2 3 4 5 |}];
+      (* stack allocation *)
+      let result =
+        (Iarray.map [@kind float64 value_or_null] [@alloc stack]) arr ~f:float64_to_int
+      in
+      print_int_iarray result;
+      [%expect {| 1 2 3 4 5 |}];
+      (* local input, heap allocation - use global float64 array as input *)
+      let result =
+        (Iarray.map [@kind float64 value_or_null] [@mode local]) arr ~f:float64_to_int
+      in
+      print_int_iarray result;
+      [%expect {| 1 2 3 4 5 |}];
+      (* local input, stack allocation - use global float64 array as input *)
+      let result =
+        (Iarray.map [@kind float64 value_or_null] [@mode local] [@alloc stack])
+          arr
+          ~f:float64_to_int
+      in
+      print_int_iarray result;
+      [%expect {| 1 2 3 4 5 |}]
+    ;;
+
+    (* Test map from float64 to float64 *)
+    let%expect_test "map float64 -> float64" =
+      let arr =
+        (Iarray.map [@kind value_or_null float64]) (make_int_iarray ()) ~f:int_to_float64
+      in
+      let double f = Float_u.of_float (Float_u.to_float f *. 2.0) in
+      (* heap allocation *)
+      let result = (Iarray.map [@kind float64 float64]) arr ~f:double in
+      print_float64_iarray result;
+      [%expect {| 2.0 4.0 6.0 8.0 10.0 |}];
+      (* stack allocation *)
+      let result = (Iarray.map [@kind float64 float64] [@alloc stack]) arr ~f:double in
+      print_float64_iarray result;
+      [%expect {| 2.0 4.0 6.0 8.0 10.0 |}];
+      (* local input, heap allocation - use global float64 array as input *)
+      let result = (Iarray.map [@kind float64 float64] [@mode local]) arr ~f:double in
+      print_float64_iarray result;
+      [%expect {| 2.0 4.0 6.0 8.0 10.0 |}];
+      (* local input, stack allocation - use global float64 array as input *)
+      let result =
+        (Iarray.map [@kind float64 float64] [@mode local] [@alloc stack]) arr ~f:double
+      in
+      print_float64_iarray result;
+      [%expect {| 2.0 4.0 6.0 8.0 10.0 |}]
+    ;;
+
+    (* Test empty arrays *)
+    let%expect_test "map with empty arrays" =
+      let empty_int : int Iarray.t = Iarray.empty in
+      (* value_or_null -> float64 with empty input *)
+      let result = (map [@kind value_or_null float64]) empty_int ~f:int_to_float64 in
+      print_float64_iarray result;
+      [%expect {| |}];
+      (* Create empty float64 array by mapping from empty int array *)
+      let empty_float64 =
+        (map [@kind value_or_null float64]) empty_int ~f:int_to_float64
+      in
+      (* float64 -> value_or_null with empty input *)
+      let result = (map [@kind float64 value_or_null]) empty_float64 ~f:float64_to_int in
+      print_int_iarray result;
+      [%expect {| |}];
+      (* float64 -> float64 with empty input *)
+      let result = (map [@kind float64 float64]) empty_float64 ~f:Fn.id in
+      print_float64_iarray result;
+      [%expect {| |}]
+    ;;
+  end
+
   (* Tested as [Local.init] below *)
   let%template[@alloc stack] init = (Iarray.init [@alloc stack])
 
@@ -1115,6 +1472,13 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
     printf "%d\n" (Iarray.length local_iarray);
     [%expect {| 4 4 |}]
   ;;
+
+  (* Tested by the container *)
+  [%%template
+  [@@@kind.default k = (base_or_null, value_or_null mod external64)]
+
+  let of_array = (Iarray.of_array [@kind k])
+  let to_array = (Iarray.to_array [@kind k])]
 
   let%expect_test _ =
     (Base_container_tests.test_indexed_container_s1_with_creators [@alloc stack])
@@ -1382,6 +1746,8 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       [%%rederive
         type nonrec ('a : value_or_null mod separable) t = 'a Iarray.Stable.V1.t
         [@@deriving compare ~localize]]
+
+      let sexp_of_t__stack = Iarray.Stable.V1.sexp_of_t__stack
 
       let%expect_test _ =
         print_and_check_stable_type
@@ -1859,10 +2225,14 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       Iarray.Local :
       sig
       @@ portable
+        [@@@implicit_kind: ('a : value_or_null mod separable)]
+        [@@@implicit_kind: ('b : value_or_null mod separable)]
+        [@@@implicit_kind: ('c : value_or_null mod separable)]
+
         (* The following signatures are for functions in [Iarray.Local] which only
            re-export [Container] functions, and are thus tested elsewhere. *)
-        val length : local_ _ t -> int
-        val is_empty : local_ _ t -> bool
+        val length : local_ 'a t -> int
+        val is_empty : local_ 'a t -> bool
 
         val mem
           :  local_ 'a t
@@ -1983,22 +2353,31 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
           -> f:local_ (int -> local_ 'a -> local_ 'b t)
           -> local_ 'b t
 
+        val to_array_of_immediates
+          : ('i : immediate64_or_null).
+          'i iarray @ local -> 'i array @ local
+        [@@zero_alloc]
+
+        val sort_immediates
+          : ('i : immediate64_or_null).
+          'i iarray @ local -> compare:('i -> 'i -> int) @ local -> 'i iarray @ local
+
         val fold
-          : ('a : value) ('acc : value_or_null).
+          : 'a ('acc : value_or_null).
           local_ 'a t
           -> init:local_ 'acc
           -> f:local_ (local_ 'acc -> local_ 'a -> local_ 'acc)
           -> local_ 'acc
 
         val foldi
-          : ('a : value) ('acc : value_or_null).
+          : 'a ('acc : value_or_null).
           local_ 'a t
           -> init:local_ 'acc
           -> f:local_ (int -> local_ 'acc -> local_ 'a -> local_ 'acc)
           -> local_ 'acc
 
         val fold_right
-          : ('a : value) ('acc : value_or_null).
+          : 'a ('acc : value_or_null).
           local_ 'a t
           -> init:local_ 'acc
           -> f:local_ (local_ 'a -> local_ 'acc -> local_ 'acc)
@@ -2021,7 +2400,7 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
       end
 
       [%%template
-      [@@@kind.default ka = value, kacc = base_non_value]
+      [@@@kind.default ka = value_or_null, kacc = base_non_value]
 
       let fold = (Iarray.Local.fold [@kind ka kacc])
       let foldi = (Iarray.Local.foldi [@kind ka kacc])
@@ -2066,6 +2445,14 @@ end [@ocaml.remove_aliases] [@warning "-unused-module"] = struct
         go 0
       ;;
     end
+
+    (* [of_array] is a compiler primitive, so it must be declared as [external] to satisfy
+       the signature; we cannot reimplement it without magic. *)
+    external of_array
+      :  ('a array[@local_opt]) @ unique
+      -> ('a global t[@local_opt]) @ unique
+      @@ portable
+      = "%array_to_iarray"
 
     (*=---- No magic after this point! ---- *)
 

@@ -6,18 +6,27 @@ open Base
 (* unary *)
 include struct
   type none : k = int [@@kind k = value]
+  type none : k = int8# [@@kind k = bits8]
+  type none : k = int16# [@@kind k = bits16]
   type none : k = int32# [@@kind k = bits32]
   type none : k = int64# [@@kind k = bits64]
   type none : k = nativeint# [@@kind k = word]
   type none : k = float32# [@@kind k = float32]
   type none : k = float# [@@kind k = float64]
+  type none : void mod everything [@@kind k = void]
 
   let[@kind k = value] none () = 0
+  let[@kind k = bits8] none () = #0s
+  let[@kind k = bits16] none () = #0S
   let[@kind k = bits32] none () = #0l
   let[@kind k = bits64] none () = #0L
   let[@kind k = word] none () = #0n
   let[@kind k = float32] none () = #0.0s
   let[@kind k = float64] none () = #0.0
+
+  external void : unit -> (none[@kind void]) @@ portable = "%unbox_unit"
+
+  let[@kind k = void] none () = void ()
 end
 
 (* binary *)
@@ -26,8 +35,10 @@ include struct
     (k1s, k2s)
     = ( (base_or_null, base_or_null)
       , (base_or_null, value_or_null & value_or_null)
-      , (value_or_null & value_or_null, base_or_null)
-      , (value_or_null & value_or_null, value_or_null & value_or_null) )]
+      , (value_or_null & base_or_null, base_or_null)
+      , (value_or_null & base_or_null, value_or_null & value_or_null)
+      , (value_or_null & bits64, (value_or_null & bits64) & word)
+      , (bits64, bits64 & word) )]
 
   [@@@kind k1 = k1s, k2 = k2s]
 
@@ -41,11 +52,13 @@ include struct
 end
 
 include struct
-  [@@@kind kl = (k_triple, bits64, value_or_null, float64)]
+  [@@@kind kl = (k_triple, value_or_null, float64, bits64)]
 
-  type none : k =
-    #((none[@kind bits64]) * (none[@kind bits64]) * (none[@kind value_or_null]))
-  [@@kind k = k_triple]
+  open struct
+    type none : k =
+      #((none[@kind bits64]) * (none[@kind bits64]) * (none[@kind value_or_null]))
+    [@@kind k = k_triple]
+  end
 
   type none : k = #((none[@kind kl]) * (none[@kind k_triple]))
   [@@kind k = (kl & k_triple)]
@@ -65,12 +78,16 @@ include struct
   [@@@kind.default
     k
     = ( base_or_null
+      , bits8
+      , bits16
+      , void
       , base_or_null & base_or_null
-      , (value_or_null & value_or_null) & base_or_null
+      , (value_or_null & base_or_null) & base_or_null
       , (_ : (_ : base_or_null & (value_or_null & value_or_null)))
-      , (_ : (_ : (value_or_null & value_or_null) & (value_or_null & value_or_null)))
-      , bits64 & (bits64, value_or_null, float64, k_triple)
-      , (value_or_null, float64, k_triple) & k_triple )]
+      , (_ : (_ : (value_or_null & base_or_null) & (value_or_null & value_or_null)))
+      , (value_or_null, float64, bits64, k_triple) & k_triple
+      , (_ : (_ : (value_or_null & bits64) & ((value_or_null & bits64) & word)))
+      , (_ : (_ : bits64 & (bits64 & word))) )]
 
   type ('a : k, 'b : k) tag =
     | None : ('a : k). (('a, (none[@kind k])) tag[@kind k])
@@ -80,8 +97,11 @@ include struct
     | T : ('a : k) ('b : k). #((('a, 'b) tag[@kind k]) * 'b) -> ('a t[@kind k])
   [@@unboxed]
 
-  let some x = T #(Some, x)
-  let none () = T #(None, (none [@kind k]) ())
+  let%template some (x @ m) = T #(Some, x) [@exclave_if_local m]
+  [@@kind k] [@@mode m = (global, local)]
+  ;;
+
+  let%template none () = T #(None, (none [@kind k]) ()) [@@kind k]
 
   let is_some (type a : k) t =
     match (t : (a t[@kind k])) with
@@ -155,6 +175,7 @@ end
 
 include struct
   [@@@kind.default k = base_or_null]
+  [@@@mode.default c = (uncontended, shared, contended)]
 
   let box (type a : k) (t : (a t[@kind k])) : (a Option.t[@kind k]) =
     match t with
@@ -165,6 +186,6 @@ include struct
   let unbox (type a : k) (t : (a Option.t[@kind k])) : (a t[@kind k]) =
     match t with
     | None -> (none [@kind k]) ()
-    | Some x -> (some [@kind k]) x
+    | Some x -> T #(Some, x)
   ;;
 end]

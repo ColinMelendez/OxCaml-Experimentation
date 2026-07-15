@@ -4,8 +4,8 @@ open! Import
 module Var_from_parent = struct
   type t =
     | None
-    | One of Type_equal.Id.Uid.t
-    | Two of Type_equal.Id.Uid.t * Type_equal.Id.Uid.t
+    | One of Var_id.Packed.t
+    | Two of Var_id.Packed.t * Var_id.Packed.t
 end
 
 module For_value = struct
@@ -179,6 +179,7 @@ module For_computation = struct
         parent
         v
     in
+    let pack_id = Var_id.pack in
     let open Trampoline.Let_syntax in
     match computation with
     | Return { value; here } ->
@@ -192,14 +193,12 @@ module For_computation = struct
       let%bind input = map_value t.input in
       return (Computation.Leaf_incr { t with input })
     | Sub t ->
-      let%bind from =
-        map ~var_from_parent:(One (Type_equal.Id.uid t.via)) ~choice:1 t.from
-      in
+      let%bind from = map ~var_from_parent:(One (pack_id t.via)) ~choice:1 t.from in
       let%bind into = map ~choice:2 t.into in
       return (Computation.Sub { t with from; into })
     | Store t ->
       let%bind value =
-        map_value ~var_from_parent:(One (Type_equal.Id.uid t.id)) ~choice:1 t.value
+        map_value ~var_from_parent:(One (pack_id t.id)) ~choice:1 t.value
       in
       let%bind inner = map ~choice:2 t.inner in
       return (Computation.Store { t with value; inner })
@@ -207,20 +206,13 @@ module For_computation = struct
     | Assoc t ->
       let%bind map' = map_value ~choice:1 t.map in
       let%bind by =
-        map
-          ~var_from_parent:(Two (Type_equal.Id.uid t.key_id, Type_equal.Id.uid t.data_id))
-          ~choice:2
-          t.by
+        map ~var_from_parent:(Two (pack_id t.key_id, pack_id t.data_id)) ~choice:2 t.by
       in
       return (Computation.Assoc { t with map = map'; by })
     | Assoc_on t ->
       let%bind map' = map_value ~choice:1 t.map in
       let%bind by =
-        map
-          ~var_from_parent:
-            (Two (Type_equal.Id.uid t.io_key_id, Type_equal.Id.uid t.data_id))
-          ~choice:2
-          t.by
+        map ~var_from_parent:(Two (pack_id t.io_key_id, pack_id t.data_id)) ~choice:2 t.by
       in
       return (Computation.Assoc_on { t with map = map'; by })
     | Assoc_simpl t ->
@@ -252,9 +244,7 @@ module For_computation = struct
       return (Computation.Lazy { t = inner; here })
     | Wrap ({ model_id; inject_id; inner; _ } as t) ->
       let%bind inner =
-        map
-          ~var_from_parent:(Two (Type_equal.Id.uid model_id, Type_equal.Id.uid inject_id))
-          inner
+        map ~var_from_parent:(Two (pack_id model_id, pack_id inject_id)) inner
       in
       return (Computation.Wrap { t with inner })
     | With_model_resetter { inner; reset_id; here } ->

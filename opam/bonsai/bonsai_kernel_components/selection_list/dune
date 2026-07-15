@@ -1,0 +1,6 @@
+(library
+ (name bonsai_kernel_selection_state)
+ (public_name bonsai.kernel_components.selection_state)
+ (preprocess
+  (pps ppx_jane ppx_bonsai))
+ (libraries bonsai bonsai_kernel_value_utilities core))

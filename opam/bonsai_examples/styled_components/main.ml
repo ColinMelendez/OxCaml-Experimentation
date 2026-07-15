@@ -1,8 +1,8 @@
 open! Core
 open! Bonsai_web
 open! Bonsai.Let_syntax
-module Gallery = Bonsai_web_ui_gallery
-module Form = Bonsai_web_ui_form.With_automatic_view
+module Gallery = Bonsai_web_contrib_gallery
+module Form = Bonsai_web_form.With_automatic_view
 
 module Basic = struct
   let name = "Basic"
@@ -254,5 +254,5 @@ let component (local_ graph) =
 
 let () =
   Async_js.init ();
-  Bonsai_web.Start.start component ~enable_bonsai_telemetry:Enabled
+  Bonsai_web.Start.start component
 ;;

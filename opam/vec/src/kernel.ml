@@ -52,6 +52,14 @@ end
 module Array = struct
   include Array
 
+  let%template[@kind k = value_or_null] obj_is_int obj = Obj.is_int obj
+
+  let%template[@kind k = immediate64_or_null] obj_is_int obj =
+    match Base.Int63.Private.repr with
+    | Int -> true
+    | Int64 -> Obj.is_int obj
+  ;;
+
   let%template[@kind k = value] [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
@@ -59,46 +67,69 @@ module Array = struct
     =
     let e = unsafe_get t i in
     let e = Obj.repr e in
-    if not (Obj.is_int e)
+    if not ((obj_is_int [@kind value_or_null]) e)
     then (
       let e : a = Obj.magic 0 in
       unsafe_set t i e)
   ;;
 
-  let%template[@kind k = (value & value)] [@inline] unsafe_clear_if_pointer
+  let%template[@kind k = (value_or_null & value_or_null)] [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
     i
     =
     let e = unsafe_get t i in
     let #(a1, a2) : #(Obj.t * Obj.t) = Obj.magic e in
-    if not (Obj.is_int a1 && Obj.is_int a2)
+    if not ((obj_is_int [@kind value_or_null]) a1 && (obj_is_int [@kind value_or_null]) a2)
     then (
       let e : a = Obj.magic #(Obj.repr 0, Obj.repr 0) in
       unsafe_set t i e)
   ;;
 
-  let%template[@kind k = (value & value & value)] [@inline] unsafe_clear_if_pointer
+  let%template[@kind k = (immediate64_or_null & value_or_null)] [@inline] unsafe_clear_if_pointer
+    (type a : k)
+    (t : a array)
+    i
+    =
+    let e = unsafe_get t i in
+    let #(a1, a2) : #(Obj.t * Obj.t) = Obj.magic e in
+    if not
+         ((obj_is_int [@kind immediate64_or_null]) a1
+          && (obj_is_int [@kind value_or_null]) a2)
+    then (
+      let e : a = Obj.magic #(Obj.repr 0, Obj.repr 0) in
+      unsafe_set t i e)
+  ;;
+
+  let%template[@kind k = (value_or_null & value_or_null & value_or_null)] [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
     i
     =
     let e = unsafe_get t i in
     let #(a1, a2, a3) : #(Obj.t * Obj.t * Obj.t) = Obj.magic e in
-    if not (Obj.is_int a1 && Obj.is_int a2 && Obj.is_int a3)
+    if not
+         ((obj_is_int [@kind value_or_null]) a1
+          && (obj_is_int [@kind value_or_null]) a2
+          && (obj_is_int [@kind value_or_null]) a3)
     then (
       let e : a = Obj.magic #(Obj.repr 0, Obj.repr 0, Obj.repr 0) in
       unsafe_set t i e)
   ;;
 
-  let%template[@kind k = (value & value & value & value)] [@inline] unsafe_clear_if_pointer
+  let%template[@kind k = (value_or_null & value_or_null & value_or_null & value_or_null)]
+              [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
     i
     =
     let e = unsafe_get t i in
     let #(a1, a2, a3, a4) : #(Obj.t * Obj.t * Obj.t * Obj.t) = Obj.magic e in
-    if not (Obj.is_int a1 && Obj.is_int a2 && Obj.is_int a3 && Obj.is_int a4)
+    if not
+         ((obj_is_int [@kind value_or_null]) a1
+          && (obj_is_int [@kind value_or_null]) a2
+          && (obj_is_int [@kind value_or_null]) a3
+          && (obj_is_int [@kind value_or_null]) a4)
     then (
       let e : a = Obj.magic #(Obj.repr 0, Obj.repr 0, Obj.repr 0, Obj.repr 0) in
       unsafe_set t i e)
@@ -114,27 +145,18 @@ module Array = struct
     | Int64 -> (unsafe_clear_if_pointer [@kind value]) t i
   ;;
 
-  let%template[@kind k = (immediate64 & immediate64)] [@inline] unsafe_clear_if_pointer
+  let%template[@kind k = (immediate64_or_null & immediate64_or_null)] [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
     i
     =
     match Base.Int63.Private.repr with
     | Int -> ()
-    | Int64 -> (unsafe_clear_if_pointer [@kind value & value]) t i
+    | Int64 -> (unsafe_clear_if_pointer [@kind value_or_null & value_or_null]) t i
   ;;
 
-  let%template[@kind k = (immediate64 & immediate64 & immediate64)] [@inline] unsafe_clear_if_pointer
-    (type a : k)
-    (t : a array)
-    i
-    =
-    match Base.Int63.Private.repr with
-    | Int -> ()
-    | Int64 -> (unsafe_clear_if_pointer [@kind value & value & value]) t i
-  ;;
-
-  let%template[@kind k = (immediate64 & immediate64 & immediate64 & immediate64)]
+  let%template[@kind
+                k = (immediate64_or_null & immediate64_or_null & immediate64_or_null)]
               [@inline] unsafe_clear_if_pointer
     (type a : k)
     (t : a array)
@@ -142,10 +164,35 @@ module Array = struct
     =
     match Base.Int63.Private.repr with
     | Int -> ()
-    | Int64 -> (unsafe_clear_if_pointer [@kind value & value & value & value]) t i
+    | Int64 ->
+      (unsafe_clear_if_pointer [@kind value_or_null & value_or_null & value_or_null]) t i
   ;;
 
-  let%template[@kind k = (value & value, immediate64 & immediate64)] unsafe_create_uninitialized
+  let%template[@kind
+                k
+                = (immediate64_or_null
+                   & immediate64_or_null
+                   & immediate64_or_null
+                   & immediate64_or_null)]
+              [@inline] unsafe_clear_if_pointer
+    (type a : k)
+    (t : a array)
+    i
+    =
+    match Base.Int63.Private.repr with
+    | Int -> ()
+    | Int64 ->
+      (unsafe_clear_if_pointer
+      [@kind value_or_null & value_or_null & value_or_null & value_or_null])
+        t
+        i
+  ;;
+
+  let%template[@kind
+                k
+                = ( value_or_null & value_or_null
+                  , immediate64_or_null & immediate64_or_null
+                  , immediate64_or_null & value_or_null )] unsafe_create_uninitialized
     (type a : k)
     ~len
     : a t
@@ -154,7 +201,10 @@ module Array = struct
     create ~len v
   ;;
 
-  let%template[@kind k = (value & value & value, immediate64 & immediate64 & immediate64)] unsafe_create_uninitialized
+  let%template[@kind
+                k
+                = ( value_or_null & value_or_null & value_or_null
+                  , immediate64_or_null & immediate64_or_null & immediate64_or_null )] unsafe_create_uninitialized
     (type a : k)
     ~len
     : a t
@@ -165,8 +215,11 @@ module Array = struct
 
   let%template[@kind
                 k
-                = ( value & value & value & value
-                  , immediate64 & immediate64 & immediate64 & immediate64 )] unsafe_create_uninitialized
+                = ( value_or_null & value_or_null & value_or_null & value_or_null
+                  , immediate64_or_null
+                    & immediate64_or_null
+                    & immediate64_or_null
+                    & immediate64_or_null )] unsafe_create_uninitialized
     (type a : k)
     ~len
     : a t
@@ -185,12 +238,16 @@ module%template
   [@kind
     k
     = ( immediate64
-      , value & value
-      , immediate64 & immediate64
-      , value & value & value
-      , immediate64 & immediate64 & immediate64
-      , value & value & value & value
-      , immediate64 & immediate64 & immediate64 & immediate64 )] Arr_impl =
+      , value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null
+      , immediate64_or_null & value_or_null
+      , value_or_null & value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null & immediate64_or_null
+      , value_or_null & value_or_null & value_or_null & value_or_null
+      , immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null )] Arr_impl =
 struct
   open Array
 
@@ -267,12 +324,16 @@ end
   k
   = ( value
     , immediate64
-    , value & value
-    , immediate64 & immediate64
-    , value & value & value
-    , immediate64 & immediate64 & immediate64
-    , value & value & value & value
-    , immediate64 & immediate64 & immediate64 & immediate64
+    , value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null
+    , immediate64_or_null & value_or_null
+    , value_or_null & value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null & immediate64_or_null
+    , value_or_null & value_or_null & value_or_null & value_or_null
+    , immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null
     , float32
     , bits64 )]
 
@@ -285,12 +346,15 @@ let sexp_of_out_of_range_element (type a) (a : a) =
   Sexp.Atom (sprintf "_%d" imm)
 ;;
 
-let%template[@kind k = (value & value)] sexp_of_out_of_range_element (type a : k) (a : a) =
+let%template[@kind k = (value_or_null & value_or_null)] sexp_of_out_of_range_element
+  (type a : k)
+  (a : a)
+  =
   let #(imm1, imm2) : #(int * int) = Obj.magic a in
   Sexp.Atom (sprintf "(_%d, _%d)" imm1 imm2)
 ;;
 
-let%template[@kind k = (value & value & value)] sexp_of_out_of_range_element
+let%template[@kind k = (value_or_null & value_or_null & value_or_null)] sexp_of_out_of_range_element
   (type a : k)
   (a : a)
   =
@@ -298,7 +362,7 @@ let%template[@kind k = (value & value & value)] sexp_of_out_of_range_element
   Sexp.Atom (sprintf "(_%d, _%d, _%d)" imm1 imm2 imm3)
 ;;
 
-let%template[@kind k = (value & value & value & value)] sexp_of_out_of_range_element
+let%template[@kind k = (value_or_null & value_or_null & value_or_null & value_or_null)] sexp_of_out_of_range_element
   (type a : k)
   (a : a)
   =
@@ -306,11 +370,15 @@ let%template[@kind k = (value & value & value & value)] sexp_of_out_of_range_ele
   Sexp.Atom (sprintf "(_%d, _%d, _%d, _%d)" imm1 imm2 imm3 imm4)
 ;;
 
-let%template[@kind k = (immediate64 & immediate64)] [@inline] sexp_of_out_of_range_element
+let%template[@kind
+              k
+              = ( immediate64_or_null & immediate64_or_null
+                , immediate64_or_null & value_or_null )]
+            [@inline] sexp_of_out_of_range_element
   (type a : k)
   (a : a)
   =
-  (sexp_of_out_of_range_element [@kind value & value]) a
+  (sexp_of_out_of_range_element [@kind value_or_null & value_or_null]) a
 ;;
 
 let%template[@kind k = immediate64] [@inline] sexp_of_out_of_range_element
@@ -320,18 +388,27 @@ let%template[@kind k = immediate64] [@inline] sexp_of_out_of_range_element
   (sexp_of_out_of_range_element [@kind value]) a
 ;;
 
-let%template[@kind k = (immediate64 & immediate64 & immediate64)] [@inline] sexp_of_out_of_range_element
+let%template[@kind k = (immediate64_or_null & immediate64_or_null & immediate64_or_null)]
+            [@inline] sexp_of_out_of_range_element
   (type a : k)
   (a : a)
   =
-  (sexp_of_out_of_range_element [@kind value & value & value]) a
+  (sexp_of_out_of_range_element [@kind value_or_null & value_or_null & value_or_null]) a
 ;;
 
-let%template[@kind k = (immediate64 & immediate64 & immediate64 & immediate64)] [@inline] sexp_of_out_of_range_element
+let%template[@kind
+              k
+              = (immediate64_or_null
+                 & immediate64_or_null
+                 & immediate64_or_null
+                 & immediate64_or_null)]
+            [@inline] sexp_of_out_of_range_element
   (type a : k)
   (a : a)
   =
-  (sexp_of_out_of_range_element [@kind value & value & value & value]) a
+  (sexp_of_out_of_range_element
+  [@kind value_or_null & value_or_null & value_or_null & value_or_null])
+    a
 ;;
 
 let%template[@kind float32] sexp_of_out_of_range_element (type a : float32) (a : a) =
@@ -348,13 +425,16 @@ let out_of_range_invariant (type a : value) (element : a) =
   assert (Obj.repr element |> Obj.is_int)
 ;;
 
-let%template[@kind k = (value & value)] out_of_range_invariant (type a : k) (e : a) =
+let%template[@kind k = (value_or_null & value_or_null)] out_of_range_invariant
+  (type a : k)
+  (e : a)
+  =
   let #(a1, a2) : #(Obj.t * Obj.t) = Obj.magic e in
   out_of_range_invariant a1;
   out_of_range_invariant a2
 ;;
 
-let%template[@kind k = (value & value & value)] out_of_range_invariant
+let%template[@kind k = (value_or_null & value_or_null & value_or_null)] out_of_range_invariant
   (type a : k)
   (e : a)
   =
@@ -364,7 +444,7 @@ let%template[@kind k = (value & value & value)] out_of_range_invariant
   out_of_range_invariant a3
 ;;
 
-let%template[@kind k = (value & value & value & value)] out_of_range_invariant
+let%template[@kind k = (value_or_null & value_or_null & value_or_null & value_or_null)] out_of_range_invariant
   (type a : k)
   (e : a)
   =
@@ -379,25 +459,38 @@ let%template[@kind k = immediate64] [@inline] out_of_range_invariant (type a : k
   (out_of_range_invariant [@kind value]) e
 ;;
 
-let%template[@kind k = (immediate64 & immediate64)] [@inline] out_of_range_invariant
+let%template[@kind
+              k
+              = ( immediate64_or_null & immediate64_or_null
+                , immediate64_or_null & value_or_null )]
+            [@inline] out_of_range_invariant
   (type a : k)
   (e : a)
   =
-  (out_of_range_invariant [@kind value & value]) e
+  (out_of_range_invariant [@kind value_or_null & value_or_null]) e
 ;;
 
-let%template[@kind k = (immediate64 & immediate64 & immediate64)] [@inline] out_of_range_invariant
+let%template[@kind k = (immediate64_or_null & immediate64_or_null & immediate64_or_null)]
+            [@inline] out_of_range_invariant
   (type a : k)
   (e : a)
   =
-  (out_of_range_invariant [@kind value & value & value]) e
+  (out_of_range_invariant [@kind value_or_null & value_or_null & value_or_null]) e
 ;;
 
-let%template[@kind k = (immediate64 & immediate64 & immediate64 & immediate64)] [@inline] out_of_range_invariant
+let%template[@kind
+              k
+              = (immediate64_or_null
+                 & immediate64_or_null
+                 & immediate64_or_null
+                 & immediate64_or_null)]
+            [@inline] out_of_range_invariant
   (type a : k)
   (e : a)
   =
-  (out_of_range_invariant [@kind value & value & value & value]) e
+  (out_of_range_invariant
+  [@kind value_or_null & value_or_null & value_or_null & value_or_null])
+    e
 ;;
 
 let%template[@kind float32] out_of_range_invariant _element = ()
@@ -410,14 +503,20 @@ let%template[@kind bits64] out_of_range_invariant _element = ()
     , bits64
     , value
     , immediate64
-    , value & value
-    , immediate64 & immediate64
-    , value & value & value
-    , immediate64 & immediate64 & immediate64
-    , value & value & value & value
-    , immediate64 & immediate64 & immediate64 & immediate64 )]
+    , value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null
+    , immediate64_or_null & value_or_null
+    , value_or_null & value_or_null & value_or_null
+    , immediate64_or_null & immediate64_or_null & immediate64_or_null
+    , value_or_null & value_or_null & value_or_null & value_or_null
+    , immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null
+      & immediate64_or_null )]
 
-module [@kind] Arr = Arr_impl [@kind k]
+open struct
+  module [@kind] Arr = Arr_impl [@kind k]
+end
 
 type ('a : k) t =
   { mutable arr : 'a Arr.t
@@ -505,12 +604,16 @@ module With_structure_details = struct
       , bits64
       , value
       , immediate64
-      , value & value
-      , immediate64 & immediate64
-      , value & value & value
-      , immediate64 & immediate64 & immediate64
-      , value & value & value & value
-      , immediate64 & immediate64 & immediate64 & immediate64 )]
+      , value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null
+      , immediate64_or_null & value_or_null
+      , value_or_null & value_or_null & value_or_null
+      , immediate64_or_null & immediate64_or_null & immediate64_or_null
+      , value_or_null & value_or_null & value_or_null & value_or_null
+      , immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null
+        & immediate64_or_null )]
 
   type nonrec 'a t = ('a t[@kind k])
 
@@ -535,12 +638,16 @@ let%template[@kind
                 , bits64
                 , value
                 , immediate64
-                , value & value
-                , immediate64 & immediate64
-                , value & value & value
-                , immediate64 & immediate64 & immediate64
-                , value & value & value & value
-                , immediate64 & immediate64 & immediate64 & immediate64 )] invariant
+                , value_or_null & value_or_null
+                , immediate64_or_null & immediate64_or_null
+                , immediate64_or_null & value_or_null
+                , value_or_null & value_or_null & value_or_null
+                , immediate64_or_null & immediate64_or_null & immediate64_or_null
+                , value_or_null & value_or_null & value_or_null & value_or_null
+                , immediate64_or_null
+                  & immediate64_or_null
+                  & immediate64_or_null
+                  & immediate64_or_null )] invariant
   (type a : k)
   (a_inv : a -> unit)
   (t : (a t[@kind k]))
@@ -577,12 +684,16 @@ let%template[@inline always]
             [@kind
               k
               = ( immediate64
-                , value & value
-                , immediate64 & immediate64
-                , value & value & value
-                , immediate64 & immediate64 & immediate64
-                , value & value & value & value
-                , immediate64 & immediate64 & immediate64 & immediate64 )] unsafe_clear_pointer_at
+                , value_or_null & value_or_null
+                , immediate64_or_null & immediate64_or_null
+                , immediate64_or_null & value_or_null
+                , value_or_null & value_or_null & value_or_null
+                , immediate64_or_null & immediate64_or_null & immediate64_or_null
+                , value_or_null & value_or_null & value_or_null & value_or_null
+                , immediate64_or_null
+                  & immediate64_or_null
+                  & immediate64_or_null
+                  & immediate64_or_null )] unsafe_clear_pointer_at
   (t : (_ t[@kind k]))
   pos
   =

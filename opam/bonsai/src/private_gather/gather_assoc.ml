@@ -54,9 +54,8 @@ let f
   ~by
   ~here
   =
-  let module Cmp = (val key_comparator) in
   let wrap_assoc ~key inject =
-    Action.assoc ~id:key_id ~compare:(Comparator.compare Cmp.comparator) ~key >>> inject
+    Action.assoc ~id:key_id ~comparator:key_comparator ~key >>> inject
   in
   let%bind.Trampoline (Computation.T
                         { model = model_info
@@ -79,13 +78,11 @@ let f
         | `Right _ -> None
         | `Both input_and_models -> Some input_and_models)
     in
-    let create_keyed =
-      unstage (Path.Elem.keyed ~compare:(Comparator.compare Cmp.comparator) key_id)
-    in
+    let create_keyed = unstage (Path.Elem.keyed ~comparator:key_comparator key_id) in
     let results_map, input_map, lifecycle_map =
       unzip3_mapi'
         input_and_models_map
-        ~comparator:(module Cmp)
+        ~comparator:key_comparator
         ~contains_lifecycle:resolved.lifecycle
         ~contains_input:resolved.input
         ~f:(fun ~key ~data:input_and_model ->
@@ -138,8 +135,8 @@ let f
     in
     let input =
       match resolved.input with
-      | No -> Input.static_none
-      | Yes_or_maybe -> Input.dynamic (input_map >>| Option.some)
+      | No -> Input.static_dummy_for_assoc key_comparator
+      | Yes_or_maybe -> Input.dynamic input_map
     in
     Trampoline.return (Snapshot.create ~here ~result:results_map ~input ~lifecycle, ())
   in
@@ -148,10 +145,11 @@ let f
     ~schedule_event
     input
     model
-    (Action.Assoc { key; action; id = _; compare = _ })
+    (Action.Assoc { key; action; id = _; comparator = _ })
     =
     let input =
-      input |> Option.join |> Option.bind ~f:(fun input -> Map.find input key)
+      Computation_status.bind input ~f:(fun input ->
+        Map.find input key |> Computation_status.of_option)
     in
     let specific_model = Map.find model key |> Option.value ~default:model_info.default in
     let data =

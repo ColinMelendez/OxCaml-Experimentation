@@ -24,8 +24,6 @@ module Zone = struct
     @@ portable
       include Timezone.Extend_zone with type t := t
     end)
-
-  let%template arg_type = (Command.Arg_type.create [@mode portable]) of_string
 end
 
 module Ofday = struct
@@ -218,12 +216,17 @@ module T_without_Map_and_Set = struct
   ;;
 
   let t_of_sexp_abs sexp = t_of_sexp_gen sexp ~if_no_timezone:`Fail
+  let maybe_globalize t = t
+  let maybe_globalize__stack t = globalize t
 
-  let sexp_of_t_abs t ~zone =
+  let%template[@alloc a = (heap, stack)] sexp_of_t_abs t ~zone =
+    let t = (maybe_globalize [@alloc a]) t in
     Sexp.List (List.map (Time.to_string_abs_parts ~zone t) ~f:(fun s -> Sexp.Atom s))
   ;;
 
-  let sexp_of_t t = sexp_of_t_abs ~zone:(get_sexp_zone ()) t
+  let%template[@alloc a = (heap, stack)] sexp_of_t t =
+    (sexp_of_t_abs [@alloc a]) ~zone:(get_sexp_zone ()) t [@exclave_if_stack a]
+  ;;
 
   module Exposed_for_tests = struct
     let ensure_colon_in_offset = ensure_colon_in_offset
@@ -469,3 +472,34 @@ module Stable = struct
 end
 
 include T
+
+external unbox : (t[@local_opt]) -> (t#[@unboxed]) @@ portable = "%unbox_float"
+external box : (t#[@unboxed]) -> (t[@local_opt]) @@ portable = "%box_float"
+
+let bin_shape_t_u = bin_shape_t
+let bin_size_t_u t = (bin_size_t [@inlined hint]) (box t)
+let bin_write_t_u buf ~pos t = (bin_write_t [@inlined hint]) buf ~pos (box t)
+let bin_read_t_u buf ~pos_ref = unbox ((bin_read_t [@inlined hint]) buf ~pos_ref)
+
+let%template[@inline] __bin_read_t_u__ _buf ~pos_ref _vint : t# =
+  Bin_prot.Common.raise_variant_wrong_type "Time_float.t#" !pos_ref
+  |> (never_returns [@kind float64])
+;;
+
+let bin_writer_t_u = [%bin_writer: t#]
+let bin_reader_t_u = [%bin_reader: t#]
+let bin_t_u = [%bin_type_class: t#]
+
+let%template[@mode m = (global, local)] compare_u x y =
+  (compare [@mode m] [@inlined]) (box x) (box y)
+;;
+
+let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_t_u t =
+  (sexp_of_t [@alloc a] [@inlined hint]) (box t) [@exclave_if_stack a]
+;;
+
+let t_u_of_sexp t = t_of_sexp t |> unbox
+
+let%template[@mode m = (global, local)] equal_u x y =
+  (equal [@mode m] [@inlined]) (box x) (box y)
+;;

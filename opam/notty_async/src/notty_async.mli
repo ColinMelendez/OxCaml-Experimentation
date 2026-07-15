@@ -22,17 +22,38 @@ module Term : sig
     :  ?dispose:bool
     -> ?nosig:bool
     -> ?mouse:bool
+    -> ?hover:
+         (bool
+         [@ocaml.doc
+           {| When [true] and [~mouse] is also enabled, enables {e any-event} mouse
+               reporting (xterm mode 1003) so that mouse motion without any button pressed
+               is reported as [`Hover] events. Defaults to [false] because it can generate
+               a large volume of input events. |}])
     -> ?bpaste:bool
-    -> ?reader:Reader.t (** stdin by default *)
-    -> ?writer:Writer.t (** stdout by default *)
-    -> ?for_mocking:
-         For_mocking.t
-         (* Mocks terminal dimensions and tty capabilties for testing purposes. *)
+    -> ?reader:(Reader.t[@ocaml.doc {| stdin by default |}])
+    -> ?writer:(Writer.t[@ocaml.doc {| stdout by default |}])
+    -> ?for_mocking:For_mocking.t
     -> unit
     -> t Deferred.t
 
   val refresh : t -> unit Deferred.t
   val image : t -> Notty.image -> unit Deferred.t
+  val writer : t -> Writer.t
+
+  val set_mouse : t -> bool -> unit Deferred.t
+  [@@ocaml.doc
+    {| Dynamically enable/disable mouse reporting.
+
+        When mouse reporting is disabled, terminals typically allow native text selection.
+        When enabled, the terminal will send mouse events on stdin (e.g. for clicks). |}]
+
+  val set_hover : t -> bool -> unit Deferred.t
+  [@@ocaml.doc
+    {| Dynamically enable/disable {e any-event} mouse reporting.
+
+        When enabled, the terminal reports mouse motion without any button pressed as
+        [`Hover] events, as long as ordinary mouse reporting is also enabled. Disabling
+        hover does not disable ordinary mouse events. |}]
 
   type cursor :=
     [ `Default

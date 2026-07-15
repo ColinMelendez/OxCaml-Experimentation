@@ -162,7 +162,7 @@ module Tree : sig
         ; global_ right : ('k, 'v, 'cmp) t
         ; weight : weight
         }
-  [@@deriving sexp_of]
+  [@@sexp.phantom: 'cmp] [@@deriving sexp_of]
 
   include
     Creators_and_accessors_generic
@@ -272,8 +272,7 @@ end
 
 val to_tree : ('k, 'v, 'cmp) t -> ('k, 'v, 'cmp) Tree.t
 
-(** Creates a [t] from a [Tree.t] and a [Comparator.t]. This is an O(n) operation as it
-    must discover the length of the [Tree.t]. *)
+(** Creates a [t] from a [Tree.t] and a [Comparator.t]. *)
 val of_tree : ('k, 'cmp) Comparator.Module.t -> ('k, 'v, 'cmp) Tree.t -> ('k, 'v, 'cmp) t
 
 (** {2 More interface} *)
@@ -463,6 +462,13 @@ val change
   -> f:('v option -> 'v option) @ local
   -> ('k, 'v, 'cmp) t
 
+(** Like [change], but [f] receives and returns ['v or_null] instead of ['v option]. *)
+val change_or_null
+  :  ('k, 'v, 'cmp) t
+  -> 'k
+  -> f:('v or_null -> 'v or_null) @ local
+  -> ('k, 'v, 'cmp) t
+
 (** [update t key ~f] is [change t key ~f:(fun o -> Some (f o))]. *)
 val update : ('k, 'v, 'cmp) t -> 'k -> f:('v option -> 'v) @ local -> ('k, 'v, 'cmp) t
 
@@ -477,9 +483,12 @@ val update_and_return
 (** Returns the value bound to the given key if it exists, and [None] otherwise. *)
 val find : ('k, 'v, 'cmp) t -> 'k -> 'v option
 
+(** Like [find] but returns [or_null] instead of [option]. *)
+val find_or_null : ('k, 'v, 'cmp) t -> 'k -> 'v or_null
+
 (** Returns the value bound to the given key, raising [Caml.Not_found] or [Not_found_s] if
     none exists. *)
-val find_exn : ('k, 'v, 'cmp) t -> 'k -> 'v
+val find_exn : here:[%call_pos] -> ('k, 'v, 'cmp) t -> 'k -> 'v
 
 val find_or_error : ('k, 'v, 'cmp) t -> 'k -> 'v Or_error.t
 
@@ -605,9 +614,9 @@ val fold2
   -> f:(key:'k -> data:('v1, 'v2) Merge_element.t -> 'a -> 'a) @ local
   -> 'a
 
-(** [filter], [filteri], [filter_keys], [filter_map], and [filter_mapi] run in O(n * lg n)
-    time; they simply accumulate each key & data retained by [f] into a new map using
-    [add]. *)
+(** [filter], [filteri], [filter_keys], [filter_map], [filter_mapi], and [filter_opt] run
+    in O(n * lg n) time; they simply accumulate each key & data retained by [f] into a new
+    map using [add]. *)
 
 val filter_keys : ('k, 'v, 'cmp) t -> f:('k -> bool) @ local -> ('k, 'v, 'cmp) t
 val filter : ('k, 'v, 'cmp) t -> f:('v -> bool) @ local -> ('k, 'v, 'cmp) t
@@ -625,6 +634,21 @@ val filter_mapi
   :  ('k, 'v1, 'cmp) t
   -> f:(key:'k -> data:'v1 -> 'v2 option) @ local
   -> ('k, 'v2, 'cmp) t
+
+(** Like [filter_map] but with a function returning [or_null] instead of [option]. *)
+val filter_map_or_null
+  :  ('k, 'v1, 'cmp) t
+  -> f:('v1 -> 'v2 or_null) @ local
+  -> ('k, 'v2, 'cmp) t
+
+(** Like [filter_mapi] but with a function returning [or_null] instead of [option]. *)
+val filter_mapi_or_null
+  :  ('k, 'v1, 'cmp) t
+  -> f:(key:'k -> data:'v1 -> 'v2 or_null) @ local
+  -> ('k, 'v2, 'cmp) t
+
+(** Returns a new map with [None] data filtered out and [Some v] data unwrapped to [v]. *)
+val filter_opt : ('k, 'v option, 'cmp) t -> ('k, 'v, 'cmp) t
 
 (** [partition_mapi t ~f] returns two new [t]s, with each key in [t] appearing in exactly
     one of the result maps depending on its mapping in [f]. *)
@@ -663,6 +687,13 @@ val partition_tf
 (** Produces [Ok] of a map including all keys if all data is [Ok], or an [Error] including
     all errors otherwise. *)
 val combine_errors : ('k, 'v Or_error.t, 'cmp) t -> ('k, 'v, 'cmp) t Or_error.t
+
+(** Given two maps, produces a map of tuples. Returns an [Error] if the key sets of the
+    two maps differ. *)
+val zip : ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t Or_error.t
+
+(** Like [zip], but raises on error. *)
+val zip_exn : ('k, 'v1, 'cmp) t -> ('k, 'v2, 'cmp) t -> ('k, 'v1 * 'v2, 'cmp) t
 
 (** Given a map of tuples, produces a tuple of maps. Equivalent to:
     [map t ~f:fst, map t ~f:snd] *)
@@ -716,7 +747,7 @@ val validatei
 (** Merges two maps. The runtime is O(length(t1) + length(t2)).
 
     The [merge_*] functions immediately below perform better in cases where they are
-    applicable. For merging a list of maps especially, use [merge_disjoin_exn] or
+    applicable. For merging a list of maps especially, use [merge_disjoint_exn] or
     [merge_skewed] instead. If you don't require the full generality of [~f]'s behavior,
     use [merge_by_case]. *)
 val merge
@@ -783,6 +814,14 @@ val merge_by_case
   -> second:('k, 'v2, 'v3) When_unmatched.t @ local
   -> both:('k, 'v1, 'v2, 'v3) When_matched.t @ local
   -> ('k, 'v3, 'cmp) t
+
+(** Merges two maps with the same set of keys. Returns an [Error] if the key sets are not
+    the same. *)
+val merge_aligned
+  :  ('k, 'v1, 'cmp) t
+  -> ('k, 'v2, 'cmp) t
+  -> f:(key:'k -> 'v1 -> 'v2 -> 'v) @ local
+  -> ('k, 'v, 'cmp) t Or_error.t
 
 module Symmetric_diff_element : sig
   type ('k, 'v) t = 'k * [ `Left of 'v | `Right of 'v | `Unequal of 'v * 'v ]
@@ -1347,10 +1386,12 @@ module Stable : sig
   module V1 : sig
     type nonrec ('a, 'b, 'c) t = ('a, 'b, 'c) t
 
-    module type S = sig
+    module type%template [@mode m = (local, global)] S = sig
       type key
       type comparator_witness
-      type nonrec 'a t = (key, 'a, comparator_witness) t [@@deriving equal]
+
+      type nonrec 'a t = (key, 'a, comparator_witness) t
+      [@@deriving equal [@mode.explicit m]]
 
       include%template Stable_module_types.S1 [@mode local] with type 'a t := 'a t
 

@@ -14,17 +14,17 @@ module type S = sig @@ portable
     ; user_id : int
     ; group_id : int
     ; file_device : int
-    ; size : Int63.t
+    ; size : int64#
     ; access_time : Time_ns.t
     ; modify_time : Time_ns.t
     ; status_time : Time_ns.t
     }
   [@@deriving equal ~portable ~localize, quickcheck ~portable, sexp_of ~portable]
 
-  (** Conversions *)
+  (** Accessors *)
 
-  val of_unix_stats : Core_unix.stats -> t
-  val to_unix_stats : t -> Core_unix.stats
+  (** Raises if [t] is out of range for an [Int63.t], which is unlikely in practice. *)
+  val size_in_byte_units_exn : t -> Byte_units.t
 end
 
 module type File_stats = sig

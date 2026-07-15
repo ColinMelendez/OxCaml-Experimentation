@@ -121,16 +121,18 @@ let of_reader_with_errors ~writer_error reader =
       return error)
 ;;
 
-let empty ~writer_error = of_reader ~writer_error (Pipe.empty ())
-let of_list ~writer_error list = of_reader ~writer_error (Pipe.of_list list)
-let singleton ~writer_error x = of_reader ~writer_error (Pipe.singleton x)
+let of_closed_reader ?(writer_error = return (Ok ())) reader = { reader; writer_error }
+let empty ?writer_error () = of_closed_reader ?writer_error (Pipe.empty ())
+let of_list ?writer_error list = of_closed_reader ?writer_error (Pipe.of_list list)
+let singleton ?writer_error x = of_closed_reader ?writer_error (Pipe.singleton x)
 let close t = Pipe.close_read t.reader
 let is_closed t = Pipe.is_closed t.reader
 let closed t = Expert.lift_consume t ~f:Pipe.closed
 let length t = Pipe.length t.reader
 let is_empty t = Pipe.is_empty t.reader
+let set_size_budget t budget = Pipe.set_size_budget t.reader budget
 let read t = Expert.lift_read t ~f:Pipe.read
-let read' t = Expert.lift_read t ~f:Pipe.read'
+let read' ?max_queue_length t = Expert.lift_read t ~f:(Pipe.read' ?max_queue_length)
 
 let read_exactly t ~num_values =
   let%bind result = Pipe.read_exactly t.reader ~num_values in
@@ -149,16 +151,40 @@ let read_exactly t ~num_values =
 ;;
 
 let peek t =
-  match Deferred.peek t.writer_error with
-  | Some (Error _ as error) -> error
-  | None | Some (Ok ()) -> Ok (Pipe.peek t.reader)
+  match Pipe.peek'_now t.reader with
+  | `Nothing_available -> Ok None
+  | `Eof ->
+    (match Deferred.peek t.writer_error with
+     | Some (Error _ as error) -> error
+     | None -> Ok None
+     | Some (Ok ()) -> Ok None)
+  | `Ok v -> Ok (Some v)
 ;;
 
 let read_now t =
-  match Deferred.peek t.writer_error with
-  | Some (Error _ as error) -> error
-  | None | Some (Ok ()) -> Ok (Pipe.read_now t.reader)
+  match Pipe.read_now t.reader with
+  | `Nothing_available -> Ok `Nothing_available
+  | `Ok v -> Ok (`Ok v)
+  | `Eof ->
+    (match Deferred.peek t.writer_error with
+     | Some (Error _ as error) -> error
+     | None -> Ok `Nothing_available
+     | Some (Ok ()) -> Ok `Eof)
 ;;
+
+module Early_error_bug = struct
+  let peek t =
+    match Deferred.peek t.writer_error with
+    | Some (Error _ as error) -> error
+    | None | Some (Ok ()) -> Ok (Pipe.peek t.reader)
+  ;;
+
+  let read_now t =
+    match Deferred.peek t.writer_error with
+    | Some (Error _ as error) -> error
+    | None | Some (Ok ()) -> Ok (Pipe.read_now t.reader)
+  ;;
+end
 
 let read_all t = Expert.lift_consume t ~f:Pipe.read_all
 
@@ -181,7 +207,10 @@ let fold_without_pushback t ~init ~f =
 ;;
 
 let iter t ~f = Expert.lift_consume t ~f:(Pipe.iter ~f)
-let iter' t ~f = Expert.lift_consume t ~f:(Pipe.iter' ~f)
+
+let iter' ?max_queue_length t ~f =
+  Expert.lift_consume t ~f:(Pipe.iter' ?max_queue_length ~f)
+;;
 
 let iter_without_pushback ?max_iterations_per_job t ~f =
   Expert.lift_consume t ~f:(Pipe.iter_without_pushback ?max_iterations_per_job ~f)
@@ -192,6 +221,11 @@ let iter_parallel ?continue_on_error t ~max_concurrent_jobs ~f =
 ;;
 
 let transfer t writer ~f = Expert.lift_consume t ~f:(Fn.flip Pipe.transfer writer ~f)
+
+let transfer' ?max_queue_length t writer ~f =
+  Expert.lift_consume t ~f:(Fn.flip (Pipe.transfer' ?max_queue_length) writer ~f)
+;;
+
 let transfer_id = transfer ~f:Fn.id
 let map ?max_batch_size t ~f = Expert.lift_map t ~f:(Pipe.map ?max_batch_size ~f)
 let map' ?max_queue_length t ~f = Expert.lift_map t ~f:(Pipe.map' ?max_queue_length ~f)
@@ -215,6 +249,10 @@ let folding_map t ~init ~f = Expert.lift_map t ~f:(Pipe.folding_map ~init ~f)
 let filter_map t ~f = Expert.lift_map t ~f:(Pipe.filter_map ~f)
 let filter_map' t ~f = Expert.lift_map t ~f:(Pipe.filter_map' ~f)
 let filter t ~f = Expert.lift_map t ~f:(Pipe.filter ~f)
+
+let concat_map_list ?max_queue_length t ~f =
+  Expert.lift_map t ~f:(Pipe.concat_map_list ?max_queue_length ~f)
+;;
 
 let merge_custom ts ~compare ~combine_errors =
   Expert.lift_concat ts ~f:(Pipe.merge ~compare) ~combine_errors

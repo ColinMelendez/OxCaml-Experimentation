@@ -134,63 +134,132 @@ let rec for_forkjoin parallel ~f ~start ~stop =
       ()))
 ;;
 
-module Bench_parallel (Scheduler : Parallel.Scheduler.S) = struct
-  let scheduler = Scheduler.create ~max_domains:Env.max_domains ()
+module Bench_parallel (Scheduler : Common.Scheduler) = struct
+  let parallel = Scheduler.parallel
+
+  module%bench Parfor = struct
+    let%bench ("fast parfor" [@indexed stop = [ 1; 1_000; 1_000_000; 1_000_000_000 ]]) =
+      let stop : int = stop in
+      parallel (fun parallel -> Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop)
+    ;;
+
+    let%bench ("slow parfor" [@indexed stop = [ 1; 2; 4 ]]) =
+      let stop : int = stop in
+      parallel (fun parallel ->
+        Parallel.for_
+          parallel
+          ~f:(fun _ _ ->
+            for _ = 1 to 10 do
+              ignore (work () : int)
+            done)
+          ~start:0
+          ~stop)
+    ;;
+
+    let%bench_fun "random unbalanced parfor" =
+      let rng =
+        let key =
+          Domain.Safe.TLS.new_key (fun () -> Random.State.make [| Random.int 100 |])
+        in
+        fun () -> Obj.magic_uncontended (Domain.Safe.TLS.get key)
+      in
+      fun () ->
+        parallel (fun parallel ->
+          Parallel.for_
+            parallel
+            ~f:(fun _ _ ->
+              let n = Random.State.int (rng ()) 24 in
+              ignore (fib n : int))
+            ~start:0
+            ~stop:1_000)
+    ;;
+
+    let%bench "fork_join inside parfor" =
+      parallel (fun parallel ->
+        Parallel.for_
+          parallel
+          ~f:(fun parallel _ -> ignore (fast_tree parallel 16 : int))
+          ~start:0
+          ~stop:1_000)
+    ;;
+
+    let%bench "eager parfor" =
+      parallel (fun parallel ->
+        for _ = 1 to 100 do
+          Parallel.heartbeat parallel ~n:Env.eager;
+          Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop:10_000
+        done)
+    ;;
+
+    let%bench "eager parfor top level" =
+      for _ = 1 to 100 do
+        parallel (fun parallel ->
+          Parallel.heartbeat parallel ~n:Env.eager;
+          Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop:10_000)
+      done
+    ;;
+  end
 
   let%bench "work2" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = work2 parallel in
       ())
   ;;
 
   let%bench "work3" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = work3 parallel in
       ())
   ;;
 
   let%bench "work4" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = work4 parallel in
       ())
   ;;
 
   let%bench "work5" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = work5 parallel in
       ())
   ;;
 
   let%bench ("work_tree" [@indexed n = [ 4; 8; 10 ]]) =
     let n : int = n in
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = work_tree parallel n in
       ())
   ;;
 
   let%bench ("par_fib" [@indexed n = [ 4; 8; 10 ]]) =
     let n : int = n in
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = par_fib parallel n in
       ())
   ;;
 
   (* [n = 16] chosen so each iteration takes about one default heartbeat interval (250us) *)
   let%bench "fast_tree" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = fast_tree parallel 16 in
       ())
   ;;
 
   (* [n = 10] chosen since 3^n grows faster than 2^n. *)
   let%bench "fast_tree3" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let _ : int = fast_tree3 parallel 10 in
       ())
   ;;
 
-  let%bench "slow_parfor_forkjoin" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+  let%bench "schedule_only" =
+    for _ = 1 to 1_000 do
+      parallel (fun _ -> ())
+    done
+  ;;
+
+  let%bench "slow for with fork_join" =
+    parallel (fun parallel ->
       for_forkjoin
         parallel
         ~f:(fun _ ->
@@ -200,62 +269,13 @@ module Bench_parallel (Scheduler : Parallel.Scheduler.S) = struct
         ~stop:100)
   ;;
 
-  let%bench "fast_parfor_forkjoin" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+  let%bench "fast for with fork_join" =
+    parallel (fun parallel ->
       for_forkjoin parallel ~f:(fun _ -> ()) ~start:0 ~stop:1_000_000)
   ;;
 
-  let%bench "fast_parfor" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
-      Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop:1_000_000)
-  ;;
-
-  let%bench "slow_parfor" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
-      Parallel.for_
-        parallel
-        ~f:(fun _ _ ->
-          let _ : int = work () in
-          ())
-        ~start:0
-        ~stop:100)
-  ;;
-
-  let%bench "forkjoin_in_parfor" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
-      Parallel.for_
-        parallel
-        ~f:(fun parallel _ ->
-          let _ : int = fast_tree parallel 4 in
-          ())
-        ~start:0
-        ~stop:10_000)
-  ;;
-
-  let%bench "schedule_only" =
-    for _ = 1 to 1_000 do
-      Scheduler.parallel scheduler ~f:(fun _ -> ())
-    done
-  ;;
-
-  let%bench "many_fast_parfor" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
-      for _ = 1 to 100 do
-        Parallel.Scheduler.heartbeat parallel ~n:Env.eager;
-        Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop:5_000
-      done)
-  ;;
-
-  let%bench "many_sched_fast_parfor" =
-    for _ = 1 to 100 do
-      Scheduler.parallel scheduler ~f:(fun parallel ->
-        Parallel.Scheduler.heartbeat parallel ~n:Env.eager;
-        Parallel.for_ parallel ~f:(fun _ _ -> ()) ~start:0 ~stop:5_000)
-    done
-  ;;
-
   let%bench "unbalanced fork_join3" =
-    Scheduler.parallel scheduler ~f:(fun parallel ->
+    parallel (fun parallel ->
       let #((), _, _) =
         Parallel.fork_join3 parallel (fun _ -> ()) (fun _ -> work ()) (fun _ -> work ())
       in
@@ -275,5 +295,4 @@ let%bench "slow_for_seq" =
     ~stop:100
 ;;
 
-module%bench Bench_sequential = Bench_parallel (Parallel.Scheduler.Sequential)
-module%bench Bench_work_stealing = Bench_parallel (Parallel_scheduler)
+module%bench _ = Common.Bench_schedulers (Bench_parallel)

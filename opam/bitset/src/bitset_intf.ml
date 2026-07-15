@@ -2,72 +2,67 @@ open! Core
 
 (** [Bitset] provides a space-efficient set of non-negative integer values. *)
 
-module type S = sig @@ portable
-  type -'perms t : mutable_data
+module type%template S = sig @@ portable
+  type t : mutable_data
 
   (** [create ~len] creates a bitset with at least the given initial length (in bits). The
       set is initially empty, and does not grow. *)
-  val create : len:int -> [< read_write ] t
+  val create : len:int -> t
 
-  val create_local : len:int -> local_ [< read_write ] t [@@zero_alloc]
-  val capacity : local_ [> read ] t -> int [@@zero_alloc]
+  val create_local : len:int -> t @ local [@@zero_alloc]
+  val capacity : t @ local read -> int [@@zero_alloc]
 
   (** [is_empty t] returns [true] iff [mem t i] returns false on every [i] *)
-  val is_empty : local_ [> read ] t -> bool
+  val is_empty : t @ local read -> bool
   [@@zero_alloc]
 
   (** [add t i] adds [i] to the set. *)
-  val add : local_ [> write ] t -> int -> unit
-  [@@zero_alloc]
+  val add : t @ local -> int -> unit [@@zero_alloc]
 
-  val unsafe_add : local_ [> write ] t -> int -> unit [@@zero_alloc]
+  val unsafe_add : t @ local -> int -> unit [@@zero_alloc]
 
   (** [remove t i] removes [i] from set. *)
-  val remove : local_ [> write ] t -> int -> unit
+  val remove : t @ local -> int -> unit
   [@@zero_alloc]
 
-  val unsafe_remove : local_ [> write ] t -> int -> unit [@@zero_alloc]
+  val unsafe_remove : t @ local -> int -> unit [@@zero_alloc]
 
   (** [assign t i x = if x then add t i else remove t i], but branch-free. *)
-  val assign : local_ [> write ] t -> int -> bool -> unit
+  val assign : t @ local -> int -> bool -> unit
   [@@zero_alloc]
 
-  val unsafe_assign : local_ [> write ] t -> int -> bool -> unit [@@zero_alloc]
+  val unsafe_assign : t @ local -> int -> bool -> unit [@@zero_alloc]
 
   (** [mem t i] returns [true] iff [i] is in [t]. *)
-  val mem : local_ [> read ] t -> int -> bool
+  val mem : t @ local read -> int -> bool
   [@@zero_alloc]
 
-  val unsafe_mem : local_ [> read ] t -> int -> bool [@@zero_alloc]
+  val unsafe_mem : t @ local read -> int -> bool [@@zero_alloc]
 
   (** [clear t] empties the set. *)
-  val clear : local_ [> write ] t -> unit [@@zero_alloc]
+  val clear : t @ local -> unit [@@zero_alloc]
 
   (** [set_all t] adds everything to the set. *)
-  val set_all : local_ [> write ] t -> unit
+  val set_all : t @ local -> unit
   [@@zero_alloc]
 
   (** [union a b] combines two bitsets; it creates a new bitset where [i] is present iff
       [i] is in [a] or [b] *)
-  val union : local_ [> read ] t -> local_ [> read ] t -> [< read_write ] t
+  val union : t @ local read -> t @ local read -> t
 
-  val union_local : local_ [> read ] t -> local_ [> read ] t -> local_ [< read_write ] t
-  [@@zero_alloc]
+  val union_local : t @ local read -> t @ local read -> t @ local [@@zero_alloc]
 
   (** [union_into ~dst ~src] adds all elements in [src] into [dst]. All elements set in
       [src] must be below [capacity dst]. This function raises if that is not the case. *)
-  val union_into : dst:local_ [> write ] t -> src:local_ [> read ] t -> unit
+  val union_into : dst:t @ local -> src:t @ local read -> unit
   [@@zero_alloc]
 
   (** [inter a b] intersects two bitsets; it creates a new bitset where [i] is present iff
       [i] is in [a] and [b] *)
-  val inter : local_ [> read ] t -> local_ [> read ] t -> [< read_write ] t
+  val inter : t @ local read -> t @ local read -> t
 
-  val inter_local : local_ [> read ] t -> local_ [> read ] t -> local_ [< read_write ] t
-  [@@zero_alloc]
-
-  val inter_into : dst:local_ [> write ] t -> src:local_ [> read ] t -> unit
-  [@@zero_alloc]
+  val inter_local : t @ local read -> t @ local read -> t @ local [@@zero_alloc]
+  val inter_into : dst:t @ local -> src:t @ local read -> unit [@@zero_alloc]
 
   (** [is_inter_empty a b = is_empty (inter_local a b)], but skips the intermediate
       allocation.
@@ -75,35 +70,34 @@ module type S = sig @@ portable
       This function is optimized for small bitsets and minimizes branching. For large
       bitsets, note that the entire intersection is computed (no early exit for non-zero
       intersection). *)
-  val is_inter_empty : local_ [> read ] t -> local_ [> read ] t -> bool
+  val is_inter_empty : t @ local read -> t @ local read -> bool
   [@@zero_alloc]
 
   (** [diff a b] finds the elements in one but not the other bitset; it creates a new
       bitset where [i] is present iff [i] is in [a] and not [b] *)
-  val diff : local_ [> read ] t -> local_ [> read ] t -> [< read_write ] t
+  val diff : t @ local read -> t @ local read -> t
 
-  val diff_local : local_ [> read ] t -> local_ [> read ] t -> local_ [< read_write ] t
-  [@@zero_alloc]
+  val diff_local : t @ local read -> t @ local read -> t @ local [@@zero_alloc]
 
   (** [remove_all ~dst ~src] removes all elements set in [src] from [dst]. It is the
       in-place version of [diff] *)
-  val remove_all : dst:local_ [> write ] t -> src:local_ [> read ] t -> unit
+  val remove_all : dst:t @ local -> src:t @ local read -> unit
   [@@zero_alloc]
 
   (** [complement t] creates a new bitset where [i] is present iff [i] is not in [t]. This
       operates only on [i]s from 0 to [capacity t] (which may be larger than the initial
       [len]) *)
-  val complement : local_ [> read ] t -> [< read_write ] t
+  val complement : t @ local read -> t
 
-  val complement_local : local_ [> read ] t -> local_ [< read_write ] t [@@zero_alloc]
-  val complement_inplace : local_ [> read_write ] t -> unit [@@zero_alloc]
+  val complement_local : t @ local read -> t @ local [@@zero_alloc]
+  val complement_inplace : t @ local -> unit [@@zero_alloc]
 
   (** [is_subset t1 ~of_:t2] returns true iff [t1] is a subset of [t2]. *)
-  val is_subset : local_ [> read ] t -> of_:local_ [> read ] t -> bool
+  val is_subset : t @ local read -> of_:t @ local read -> bool
   [@@zero_alloc]
 
   (** returns the number of members -- values of [i] for which [mem t i] is true *)
-  val num_members : local_ [> read ] t -> int
+  val num_members : t @ local read -> int
   [@@zero_alloc]
 
   (** {v
@@ -113,69 +107,71 @@ module type S = sig @@ portable
       Raises if start is outside of [0, capacity t) or end is outside of [0, capacity t].
       v} *)
   val num_members_in_range
-    :  local_ [> read ] t
-    -> start:local_ int Maybe_bound.t
-    -> end_:local_ int Maybe_bound.t
+    :  t @ local read
+    -> start:int Maybe_bound.t @ local
+    -> end_:int Maybe_bound.t @ local
     -> int
   [@@zero_alloc]
 
   (** returns the index of the first element set in [t] *)
-  val first_member : local_ [> read ] t -> local_ int option
+  val first_member : t @ local read -> int option @ local
   [@@zero_alloc]
 
   (** [iter t ~f] calls [f] for all elements in set [t] *)
-  val iter_set : local_ [> read ] t -> f:local_ (int -> unit) -> unit
+  val iter_set : t @ local read -> f:(int -> unit) @ local -> unit
   [@@zero_alloc]
 
   (** [fold_set_local t ~init ~f] returns [f] folded over all the elements in set [t] *)
   val fold_set_local
-    :  [> read ] t @ local
+    :  t @ local read
     -> init:'acc @ local
     -> f:('acc @ local -> int -> 'acc @ local) @ local
     -> 'acc @ local
   [@@zero_alloc]
 
   (** [grow t ~new_len] creates a new set from [t] with capacity [new_len]. *)
-  val grow : local_ [> read ] t -> new_len:int -> [< read_write ] t
+  val grow : t @ local read -> new_len:int -> t
 
-  val grow_local : local_ [> read ] t -> new_len:int -> local_ [< read_write ] t
-  [@@zero_alloc]
+  val grow_local : t @ local read -> new_len:int -> t @ local [@@zero_alloc]
 
   (** [copy_and_truncate t ~new_len] creates a new set from [t] with capacity [new_len].
       Bits above [new_len] may be cleared. *)
-  val copy_and_truncate : local_ [> read ] t -> new_len:int -> [< read_write ] t
+  val copy_and_truncate : t @ local read -> new_len:int -> t
 
-  val copy_and_truncate_local
-    :  local_ [> read ] t
-    -> new_len:int
-    -> local_ [< read_write ] t
-  [@@zero_alloc]
-
-  val copy : local_ [> read ] t -> [< read_write ] t
-  val copy_local : local_ [> read ] t -> local_ [< read_write ] t [@@zero_alloc]
+  val copy_and_truncate_local : t @ local read -> new_len:int -> t @ local [@@zero_alloc]
+  val copy : t @ local read -> t
+  val copy_local : t @ local read -> t @ local [@@zero_alloc]
 
   (** Converts [t] into a string with length [capacity t], where each char is either '0'
       for an unset bit or '1' for a set bit. *)
-  val to_string : local_ [> read ] t -> string
+  val to_string : t @ local read -> string
 
   (** Like [to_string], but returns a local [string]. *)
-  val to_string_local : local_ [> read ] t -> local_ string
+  val to_string_local : t @ local read -> string @ local
   [@@zero_alloc]
 
   (** Opposite of [to_string]. *)
-  val of_string : local_ string -> [< read_write ] t
+  val of_string : string @ local -> t
 
   (** Like [of_string], but returns a local [t]. *)
-  val of_string_local : local_ string -> local_ [< read_write ] t
+  val of_string_local : string @ local -> t @ local
   [@@zero_alloc]
 
-  val sexp_of_t : local_ [> read ] t -> Sexp.t
-  val t_of_sexp : Sexp.t -> [< read_write ] t
-  val quickcheck_generator : [< read_write ] t Quickcheck.Generator.t
+  val sexp_of_t : t @ local read -> Sexp.t @ m
+  [@@alloc a @ m = (heap @ global, stack @ local)] [@@zero_alloc_if_stack a]
+
+  val t_of_sexp : Sexp.t -> t
+  val quickcheck_generator : t Quickcheck.Generator.t
 end
 
 module type S_plain = sig
   type t : mutable_data [@@deriving bin_io, globalize, compare ~localize, equal ~localize]
+
+  [%%template:
+  [@@@mode.default l = (local, global)]
+
+  val equal : t @ l read -> t @ l read -> bool
+  val compare : t @ l read -> t @ l read -> int]
 
   module Stable : sig
     module V1 : sig
@@ -183,25 +179,22 @@ module type S_plain = sig
     end
   end
 
-  include S with type 'perms t := t
+  include S with type t := t
 
   module As_bit_array : sig
     type nonrec t = t [@@deriving sexp]
   end
 end
 
-module type S_permissioned = sig
-  type -'perms t : mutable_data [@@deriving globalize, compare ~localize, equal ~localize]
+module type Bitset = sig @@ portable
+  (** Bitset implementation backed by a standard OCaml string. *)
 
-  module Stable : sig
-    module V1 : sig
-      type nonrec -'perms t = 'perms t [@@deriving bin_io]
-    end
-  end
+  module type S_plain = S_plain
 
-  include S with type 'perms t := 'perms t
+  include S_plain
 
-  module As_bit_array : sig
-    type nonrec 'rw t = 'rw t [@@deriving sexp]
+  module Expert : sig
+    val unsafe_to_bytes : t @ local -> Bytes.t @ local
+    val unsafe_of_bytes : Bytes.t @ local -> t @ local
   end
 end

@@ -6,6 +6,7 @@ bug-reports: "https://github.com/janestreet/ppx_yojson_conv_lib/issues"
 dev-repo: "git+https://github.com/janestreet/ppx_yojson_conv_lib.git"
 doc: "https://ocaml.janestreet.com/ocaml-core/latest/doc/ppx_yojson_conv_lib/index.html"
 license: "MIT"
+x-maintenance-intent: ["(latest)"]
 build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
@@ -14,7 +15,10 @@ depends: [
   "dune"   {>= "3.17.0"}
   "yojson" {>= "1.7.0" & < "3.0.0"}
 ]
-available: arch != "arm32" & arch != "x86_32"
+available: arch != "x86_32"
+conflicts: [
+  "oxcaml-compiler" {< "5.2.0minus39"}
+]
 synopsis: "Runtime lib for ppx_yojson_conv"
 description: "
 Part of the Jane Street's PPX rewriters collection.

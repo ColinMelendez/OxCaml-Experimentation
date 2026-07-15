@@ -7,7 +7,7 @@ open Await_kernel
 
 (** A simple, list-based multi-producer multi-consumer stack which provides both lock-free
     and blocking operations. *)
-type !'a t : value mod contended portable
+type !'a t : value mod contended non_float portable
 
 [%%rederive: type nonrec ('a : value mod contended) t = 'a t [@@deriving sexp_of]]
 
@@ -41,6 +41,20 @@ val pop_nonblocking : 'a t @ local -> 'a or_null @ contended portable
 (** [drain t] removes and returns all items from [t] without blocking, returning a list
     with the most-recently-enqueued item first. *)
 val drain : 'a t @ local -> 'a list @ contended portable
+
+(** [drain_blocking await t] removes and returns all items from [t], blocking using
+    [await] if [t] is empty. Returns a list with the most-recently-enqueued item first. *)
+val drain_blocking : Await.t @ local -> 'a t @ local -> 'a list @ contended portable
+
+(** [drain_blocking_or_cancel await c t] is [Completed (drain_blocking await t)] if [c] is
+    not cancelled, otherwise it is [Canceled].
+
+    @raise Terminated if [await] is terminated, even if [c] is canceled. *)
+val drain_blocking_or_cancel
+  :  Await.t @ local
+  -> Cancellation.t @ local
+  -> 'a t @ local
+  -> 'a list Or_canceled.t @ contended portable
 
 module For_testing : sig
   (** [length t] returns an upper bound on the length of the internal queue of awaiters

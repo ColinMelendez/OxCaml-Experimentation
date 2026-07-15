@@ -212,7 +212,7 @@ let value_map
   let () =
     match value.value with
     | Named (_, id) ->
-      (match Hashtbl.find environment (Type_equal.Id.uid id) with
+      (match Hashtbl.find environment (Var_id.pack id) with
        | Some named_id -> add_dag_relationship ~from:named_id ~to_:current_path
        | None when !already_printed_bug_message -> ()
        | None ->
@@ -246,7 +246,7 @@ let computation_map
   let%bind recursed = recurse state computation in
   match recursed with
   | Fetch { id = v_id; _ } ->
-    let uid = Type_equal.Id.uid v_id in
+    let uid = Var_id.pack v_id in
     (match Hashtbl.find environment uid with
      | None -> ()
      | Some named_id -> add_dag_relationship ~from:named_id ~to_:current_path);
@@ -285,7 +285,7 @@ let iter_graph_updates (t : _ Computation.t) ~on_update =
     graph_info := { gm with info; tree };
     on_update !graph_info
   in
-  let environment = Type_equal.Id.Uid.Table.create () in
+  let environment = Var_id.Packed.Table.create () in
   Transform.map
     ~init:(environment, add_tree_relationship, add_dag_relationship)
     ~computation_mapper:{ f = computation_map }

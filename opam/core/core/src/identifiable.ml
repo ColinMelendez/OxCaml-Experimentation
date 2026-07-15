@@ -4,13 +4,14 @@ module Binable = Binable0
 
 [%%template
 [@@@mode.default m = (global, local)]
+[@@@alloc.default a = (heap, stack)]
 [@@@modality.default p = (portable, nonportable)]
 
 module Make_plain (T : sig
   @@ p
-    type t [@@deriving (compare [@mode m]), hash, sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), hash, sexp_of]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val module_name : string
   end) =
@@ -23,9 +24,9 @@ end
 
 module Make (T : sig
   @@ p
-    type t [@@deriving (bin_io [@mode m]), (compare [@mode m]), hash, sexp]
+    type t [@@deriving (bin_io [@mode m]), (compare [@mode.explicit m]), hash, sexp]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val module_name : string
   end) =
@@ -38,27 +39,29 @@ end
 
 module Make_with_sexp_grammar (T : sig
   @@ p
-    type t [@@deriving (bin_io [@mode m]), (compare [@mode m]), hash, sexp, sexp_grammar]
+    type t
+    [@@deriving
+      (bin_io [@mode m]), (compare [@mode.explicit m]), hash, sexp, sexp_grammar]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val module_name : string
   end) =
 struct
   include T
-  include Make [@mode m] [@modality p] (T)
+  include Make [@mode m] [@modality p] [@alloc a] (T)
 end
 
 module Make_and_derive_hash_fold_t (T : sig
   @@ p
-    type t [@@deriving (bin_io [@mode m]), (compare [@mode m]), sexp]
+    type t [@@deriving (bin_io [@mode m]), (compare [@mode.explicit m]), sexp]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val hash : t -> int
     val module_name : string
   end) =
-Make [@mode m] [@modality p] (struct
+Make [@mode m] [@modality p] [@alloc a] (struct
     include T
 
     let hash_fold_t state t = hash_fold_int state (hash t)
@@ -66,10 +69,10 @@ Make [@mode m] [@modality p] (struct
 
 module Make_using_comparator (T : sig
   @@ p
-    type t [@@deriving (bin_io [@mode m]), (compare [@mode m]), hash, sexp]
+    type t [@@deriving (bin_io [@mode m]), (compare [@mode.explicit m]), hash, sexp]
 
     include Comparator.S [@modality p] with type t := t
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val module_name : string
   end) =
@@ -82,10 +85,10 @@ end
 
 module Make_plain_using_comparator (T : sig
   @@ p
-    type t [@@deriving (compare [@mode m]), hash, sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), hash, sexp_of]
 
     include Comparator.S [@modality p] with type t := t
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val module_name : string
   end) =
@@ -98,15 +101,15 @@ end
 
 module Make_using_comparator_and_derive_hash_fold_t (T : sig
   @@ p
-    type t [@@deriving (bin_io [@mode m]), (compare [@mode m]), sexp]
+    type t [@@deriving (bin_io [@mode m]), (compare [@mode.explicit m]), sexp]
 
     include Comparator.S [@modality p] with type t := t
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     val hash : t -> int
     val module_name : string
   end) =
-Make_using_comparator [@mode m] [@modality p] (struct
+Make_using_comparator [@mode m] [@modality p] [@alloc a] (struct
     include T
 
     let hash_fold_t state t = hash_fold_int state (hash t)
@@ -115,7 +118,7 @@ Make_using_comparator [@mode m] [@modality p] (struct
 module Extend
     (M : sig
      @@ p
-       include Base.Identifiable.S [@mode m] [@modality p]
+       include Base.Identifiable.S [@mode m] [@modality p] [@alloc a]
      end)
     (B : sig
      @@ p

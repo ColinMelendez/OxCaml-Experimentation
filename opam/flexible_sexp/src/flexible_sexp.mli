@@ -10,6 +10,10 @@ module Variant = Variant
     This function can safely be nested; inner nestings have no special effect. *)
 val within_inflexible_context : f:(unit -> 'a) @ local unyielding -> 'a
 
+module Private : sig
+  val am_i_within_inflexible_context : unit -> bool
+end
+
 module Stable : sig
   module Record = Record.Stable
   module Variant = Variant.Stable
