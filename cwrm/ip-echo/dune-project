@@ -20,4 +20,6 @@
   eio_main
   eio_posix
   cmdliner
-  unix))
+  unix
+  (ppx_expect :with-test)
+  (stdio :with-test)))

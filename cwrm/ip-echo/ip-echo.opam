@@ -16,6 +16,8 @@ depends: [
   "eio_posix"
   "cmdliner"
   "unix"
+  "ppx_expect" {with-test}
+  "stdio" {with-test}
   "odoc" {with-doc}
 ]
 build: [

@@ -184,3 +184,65 @@ curl localhost/all.json</code></pre>
 </html>
 |}
     (html_escape ip) rows
+
+type body =
+  | Plain of string
+  | Html of string
+  | Json of string
+  | Not_found
+
+let body_for t ~path ~mime =
+  match path with
+  | "/" | "" ->
+      if wants_html ~mime then Html (to_html t)
+      else Plain (effective_ip t ^ "\n")
+  | "/ip" -> Plain (effective_ip t ^ "\n")
+  | "/ua" -> Plain (t.user_agent ^ "\n")
+  | "/lang" -> Plain (t.language ^ "\n")
+  | "/encoding" -> Plain (t.encoding ^ "\n")
+  | "/mime" -> Plain (t.mime ^ "\n")
+  | "/charset" -> Plain (t.charset ^ "\n")
+  | "/forwarded" -> Plain (t.forwarded ^ "\n")
+  | "/via" -> Plain (t.via ^ "\n")
+  | "/port" -> Plain (string_of_int t.port ^ "\n")
+  | "/all" -> Plain (to_plain_all t)
+  | "/all.json" -> Json (to_json t)
+  | _ -> Not_found
+
+let respond_field respond value = Httpz_server.Route.plain respond value
+
+let make_routes ~ip ~port =
+  let open Httpz_server.Route in
+  let open Httpz.Header_name in
+  let headers =
+    User_agent
+    +> (Accept_language
+       +> (Referer
+          +> (Accept_encoding
+             +> (Accept
+                +> (Accept_charset
+                   +> (X_forwarded_for +> (Via +> (Connection +> h0))))))))
+  in
+  let handle_request
+      ( user_agent,
+        ( language,
+          ( referer,
+            ( encoding,
+              (mime, (charset, (forwarded, (via, (connection, ()))))) ) ) ) )
+      ctx respond =
+    let meth = Httpz.Method.to_string (meth ctx) in
+    let info =
+      make ~ip ~port ~meth ~user_agent ~language ~referer ~encoding ~mime
+        ~charset ~via ~forwarded ~connection
+    in
+    match body_for info ~path:(path ctx) ~mime with
+    | Plain s -> respond_field respond s
+    | Html s -> html respond s
+    | Json s -> json respond s
+    | Not_found -> not_found respond
+  in
+  of_list
+    [
+      get_h tail headers (fun _segments hdrs ctx respond ->
+          handle_request hdrs ctx respond);
+    ]

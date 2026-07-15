@@ -15,57 +15,6 @@ let peer_of_addr = function
   | `Unix path -> (path, 0)
   | _ -> ("unknown", 0)
 
-let respond_field respond value =
-  Httpz_server.Route.plain respond (value ^ "\n")
-
-let make_routes ~ip ~port =
-  let open Httpz_server.Route in
-  let open Httpz.Header_name in
-  let headers =
-    User_agent
-    +> (Accept_language
-       +> (Referer
-          +> (Accept_encoding
-             +> (Accept
-                +> (Accept_charset
-                   +> (X_forwarded_for +> (Via +> (Connection +> h0))))))))
-  in
-  let handle_request
-      ( user_agent,
-        ( language,
-          ( referer,
-            ( encoding,
-              (mime, (charset, (forwarded, (via, (connection, ()))))) ) ) ) )
-      ctx respond =
-    let meth = Httpz.Method.to_string (meth ctx) in
-    let info =
-      Ip_echo.make ~ip ~port ~meth ~user_agent ~language ~referer ~encoding ~mime
-        ~charset ~via ~forwarded ~connection
-    in
-    match path ctx with
-    | "/" | "" ->
-        if Ip_echo.wants_html ~mime then html respond (Ip_echo.to_html info)
-        else respond_field respond (Ip_echo.effective_ip info)
-    | "/ip" -> respond_field respond (Ip_echo.effective_ip info)
-    | "/ua" -> respond_field respond info.user_agent
-    | "/lang" -> respond_field respond info.language
-    | "/encoding" -> respond_field respond info.encoding
-    | "/mime" -> respond_field respond info.mime
-    | "/charset" -> respond_field respond info.charset
-    | "/forwarded" -> respond_field respond info.forwarded
-    | "/via" -> respond_field respond info.via
-    | "/port" -> respond_field respond (string_of_int info.port)
-    | "/all" -> plain respond (Ip_echo.to_plain_all info)
-    | "/all.json" -> json respond (Ip_echo.to_json info)
-    | _ -> not_found respond
-  in
-  (* Catch-all GET so every path sees the same headers; dispatch by path. *)
-  of_list
-    [
-      get_h tail headers (fun _segments hdrs ctx respond ->
-          handle_request hdrs ctx respond);
-    ]
-
 let run port bind_host verbose =
   Printf.printf "ip-echo listening on %s:%d\n%!" bind_host port;
   Eio_main.run @@ fun env ->
@@ -100,7 +49,7 @@ let run port bind_host verbose =
       Printf.eprintf "Server error: %s\n%!" (Printexc.to_string exn))
     (fun flow peer ->
       let ip, peer_port = peer_of_addr peer in
-      let routes = make_routes ~ip ~port:peer_port in
+      let routes = Ip_echo.make_routes ~ip ~port:peer_port in
       Httpz_eio.handle_client ~routes ~on_request ~on_error flow peer)
 
 let port_t =

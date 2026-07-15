@@ -1,0 +1,11 @@
+(library
+ (name test_ip_echo)
+ (libraries ip_echo stdio eio eio_main eio_posix httpz httpz.server httpz.eio
+            cstruct)
+ (inline_tests
+  ; ppx_expect joins -source-tree-root with Filename.basename of the test
+  ; file, so point it at this directory (not the workspace root).
+  (flags :standard -source-tree-root .)
+  (deps test_ip_echo.ml))
+ (preprocess
+  (pps ppx_expect)))

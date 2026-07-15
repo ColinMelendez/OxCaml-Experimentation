@@ -43,7 +43,15 @@ loopback only.
 When `X-Forwarded-For` is present, `/` and `/ip` use the first forwarded hop
 (typical reverse-proxy setup); otherwise they use the TCP peer address.
 
-## Examples
+## Test
+
+```bash
+dune runtest cwrm/ip-echo
+```
+
+Expect-tests cover connection-info formatting (`effective_ip`, Accept
+detection, JSON/HTML escaping, path dispatch) and a small in-process HTTP
+integration against the real Eio/httpz stack.
 
 ```bash
 curl localhost:8080/ip
