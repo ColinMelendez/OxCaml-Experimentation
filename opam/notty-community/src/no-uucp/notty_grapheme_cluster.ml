@@ -60,14 +60,22 @@ type t =
     mutable left : gcb;            (* break property value left of boundary. *)
     mutable odd_ri : bool;                  (* odd number of RI on the left. *)
     mutable emoji_seq : bool;               (* (EB|EBG) Extend* on the left. *)
-    mutable buf : [ `Uchar of Uchar.t ] }                 (* bufferized add. *)
+    mutable buf : [ `Uchar of Uchar.t ];                  (* bufferized add. *)
+    mutable vs16 : bool;        (* VS-16 (U+FE0F) present in current cluster. *)
+    mutable had_vs16 : bool }   (* VS-16 was in most recently completed cluster. *)
 
 let nul_buf = `Uchar (Uchar.unsafe_of_int 0x0000)
 
 let create () =
   { state = Fill; left = Sot;
     odd_ri = false; emoji_seq = false;
-    buf = nul_buf (* overwritten *); }
+    buf = nul_buf (* overwritten *);
+    vs16 = false; had_vs16 = false; }
+
+let had_vs16 s = s.had_vs16
+
+(* VS-16 (U+FE0F) is the emoji variation selector. *)
+let is_vs16 u = Uchar.to_int u = 0xFE0F
 
 let break s right = match s.left, right with
 | (* GB1 *)   Sot, _ -> true
@@ -100,8 +108,14 @@ let add s = function
         let right = gcb u in
         let break = break s right in
         update_left s right;
-        if not break then add else
-        (s.state <- Flush; s.buf <- add; `Boundary)
+        if is_vs16 u then s.vs16 <- true;
+        if not break then add else begin
+          s.had_vs16 <- s.vs16;
+          s.vs16 <- false;
+          s.state <- Flush;
+          s.buf <- add;
+          `Boundary
+        end
     | Flush | End -> assert false
     end
 | `Await ->
@@ -112,7 +126,11 @@ let add s = function
     end
 | `End ->
     begin match s.state with
-    | Fill -> s.state <- End; if s.left = Sot then `End else `Boundary
+    | Fill ->
+        s.state <- End;
+        s.had_vs16 <- s.vs16;
+        s.vs16 <- false;
+        if s.left = Sot then `End else `Boundary
     | Flush | End -> assert false
     end
 

@@ -80,7 +80,7 @@ module Text = struct
 
     type t =
       | Ascii of string * int * int
-      | Utf8  of string * int array * int * int [@@deriving equal]
+      | Utf8  of string * int array * int * int [@@deriving equal ~localize]
   end
 
   let equal t1 t2 = match (t1, t2) with
@@ -102,6 +102,8 @@ module Text = struct
       | `Await | `End -> acc
       | `Uchar u      -> f (is, w + Notty_uucp.tty_width_hint u) i `Await
       | `Boundary     ->
+          (* VS-16 (U+FE0F) forces emoji presentation which is width 2 *)
+          let w = if Uuseg.had_vs16 seg && w < 2 then 2 else w in
           let is = match w with 0 -> is | 1 -> i::is | _ -> i::(-1)::is in
           f (is, 0) i `Await in
     let acc = Uutf.String.fold_utf_8 (fun acc i -> function
@@ -121,6 +123,9 @@ module Text = struct
         Buffer.add_substring buf s x1 @@
           (if x2 = -1 then ix.(off + w - 1) else x2) - x1;
         if x2 = -1 then Buffer.add_char buf dead
+
+  let to_string t =
+    Buffer.mkstring (fun buf -> to_buffer buf t)
 
   let sub t x w =
     let w1 = width t in
@@ -165,9 +170,9 @@ module Text = struct
   let replicatec w c = replicateu w (Uchar.of_char c)
 end
 
-type 'a or_unset = Unset | Set of 'a [@@deriving equal]
+type 'a or_unset = Unset | Set of 'a [@@deriving equal ~localize]
 
-let resolve_color color = 
+let resolve_color color =
   match color with
   | Unset -> 0
   | Set color -> color
@@ -178,9 +183,9 @@ module A = struct
   include struct
     open! Base
 
-    type color = int [@@deriving equal]
-    type style = int [@@deriving equal]
-type t = { fg : color or_unset; bg : color or_unset; st : style ; url : string option } [@@deriving equal]
+    type color = int [@@deriving equal ~localize]
+    type style = int [@@deriving equal ~localize]
+type t = { fg : color or_unset; bg : color or_unset; st : style ; url : string option } [@@deriving equal ~localize]
   end
 
   let black        = 0x01000000
@@ -199,7 +204,7 @@ type t = { fg : color or_unset; bg : color or_unset; st : style ; url : string o
   and lightmagenta = 0x0100000d
   and lightcyan    = 0x0100000e
   and lightwhite   = 0x0100000f
-  and default      = 0 
+  and default      = 0
 
   let tag c = (c land 0x03000000) lsr 24
 
@@ -243,6 +248,34 @@ let empty = { fg = Unset; bg = Unset; st = 0; url = None }
   let bg bg = { empty with bg = Set bg }
   let st st = { empty with st }
   let href ~url = { empty with url = Some url }
+
+  module Private = struct
+    let fg_color (t : t) =
+      match t.fg with
+      | Unset -> None
+      | Set c -> if c = default then None else Some c
+    ;;
+
+    let bg_color (t : t) =
+      match t.bg with
+      | Unset -> None
+      | Set c -> if c = default then None else Some c
+    ;;
+
+    let has_style (t : t) (style : style) =
+      (t.st land style) <> 0
+    ;;
+
+    let color_to_repr (c : color) =
+      if c = default
+      then `Default
+      else (
+        match tag c with
+        | 1 -> `Palette_index (i c)
+        | 2 -> `Rgb_888 (r c, g c, b c)
+        | tag -> invalid_arg "Notty.A.Private: unknown color tag %d" tag)
+    ;;
+  end
 end
 
 module I = struct
@@ -454,7 +487,7 @@ module Operation = struct
     type t =
       End
     | Skip of int * t
-    | Text of A.t * Text.t * t [@@deriving equal]
+    | Text of A.t * Text.t * t [@@deriving equal ~localize]
   end
 
   let skip n k = if n = 0 then k else match k with
@@ -541,11 +574,14 @@ module Cap = struct
   ; cr      : op
   ; altscr  : bool -> op
   ; mouse   : bool -> op
+  ; hover   : bool -> op
   ; bpaste  : bool -> op
   ; cursor_nextline  : op
   ; set_title        : string -> op
   ; save_title       : op
   ; restore_title    : op
+  ; sync_start       : op
+  ; sync_end         : op
   }
 
   let ((<|), (<.), (<!)) = Buffer.(add_string, add_char, add_decimal)
@@ -554,14 +590,14 @@ module Cap = struct
 
   let sgr { A.fg; bg; st; url } ~inside buf =
     let fg = resolve_color fg in
-    let bg = resolve_color bg in 
+    let bg = resolve_color bg in
     (* NOTE: [inside] is a callback. Some attrs (e.g. the "link") attrs, need to send
        some codes at the _beginning_ of some text, and also at the _end_ of some text, so
        this `inside` callback is used to implement the things that should be drawn
        "in-between" (e.g. the visual part of a hyperlink.) *)
-    let after () = 
+    let after () =
       match url with
-      | None ->  () 
+      | None ->  ()
       | Some _ -> buf <| "\x1b]8;;\x1b\\";
     in
     ( match url with
@@ -607,7 +643,7 @@ module Cap = struct
     ; cr      = (fun b -> b <| "\x1b[1G")
     ; clreol  = (fun b -> b <| "\x1b[K")
     ; cursvis = (fun x b -> b <| if x then "\x1b[34h\x1b[?25h" else "\x1b[?25l")
-    ; cursor_kind = (fun kind b -> 
+    ; cursor_kind = (fun kind b ->
                       let n =
                         match kind with
                         | `Default -> "0"
@@ -622,10 +658,13 @@ module Cap = struct
                       b <| code)
     ; mouse   = (fun x b -> b <| if x then "\x1b[?1000;1002;1005;1015;1006h"
                                       else "\x1b[?1000;1002;1005;1015;1006l")
+    ; hover   = (fun x b -> b <| if x then "\x1b[?1003h" else "\x1b[?1003l")
     ; bpaste  = (fun x b -> b <| if x then "\x1b[?2004h" else "\x1b[?2004l")
     ; set_title = (fun title b -> b <| [%string "\027]0;%{title}\007"])
     ; save_title = (fun b -> b <| "\x1b[22;0t")
     ; restore_title = (fun b -> b <| "\x1b[23;0t")
+    ; sync_start = (fun b -> b <| "\x1b[?2026h")
+    ; sync_end = (fun b -> b <| "\x1b[?2026l")
     ; sgr }
 
   let no0 _     = ()
@@ -646,10 +685,13 @@ module Cap = struct
     ; cursor_kind = no1
     ; sgr     =( fun _ ~inside buffer -> inside buffer)
     ; mouse   = no1
+    ; hover   = no1
     ; bpaste  = no1
     ; set_title = no1
     ; save_title = no0
     ; restore_title = no0
+    ; sync_start = no0
+    ; sync_end = no0
     }
 
   let erase cap buf = cap.sgr ~inside:(fun _ -> ()) A.empty buf; cap.clreol buf (* KEEP ETA-LONG. *)
@@ -665,7 +707,7 @@ module Render = struct
   let text_op cap buf a x = cap.sgr ~inside:(fun buf -> Text.to_buffer buf x) a buf
 
   let rec line ~screen_width ~line_width cap buf = function
-  | End              
+  | End
   | Skip (0,    End) ->
     (* NOTE: If we are at the end of a line, we do not call [erase] (which sends cleareol)
        as terminal emulators behave differently when a fully filled column receives a
@@ -682,8 +724,8 @@ module Render = struct
   | ln::lns -> line ~screen_width ~line_width:0 cap buf ln; cap.newline buf; lines ~screen_width cap buf lns
 
 
-  let line_diffed ~screen_width ~line_width ~on_draw cap buf (prev_operation, operation) = 
-    match [%equal: Operation.t] prev_operation operation with
+  let line_diffed ~screen_width ~line_width ~on_draw cap buf (prev_operation, operation) =
+    match ([%equal: Operation.t] [@mode local]) prev_operation operation with
     | true -> cap.cursor_nextline buf
     | false -> line ~screen_width ~line_width cap buf operation; on_draw ()
   ;;
@@ -699,16 +741,16 @@ module Render = struct
 
   let to_buffer' ~buf ~cap ~dim ~previous_operations ~operations =
     match previous_operations with
-    | None -> lines ~screen_width:(fst dim) cap buf operations 
+    | None -> lines ~screen_width:(fst dim) cap buf operations
     | Some previous_operations ->
       let is_same_height =
         List.length operations = List.length previous_operations
       in
       (match is_same_height with
-        | false -> 
-          lines ~screen_width:(fst dim) cap buf operations 
+        | false ->
+          lines ~screen_width:(fst dim) cap buf operations
         | true ->
-          lines_diffed ~screen_width:(fst dim) cap buf (Base.List.zip_exn previous_operations operations ) 
+          lines_diffed ~screen_width:(fst dim) cap buf (Base.List.zip_exn previous_operations operations )
       )
   ;;
 
@@ -757,7 +799,7 @@ module Unescape = struct
 
   type key = [ special | `Uchar of Uchar.t  | `ASCII of char ] * mods
 
-  type mouse = [ `Press of button | `Drag | `Release ] * (int * int) * mods
+  type mouse = [ `Press of button | `Drag | `Hover | `Release ] * (int * int) * mods
 
   type paste = [ `Start | `End ]
 
@@ -910,7 +952,7 @@ module Unescape = struct
           | ('M', (#button as b), false) -> Some (`Press b)
           | ('M', #button, true)         -> Some `Drag
           | ('m', #button, false)        -> Some `Release
-          (* | ('M', `ALL   , true)         -> Some `Move *)
+          | ('M', `ALL   , true)         -> Some `Hover
           | _                            -> None
         ) >>| fun e -> `Mouse (e, (x - 1, y - 1), mods)
 
@@ -921,8 +963,7 @@ module Unescape = struct
           | (#button as b, false) -> Some (`Press b)
           | (#button     , true ) -> Some `Drag
           | (`ALL        , false) -> Some `Release
-          (* | (`ALL        , true)  -> Some `Move *)
-          | _                     -> None
+          | (`ALL        , true)  -> Some `Hover
         ) >>| fun e -> `Mouse (e, (x - 1, y - 1), mods)
 
     | CSI ("",[200],'~') -> Some (`Paste `Start)
@@ -974,6 +1015,8 @@ module Tmachine = struct
   ; mutable dim   : (int * int)
   ; mutable image : I.t
   ; mutable dead  : bool
+  ; mutable mouse : bool
+  ; mutable hover : bool
   ; mutable previous_lines : Operation.t list option
   }
 
@@ -993,36 +1036,58 @@ module Tmachine = struct
 
   let reset_cursor cap = cap.cursvis true & cap.cursor_kind `Default
 
-  let create ~mouse ~bpaste cap = {
+  let mouse_reporting (cap : Cap.t) ~mouse:mouse_enabled ~hover:hover_enabled =
+    match mouse_enabled, hover_enabled with
+    | false, false | false, true -> cap.hover false & cap.mouse false
+    | true, false -> cap.hover false & cap.mouse true
+    | true, true -> cap.mouse true & cap.hover true
+
+  let current_mouse_reporting t = mouse_reporting t.cap ~mouse:t.mouse ~hover:t.hover
+
+  let create ~mouse ~hover ~bpaste cap = {
       cap
     ; curs  = None
     ; dim   = (0, 0)
     ; image = I.empty
     ; dead  = false
+    ; mouse
+    ; hover
     ; write =
-        cap.altscr true & cursor cap None & cap.mouse mouse & cap.bpaste bpaste
+        cap.altscr true & cursor cap None
+        & mouse_reporting cap ~mouse ~hover
+        & cap.bpaste bpaste
     ; previous_lines = None
     }
+
+  let set_mouse t enabled =
+    t.mouse <- enabled;
+    emit t (current_mouse_reporting t)
+
+  let set_hover t enabled =
+    t.hover <- enabled;
+    emit t (current_mouse_reporting t)
 
   let release t =
     if t.dead then false else
       ( emit t ( t.cap.altscr false & t.cap.cursvis true &
-                 t.cap.mouse false & t.cap.bpaste false );
+                 t.cap.mouse false & t.cap.hover false & t.cap.bpaste false );
         emit t (reset_cursor t.cap);
         t.dead <- true; true )
 
   let output t buf = t.write buf; t.write <- ignore
 
   let refresh ({ dim; image; _ } as t) =
-    emit t ( 
+    emit t (
+      t.cap.sync_start &
       cursor t.cap None &
       cursat0 t.cap 0 0 &
-             (fun buf -> 
+             (fun buf ->
                 let operations = Operation.of_image (0, 0) dim image in
                 Render.to_buffer' ~buf ~cap:t.cap ~dim ~previous_operations:t.previous_lines ~operations;
                 t.previous_lines <- (Some operations);
              ) &
-             cursor t.cap t.curs )
+             cursor t.cap t.curs &
+      t.cap.sync_end )
 
   let set_size t dim = t.dim <- dim
   let image t image = t.image <- image; refresh t

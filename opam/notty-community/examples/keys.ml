@@ -36,6 +36,7 @@ let pp_mods fmt = function
 let pp_mouse fmt = function
   | `Release -> pps fmt "Release"
   | `Drag    -> pps fmt "Drag"
+  | `Hover   -> pps fmt "Hover"
   | `Move    -> pps fmt "Move"
   | `Press k ->
       pps fmt "Press ";

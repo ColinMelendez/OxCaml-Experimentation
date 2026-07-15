@@ -162,11 +162,11 @@ module Term = struct
         t.input.Input.cleanup ();
         write t )
 
-  let create ?(dispose=true) ?(nosig=true) ?(mouse=true) ?(bpaste=true)
+  let create ?(dispose=true) ?(nosig=true) ?(mouse=true) ?(hover=false) ?(bpaste=true)
              ?(input=Unix.stdin) ?(output=Unix.stdout) () =
     let rec t = {
         output  = Unix.out_channel_of_descr output
-      ; trm     = Tmachine.create ~mouse ~bpaste (cap_for_fd input)
+      ; trm     = Tmachine.create ~mouse ~hover ~bpaste (cap_for_fd input)
       ; buf     = Buffer.create 4096
       ; input   = Input.create ~nosig input
       ; fds     = (input, output)

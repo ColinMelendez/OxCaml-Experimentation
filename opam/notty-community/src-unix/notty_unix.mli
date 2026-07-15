@@ -26,11 +26,12 @@ module Term : sig
   val create : ?dispose:bool ->
                ?nosig:bool ->
                ?mouse:bool ->
+               ?hover:bool ->
                ?bpaste:bool ->
                ?input:Unix.file_descr ->
                ?output:Unix.file_descr ->
                unit -> t
-  (** [create ~dispose ~nosig ~mouse ~input ~output ()] creates a fresh
+  (** [create ~dispose ~nosig ~mouse ~hover ~input ~output ()] creates a fresh
       {{!t}terminal}. It has the following side effects:
       {ul
       {- [Unix.tcsetattr] is applied to [input] to disable {e echo} and
@@ -49,6 +50,10 @@ module Term : sig
       {e CTRL-\{C,Z,\,S,Q\}}. Defaults to [true].
 
       [~mouse] activates mouse reporting. Defaults to [true].
+
+      [~hover] activates {e any-event} mouse reporting when [~mouse] is also enabled.
+      When enabled, the terminal also reports mouse motion without any button pressed as
+      [`Hover] events. Defaults to [false].
 
       [~bpaste] activates bracketed paste reporting. Defaults to [true].
 

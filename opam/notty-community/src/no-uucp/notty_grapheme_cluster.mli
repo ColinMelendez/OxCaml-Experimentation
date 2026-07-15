@@ -10,6 +10,11 @@ type t
 val create : unit -> t
 val add : t -> [ `Await | `End | `Uchar of Uchar.t ] -> ret
 
+(** Returns true if VS-16 (U+FE0F) was present in the most recently completed
+    grapheme cluster. When VS-16 is present, it forces emoji presentation which
+    typically means width 2. This should be called after receiving [`Boundary]. *)
+val had_vs16 : t -> bool
+
 (*---------------------------------------------------------------------------
    Copyright (c) 2014 Daniel C. Bünzli
 

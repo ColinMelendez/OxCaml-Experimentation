@@ -172,6 +172,26 @@ module A : sig
 
   val href : url:string -> attr
   (** [href ~url] is [empty] with a clickable hyperlink to [url]. *)
+
+  (**/**)
+  module Private : sig
+    (** Return [None] when the corresponding attribute is unset or explicitly set to
+        [default]. *)
+    val fg_color : t -> color option
+    val bg_color : t -> color option
+
+    (** Query the raw style bitset. *)
+    val has_style : t -> style -> bool
+
+    (** Return a structured representation of a {!color}.
+
+        - [`Default] corresponds to {!default}
+        - [`Palette_index i] is an index in the 256-color palette (including the first 16 ANSI
+          colors)
+        - [`Rgb_888 (r, g, b)] is a truecolor (24-bit) value *)
+    val color_to_repr : color -> [ `Default | `Palette_index of int | `Rgb_888 of int * int * int ]
+  end
+  (**/**)
 end
 
 (** [I] is for image.
@@ -475,8 +495,15 @@ module Unescape : sig
   type key = [ special | `Uchar of Uchar.t | `ASCII of char ] * mods
   (** Keypress event. *)
 
-  type mouse = [ `Press of button | `Drag | `Release ] * (int * int) * mods
-  (** Mouse event. *)
+  type mouse = [ `Press of button | `Drag | `Hover | `Release ] * (int * int) * mods
+  (** Mouse event.
+
+      [`Hover] events are motion events that occur while no button is depressed. They are
+      only reported when the terminal has mouse reporting and "any-event" mouse tracking
+      enabled (see {{!Tmachine.create}[Tmachine.create ~mouse ~hover]}). Note that
+      enabling this mode causes the terminal to report a mouse event for every cell the
+      pointer crosses, which can be a significant volume of input for some applications.
+  *)
 
   type paste = [ `Start | `End ]
   (** Paste event. *)
@@ -612,8 +639,33 @@ end
 
     These are private interfaces, prone to breakage. Don't use them. *)
 
-module Operation : sig
+module Text : sig
   type t
+
+  val width : t -> int
+  val to_string : t -> string
+
+  val graphemes : string -> int array
+  (** [graphemes str] returns an index array mapping display column positions to byte
+      offsets in [str]. The array has length [display_width + 1], where the last element
+      is the string length.
+
+      Special values in the array:
+      - [-1] indicates that this column is occupied by the right half of a wide character
+        (e.g., CJK characters that take 2 columns)
+
+      For example:
+      - ["abc"] returns [[|0; 1; 2; 3|]] (3 ASCII chars, each 1 column)
+      - A string with a wide character like "中" (3 bytes, 2 columns) would have [-1]
+        in the second position to mark the continuation of the wide char. *)
+end
+
+module Operation : sig
+  type t =
+    | End
+    | Skip of int * t
+    | Text of A.t * Text.t * t
+
   val of_image : (int * int) -> int * int -> image -> t list
 end
 
@@ -621,9 +673,26 @@ module Tmachine : sig
 
   type t
 
-  val create  : mouse:bool -> bpaste:bool -> Cap.t -> t
+  val create  : mouse:bool -> hover:bool -> bpaste:bool -> Cap.t -> t
   val release : t -> bool
   val output  : t -> Buffer.t -> unit
+
+  (** Dynamically enable/disable mouse reporting.
+
+      This controls whether the terminal is asked to send mouse events on stdin.
+      Disabling mouse reporting is important for allowing users to use terminal-native
+      text selection. Disabling mouse reporting also disables hover reporting until mouse
+      reporting is enabled again.
+  *)
+  val set_mouse : t -> bool -> unit
+
+  (** Dynamically enable/disable hover (any-event) mouse reporting.
+
+      When enabled, the terminal will report mouse motion as [`Hover] events even when no
+      button is pressed, as long as ordinary mouse reporting is also enabled. Enabling
+      hover reporting can generate a large volume of input events.
+  *)
+  val set_hover : t -> bool -> unit
 
   type cursor :=
     [ `Default
