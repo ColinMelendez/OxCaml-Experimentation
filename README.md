@@ -28,6 +28,10 @@ easily enough if you are up for a bit of [maintenance](#maintenance).
 
 ## Usage
 
+*working as of OxCaml compiler version `5.2.0minus39`
+
+> I would ideally use a nix flake to ensure that this repository remains working for a given commit, but there isn't a convenient binary distribution of the OxCaml compiler and I didn't feel like using a flake that builds it from source every time.
+
 All you need to get started is the OxCaml compiler (i.e. via an opam switch)
 and a recent Dune and then everything else in here will build as a dune switch.
 Install [opam](https://opam.ocaml.org) and:
@@ -44,6 +48,8 @@ package in the workspace. We put packages that were originally upstream into the
 work-in-progress new libraries, and user-specific directories like [avsm/](/avsm)
 for binaries that are deployed.
 
+If you come up against problems with getting the repo to build with whatever version of the compiler is available at the time that you are working with this repo, the `PATCHING.md` document contains an explanation of a previous adventure in solving this problem, and may be of help.
+
 To setup a devcontainer so you can run this in a sandboxed environment with Claude
 available, just do:
 
@@ -56,9 +62,10 @@ npx @devcontainers/cli exec --workspace-folder . bash -l
 
 ## Custom Code
 
-I'm sticking my own oxcaml code into `avsm/` to leave room for other users
-to also contribute. This is a fluid repository so get in touch if you're
-using it so I know to not break your usecase.
+The `asvm/` directory contains projects by the original creator of this monorepo
+scaffolding, Anil Madhavapeddy. It has been left alone for reference. I will be
+following a similar paradigm and placing my own experiments under the `cwrm/`
+directory.
 
 ## Maintenance
 
@@ -147,7 +154,7 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
     - Add dune-project and dune files throughout src/ directories
     - Add config/discover.ml and config/dune for each C library binding (blake3, crypto, md, tls, xxhash, zlib, zstd)
     - Remove _tags, myocamlbuild.ml, pkg/pkg.ml, and .mllib files
-  
+
   - **OxCaml features** in `bytesrw.ml`:
     - Use `@ local` mode annotations for Slice functions: `is_eod`, `first`, `last`, `length`, `equal`, `compare`, `copy`, `to_bytes`, `to_string`, `to_bigbytes`, `add_to_buffer`, `output_to_out_channel`
     - Add `make_local` function with `exclave_` for stack-allocated Slice creation
@@ -155,15 +162,15 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
     - Replace `ref` with `mutable` local bindings for iteration variables
     - Use mutable record fields for Reader/Writer state (`pos`, `read`, `write`)
     - Convert recursive loops to `while` loops with `mutable` iteration variables
-  
+
   - **OxCaml features** in `bytesrw_utf.ml`:
     - Add `uchar_utf_8_byte_decode_length_unboxed` using unboxed `char#` type for zero-alloc pattern matching
-  
+
   - **OxCaml features** in `bytesrw_fmt.ml` and `bytesrw_hex.ml`:
     - Convert `for` loops to `while` loops with `mutable` variables
     - Add `[@inline][@zero_alloc]` attributes to hot path functions
     - Optimize `of_binary_string` with lookup table and direct byte writes
-  
+
   - **Compatibility**: Add `Base` library dependency for `Base.Bytes` with local-aware operations (`Local_bytes.length`, `Local_bytes.copy`, `Local_bytes.sub`, `Local_bytes.To_string.sub`)
   </details>
 - **dune (3.21.0)**: Fix partial application issues for OxCaml mode compliance and remove boot install file.
@@ -205,13 +212,13 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
   - **Mixed blocks**: Support for mixed block bytecode operations
   - **Unboxed types**: Support for unboxed indexing operations and int_u array primitives
   - **Atomics**: Extensive atomic field operations (load, store, cas, fetch_add, exchange, etc.) for both JS and WASM runtimes
-  
+
   ## OCaml 5.2 Compiler API Compatibility
   - **compilation_unit changes**: Updated from `Cmo_format.compilation_unit` to `Cmo_format.compilation_unit_descr`
   - **Import_info**: Handle new `Import_info.t array` format for CRCs
   - **Compilation_unit.Name**: Use `name_as_string` for module name access
   - **Ident.is_global**: Compatibility for identifier API changes
-  
+
   ## Runtime Additions
   - **caml_hash_exn**: Renamed hash function export for exception handling
   - **caml_with_async_exns**: New primitive for async exception handling via `Sys.with_async_exns`
@@ -220,14 +227,14 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
   - **iarray primitives**: Immutable array support
   - **TLS runtime stubs**: Thread-local storage support
   - **caml_ml_set_channel_refill**: Stub for channel refill
-  
+
   ## Configuration Changes
   - **use-js-string default**: Changed from `true` to `false` (important monorepo compatibility)
-  
+
   ## Build System Fixes
   - **dune ppx flags**: Added `-no-check` flag to sedlex.ppx preprocessing
   - **build_fs.ml fix**: Added `globalThis.caml_create_file` fallback in filesystem initialization
-  
+
   ## Bug Fixes
   - **global_deadcode fix**: Guard against variables minted after info table construction
   - **flow.ml**: Added `info_defs_length` check to prevent index out of bounds
@@ -244,7 +251,7 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
   - Use `[%atomic.loc]` and `Portable.Atomic.Loc.update` for atomic updates to window resize state
   - Add `ppx_jane` preprocessing and `base`, `portable`, `portable_lockfree_htbl` dependencies
   - Use `Base.Obj.magic_portable` for Lwt integration compatibility
-  
+
   ## New Features
   - **Cursor styles**: Add support for different cursor kinds (`Bar`, `Block`, `Underline`, blinking variants, `Default`)
   - **Hyperlinks**: Add `A.href` for clickable hyperlink support via OSC 8 escape sequences
@@ -252,12 +259,12 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
   - **Title management**: Add `set_title`, `save_title`, `restore_title` functions
   - **Exposed API**: Add `Tty_width_hint` module exposing notty's optimized unicode width function
   - **Ctrl+Backspace**: Distinguish Ctrl+Backspace from regular Backspace in input handling
-  
+
   ## Performance Improvements
   - Line-based diffing: Only redraw changed lines during refresh by comparing previous and current operations
   - Track `previous_lines` state in `Tmachine.t` for incremental updates
   - Avoid sending `cleareol` on fully-filled lines to fix rendering in some terminals
-  
+
   ## Terminal Compatibility Fixes
   - Use `\x1b[E` (cursor_nextline) instead of `\x1bE` for newline escape sequence
   - Use `\n` instead of escape codes for emacs terminal compatibility
@@ -297,12 +304,12 @@ Packages using OxCaml features (unboxed types, stack allocation, modes, etc.)
     - Added `Stdlib.Obj.magic_uncontended` calls for safe initialization of shared state
     - Changed `Positions.empty` from a value to `Positions.get_empty ()` function to avoid shared mutable state
     - Replaced integer comparison operators with `Int.compare` for portability
-  
+
   - **Bugfix for exec_partial**:
     - Fixed `exec_partial` to return `Full` when pattern matches at end of input (previously returned `Partial` for patterns like `str "hello"` on input `"hello"`)
     - Added boundary check for partial matching without groups when at end of input
     - Added comprehensive tests for exec_partial consistency with execp
-  
+
   - **Compatibility changes**:
     - Removed TSAN suppressions and related CI configuration (no longer needed with proper OxCaml annotations)
     - Simplified concurrency tests
