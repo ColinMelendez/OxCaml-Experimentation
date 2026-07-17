@@ -1,0 +1,15 @@
+(library
+ (name test_handled_effectiveness)
+ (libraries
+  handled_effectiveness
+  bonsai
+  bonsai_term
+  bonsai_term_test
+  bonsai_test
+  core
+  expect_test_helpers_core)
+ (inline_tests
+  (flags :standard -source-tree-root .)
+  (deps test_handled_effectiveness.ml))
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai ppx_expect)))
