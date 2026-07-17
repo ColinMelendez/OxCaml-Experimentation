@@ -1,0 +1,17 @@
+(library
+ (name handled_effectiveness)
+ (public_name handled-effectiveness)
+ (libraries
+  handled_effect
+  unique
+  basement
+  bonsai
+  bonsai_term
+  bonsai_term_components.border_box
+  bonsai_term_components.color_scheme
+  core
+  core_unix
+  async
+  async_unix)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai)))
