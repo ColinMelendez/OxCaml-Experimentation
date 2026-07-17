@@ -1,0 +1,12 @@
+(executable
+ (name main)
+ (public_name handled-effectiveness)
+ (libraries
+  handled_effectiveness
+  bonsai_term
+  core
+  core_unix.command_unix
+  async
+  async_unix)
+ (preprocess
+  (pps ppx_jane)))
