@@ -2,3 +2,4 @@
     Bonsai_term. *)
 
 module Types = Types
+module Demos = Demos
